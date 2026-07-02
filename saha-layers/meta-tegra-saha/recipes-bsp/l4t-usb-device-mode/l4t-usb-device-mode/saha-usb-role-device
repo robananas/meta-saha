@@ -1,0 +1,7 @@
+#!/bin/sh
+role_path=/sys/class/usb_role/usb2-0-role-switch/role
+
+[ -e "$role_path" ] || exit 0
+
+role=$(cat "$role_path")
+[ "$role" = "device" ] || echo device > "$role_path"

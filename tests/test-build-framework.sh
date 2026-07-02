@@ -182,6 +182,15 @@ USB_DEVICE_MODE_APPEND="$ROOT_DIR/saha-layers/meta-tegra-saha/recipes-bsp/l4t-us
   fail "l4t-usb-device-mode bbappend must exist"
 grep -q 'multi-user.target.wants/usb-gadget.target' "$USB_DEVICE_MODE_APPEND" ||
   fail "USB gadget target must be wanted by multi-user.target for default USB network access"
+grep -q 'saha-usb-role-device' "$USB_DEVICE_MODE_APPEND" ||
+  fail "USB gadget setup must install the Saha USB role helper"
+USB_ROLE_HELPER="$ROOT_DIR/saha-layers/meta-tegra-saha/recipes-bsp/l4t-usb-device-mode/l4t-usb-device-mode/saha-usb-role-device"
+[ -f "$USB_ROLE_HELPER" ] ||
+  fail "Saha USB role helper must exist"
+grep -q '/sys/class/usb_role/usb2-0-role-switch/role' "$USB_ROLE_HELPER" ||
+  fail "Saha USB role helper must target the Orin USB2-0 role switch"
+grep -q 'echo device >' "$USB_ROLE_HELPER" ||
+  fail "Saha USB role helper must force device role before gadget start"
 
 grep -q 'gfortran' "$ROOT_DIR/docker/Dockerfile.yocto-builder" ||
   fail "Yocto builder image must include gfortran"
