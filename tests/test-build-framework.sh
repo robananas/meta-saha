@@ -158,6 +158,12 @@ grep -A3 '^  meta-saha:' "$ROOT_DIR/kas/include/repos-wrynose.yml" |
 grep -q 'EXTRA_IMAGE_FEATURES ?= "empty-root-password allow-root-login"' "$ROOT_DIR/kas/include/base.yml" ||
   fail "Wrynose image features must not use removed debug-tweaks alias"
 
+OPENSSH_APPEND="$ROOT_DIR/saha-layers/meta-tegra-saha/recipes-connectivity/openssh/openssh_%.bbappend"
+[ -f "$OPENSSH_APPEND" ] ||
+  fail "openssh bbappend must exist for SSH root empty-password access"
+grep -q 'PermitEmptyPasswords yes' "$ROOT_DIR/saha-layers/meta-tegra-saha/recipes-connectivity/openssh/openssh/99-saha-root-empty-password.conf" ||
+  fail "OpenSSH must explicitly permit empty passwords for root SSH access"
+
 grep -q 'BB_HASHSERVE_DB_DIR ?= "${SSTATE_DIR}"' "$ROOT_DIR/kas/include/base.yml" ||
   fail "shared sstate builds should also share hash equivalence database"
 
