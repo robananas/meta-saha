@@ -1,0 +1,46 @@
+#!/usr/bin/env bash
+set -euo pipefail
+
+SCRIPT_DIR="$(cd -- "$(dirname "${BASH_SOURCE[0]}")" >/dev/null 2>&1 && pwd -P)"
+# shellcheck source=saha-lib
+. "$SCRIPT_DIR/saha-lib"
+
+usage() {
+  cat <<'USAGE'
+Usage: scripts/saha-shell <target> [-c <command>]
+
+Open a kas shell for a supported Jetson target inside Docker.
+With -c, run a non-interactive command inside the kas shell.
+Run scripts/saha-targets to list targets.
+USAGE
+}
+
+if [ "${1:-}" = "-h" ] || [ "${1:-}" = "--help" ]; then
+  usage
+  exit 0
+fi
+
+if [ $# -ne 1 ] && [ $# -ne 3 ]; then
+  usage >&2
+  exit 2
+fi
+
+TARGET=$1
+INTERACTIVE=1
+COMMAND_ARGS=()
+if [ $# -eq 3 ]; then
+  if [ "$2" != "-c" ]; then
+    usage >&2
+    exit 2
+  fi
+  INTERACTIVE=0
+  COMMAND_ARGS=(-c "$3")
+fi
+
+saha_require_target "$TARGET" >/dev/null
+ROOT_DIR="$(saha_repo_root)"
+saha_prepare_docker_env "$ROOT_DIR"
+saha_apply_build_tuning_defaults
+
+saha_build_builder_image "$ROOT_DIR"
+saha_run_docker "$ROOT_DIR" "$TARGET" "$INTERACTIVE" kas shell "kas/targets/$TARGET.yml" "${COMMAND_ARGS[@]}"

@@ -1,0 +1,41 @@
+#!/usr/bin/env bash
+set -euo pipefail
+
+SCRIPT_DIR="$(cd -- "$(dirname "${BASH_SOURCE[0]}")" >/dev/null 2>&1 && pwd -P)"
+# shellcheck source=saha-lib
+. "$SCRIPT_DIR/saha-lib"
+
+usage() {
+  cat <<'USAGE'
+Usage: scripts/saha-validate <target>
+
+Expand and validate the kas configuration for a supported Jetson target inside
+Docker without fetching repositories or running bitbake.
+Run scripts/saha-targets to list targets.
+USAGE
+}
+
+if [ "${1:-}" = "-h" ] || [ "${1:-}" = "--help" ]; then
+  usage
+  exit 0
+fi
+
+if [ $# -ne 1 ]; then
+  usage >&2
+  exit 2
+fi
+
+TARGET=$1
+saha_require_target "$TARGET" >/dev/null
+ROOT_DIR="$(saha_repo_root)"
+saha_prepare_docker_env "$ROOT_DIR"
+saha_apply_build_tuning_defaults
+
+saha_build_builder_image "$ROOT_DIR"
+saha_run_docker "$ROOT_DIR" "$TARGET" 0 \
+  kas dump \
+  --skip repo_setup_loop \
+  --skip finish_setup_repos \
+  --skip repos_checkout \
+  --skip repos_apply_patches \
+  "kas/targets/$TARGET.yml"

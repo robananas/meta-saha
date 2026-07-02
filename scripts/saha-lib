@@ -1,0 +1,282 @@
+#!/usr/bin/env bash
+
+saha_repo_root() {
+  local source_dir
+  source_dir="$(cd -- "$(dirname "${BASH_SOURCE[0]}")" >/dev/null 2>&1 && pwd -P)"
+  cd -- "$source_dir/.." >/dev/null 2>&1 && pwd -P
+}
+
+saha_targets() {
+  cat <<'TARGETS'
+orin-nx-16g-p3768|p3768-0000-p3767-0000|Jetson Orin NX 16GB P3767-0000 module in P3768 carrier
+agx-thor-devkit|jetson-agx-thor-devkit|AGX Thor devkit P3834-0008 module in P4071-0000 carrier with NVMe
+agx-orin-devkit|jetson-agx-orin-devkit|AGX Orin devkit P3701-0000 module in P3737-0000 carrier
+TARGETS
+}
+
+saha_print_targets() {
+  printf '%-22s %-30s %s\n' "TARGET" "MACHINE" "DESCRIPTION"
+  saha_targets | while IFS='|' read -r alias machine description; do
+    printf '%-22s %-30s %s\n' "$alias" "$machine" "$description"
+  done
+}
+
+saha_target_machine() {
+  local requested=$1
+  saha_targets | while IFS='|' read -r alias machine _description; do
+    if [ "$alias" = "$requested" ]; then
+      printf '%s\n' "$machine"
+      return 0
+    fi
+  done
+}
+
+saha_require_target() {
+  local requested=$1
+  local machine
+  machine="$(saha_target_machine "$requested")"
+  if [ -z "$machine" ]; then
+    {
+      printf 'Unsupported target: %s\n\n' "$requested"
+      printf 'Supported targets:\n'
+      saha_print_targets
+    } >&2
+    return 2
+  fi
+  printf '%s\n' "$machine"
+}
+
+saha_image_name() {
+  printf '%s\n' "${SAHA_BUILDER_IMAGE:-meta-saha-yocto-builder:wrynose}"
+}
+
+saha_prepare_docker_env() {
+  local root_dir=$1
+  export DOCKER_CONFIG="${DOCKER_CONFIG:-$root_dir/.docker-cache/config}"
+  export BUILDX_CONFIG="${BUILDX_CONFIG:-$root_dir/.docker-cache/buildx}"
+  mkdir -p "$DOCKER_CONFIG" "$BUILDX_CONFIG"
+  if [ "${SAHA_NO_PROXY:-0}" != "1" ]; then
+    saha_load_proxy_env
+  fi
+}
+
+saha_build_dir() {
+  local root_dir=$1
+  local target=$2
+  printf '%s\n' "${SAHA_BUILD_DIR:-$root_dir/build/$target}"
+}
+
+saha_downloads_dir() {
+  local root_dir=$1
+  printf '%s\n' "${SAHA_DOWNLOADS_DIR:-$root_dir/downloads}"
+}
+
+saha_sstate_dir() {
+  local root_dir=$1
+  printf '%s\n' "${SAHA_SSTATE_DIR:-$root_dir/sstate-cache}"
+}
+
+saha_proxy_vars() {
+  printf '%s\n' \
+    "HTTP_PROXY" \
+    "HTTPS_PROXY" \
+    "ALL_PROXY" \
+    "NO_PROXY" \
+    "http_proxy" \
+    "https_proxy" \
+    "all_proxy" \
+    "no_proxy"
+}
+
+saha_apply_build_tuning_defaults() {
+  export SAHA_BB_NUMBER_THREADS="${SAHA_BB_NUMBER_THREADS:-4}"
+  export SAHA_BB_NUMBER_PARSE_THREADS="${SAHA_BB_NUMBER_PARSE_THREADS:-4}"
+  export SAHA_PARALLEL_MAKE="${SAHA_PARALLEL_MAKE:--j 4}"
+}
+
+saha_has_proxy_env() {
+  local name
+  for name in HTTP_PROXY HTTPS_PROXY ALL_PROXY http_proxy https_proxy all_proxy; do
+    if [ -n "${!name:-}" ]; then
+      return 0
+    fi
+  done
+  return 1
+}
+
+saha_load_proxy_env() {
+  if [ "${SAHA_LOAD_ZSHRC_PROXY:-1}" = "0" ] || saha_has_proxy_env; then
+    return 0
+  fi
+  command -v zsh >/dev/null 2>&1 || return 0
+
+  local started=0
+  local line name value
+  while IFS= read -r line; do
+    if [ "$line" = "__SAHA_PROXY_ENV_START__" ]; then
+      started=1
+      continue
+    fi
+    [ "$started" = "1" ] || continue
+
+    name=${line%%=*}
+    value=${line#*=}
+    case "$name" in
+      HTTP_PROXY|HTTPS_PROXY|ALL_PROXY|NO_PROXY|http_proxy|https_proxy|all_proxy|no_proxy)
+        if [ -n "$value" ]; then
+          export "$name=$value"
+        fi
+        ;;
+    esac
+  done < <(zsh -lic 'printf "%s\n" "__SAHA_PROXY_ENV_START__"; env' 2>/dev/null || true)
+}
+
+saha_docker_proxy_run_args() {
+  local name
+  if [ "${SAHA_NO_PROXY:-0}" = "1" ]; then
+    while IFS= read -r name; do
+      printf '%s\n' "-e" "$name="
+    done < <(saha_proxy_vars)
+    return 0
+  fi
+
+  while IFS= read -r name; do
+    if [ -n "${!name:-}" ]; then
+      printf '%s\n' "-e" "$name"
+    fi
+  done < <(saha_proxy_vars)
+}
+
+saha_docker_proxy_build_args() {
+  local name
+  if [ "${SAHA_NO_PROXY:-0}" = "1" ]; then
+    return 0
+  fi
+
+  while IFS= read -r name; do
+    if [ -n "${!name:-}" ]; then
+      printf '%s\n' "--build-arg" "$name"
+    fi
+  done < <(saha_proxy_vars)
+}
+
+saha_proxy_needs_host_network() {
+  if [ "${SAHA_NO_PROXY:-0}" = "1" ]; then
+    return 1
+  fi
+
+  local name value
+  for name in HTTP_PROXY HTTPS_PROXY ALL_PROXY http_proxy https_proxy all_proxy; do
+    value=${!name:-}
+    case "$value" in
+      *://127.*|*://127.*:*|*://localhost|*://localhost:*|*://[::1]|*://[::1]:*)
+        return 0
+        ;;
+    esac
+  done
+  return 1
+}
+
+saha_docker_network_args() {
+  if saha_proxy_needs_host_network; then
+    printf '%s\n' "--network" "host"
+  fi
+}
+
+saha_docker_args() {
+  local root_dir=$1
+  local target=$2
+  local interactive=$3
+  local build_dir downloads_dir sstate_dir image
+  build_dir="$(saha_build_dir "$root_dir" "$target")"
+  downloads_dir="$(saha_downloads_dir "$root_dir")"
+  sstate_dir="$(saha_sstate_dir "$root_dir")"
+  image="$(saha_image_name)"
+
+  mkdir -p "$build_dir" "$downloads_dir" "$sstate_dir"
+
+  printf '%s\n' \
+    "run" \
+    "--rm"
+
+  saha_docker_network_args
+
+  if [ "$interactive" = "1" ]; then
+    printf '%s\n' "-it"
+  fi
+
+  printf '%s\n' \
+    "--user" "$(id -u):$(id -g)" \
+    "-e" "USER=builder" \
+    "-e" "HOME=/work/home" \
+    "-e" "KAS_BUILD_DIR=/work/build/$target" \
+    "-e" "KAS_WORK_DIR=/work/build/$target" \
+    "-e" "DL_DIR=/work/downloads" \
+    "-e" "SSTATE_DIR=/work/sstate-cache"
+
+  printf '%s\n' \
+    "-e" "GIT_HTTP_VERSION=${GIT_HTTP_VERSION:-HTTP/1.1}"
+
+  printf '%s\n' \
+    "-e" "SAHA_BB_NUMBER_THREADS=${SAHA_BB_NUMBER_THREADS}" \
+    "-e" "SAHA_BB_NUMBER_PARSE_THREADS=${SAHA_BB_NUMBER_PARSE_THREADS}" \
+    "-e" "SAHA_PARALLEL_MAKE=${SAHA_PARALLEL_MAKE}"
+
+  saha_docker_proxy_run_args
+
+  printf '%s\n' \
+    "-v" "$root_dir:/work/meta-saha" \
+    "-v" "$build_dir:/work/build/$target" \
+    "-v" "$downloads_dir:/work/downloads" \
+    "-v" "$sstate_dir:/work/sstate-cache" \
+    "-w" "/work/meta-saha" \
+    "$image"
+}
+
+saha_run_docker() {
+  local root_dir=$1
+  local target=$2
+  local interactive=$3
+  shift 3
+  local docker_cmd
+  docker_cmd=(docker)
+  while IFS= read -r arg; do
+    docker_cmd+=("$arg")
+  done < <(saha_docker_args "$root_dir" "$target" "$interactive")
+  docker_cmd+=("$@")
+
+  if [ "${SAHA_DRY_RUN:-0}" = "1" ]; then
+    printf 'DOCKER_CONFIG=%q BUILDX_CONFIG=%q ' "$DOCKER_CONFIG" "$BUILDX_CONFIG"
+    printf '%q ' "${docker_cmd[@]}"
+    printf '\n'
+    return 0
+  fi
+
+  exec "${docker_cmd[@]}"
+}
+
+saha_build_builder_image() {
+  local root_dir=$1
+  local image
+  local proxy_arg
+  image="$(saha_image_name)"
+  if [ "${SAHA_DRY_RUN:-0}" = "1" ]; then
+    printf 'DOCKER_CONFIG=%q BUILDX_CONFIG=%q docker image inspect %q >/dev/null 2>&1 || ' "$DOCKER_CONFIG" "$BUILDX_CONFIG" "$image"
+    printf 'DOCKER_CONFIG=%q BUILDX_CONFIG=%q docker build ' "$DOCKER_CONFIG" "$BUILDX_CONFIG"
+    while IFS= read -r proxy_arg; do
+      printf '%q ' "$proxy_arg"
+    done < <(saha_docker_network_args; saha_docker_proxy_build_args)
+    printf -- '-t %q -f %q %q\n' "$image" "$root_dir/docker/Dockerfile.yocto-builder" "$root_dir"
+    return 0
+  fi
+  if docker image inspect "$image" >/dev/null 2>&1; then
+    return 0
+  fi
+  local docker_build_cmd
+  docker_build_cmd=(docker build)
+  while IFS= read -r proxy_arg; do
+    docker_build_cmd+=("$proxy_arg")
+  done < <(saha_docker_network_args; saha_docker_proxy_build_args)
+  docker_build_cmd+=(-t "$image" -f "$root_dir/docker/Dockerfile.yocto-builder" "$root_dir")
+  "${docker_build_cmd[@]}"
+}

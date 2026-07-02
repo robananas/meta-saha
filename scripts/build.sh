@@ -12,13 +12,7 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 #
-# Initlize Yocto Environment
-#
-# Directories in Git repo
+# Build through the Docker/kas entrypoint. The legacy setup-env flow remains
+# available for reference, but it is no longer the primary build path.
 SCRIPT_PATH="$( cd -- "$(dirname "$0")" >/dev/null 2>&1 ; pwd -P )"
-PRJ_ROOT=$SCRIPT_PATH/..
-RES_PATH=$PRJ_ROOT/resources
-MACHINE=$1
-#
-. meta-saha/setup-env --machine $MACHINE
-bitbake saha-image-base
+exec "$SCRIPT_PATH/saha-build" "$@"
