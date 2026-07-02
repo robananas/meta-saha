@@ -178,9 +178,32 @@ if rg -n '\$\{WORKDIR\}/skip-dummy-interfaces.conf' \
   fail "Wrynose unpacked source files must be read from UNPACKDIR"
 fi
 
-if grep -qxF 'DEPENDS += "${PARTITION_LAYOUT_DIR}"' \
-  "$ROOT_DIR/saha-layers/meta-tegra-saha/recipes-bsp/tegra-binaries/tegra-bootfiles_%.bbappend"; then
-  fail "legacy tegra-saha-layout dependency must not apply to all machines"
+for legacy_path in \
+  "$ROOT_DIR/resources" \
+  "$ROOT_DIR/scripts/init.sh" \
+  "$ROOT_DIR/scripts/clear.sh" \
+  "$ROOT_DIR/scripts-setup" \
+  "$ROOT_DIR/setup-env" \
+  "$ROOT_DIR/dockers" \
+  "$ROOT_DIR/saha-layers/meta-tegra-saha/.templateconf" \
+  "$ROOT_DIR/saha-layers/meta-tegra-saha/conf/templates" \
+  "$ROOT_DIR/saha-layers/meta-tegra-saha/conf/machine" \
+  "$ROOT_DIR/saha-layers/meta-tegra-saha/recipes-kernel" \
+  "$ROOT_DIR/saha-layers/meta-tegra-saha/recipes-bsp/tegra-binaries/tegra-bootfiles_%.bbappend" \
+  "$ROOT_DIR/saha-layers/meta-tegra-saha/recipes-bsp/tegra-binaries/tegra-saha-layout.bb" \
+  "$ROOT_DIR/saha-layers/meta-tegra-saha/recipes-bsp/tegra-binaries/tegra-saha-layout" \
+  "$ROOT_DIR/saha-layers/meta-tegra-saha/recipes-saha/data-overlay-setup" \
+  "$ROOT_DIR/saha-layers/meta-tegra-saha/recipes-saha/environment-setup" \
+  "$ROOT_DIR/saha-layers/meta-tegra-saha/recipes-saha/packagegroups/packagegroup-saha-env.bb" \
+  "$ROOT_DIR/saha-layers/meta-tegra-saha/recipes-saha/packagegroups/packagegroup-saha-basetests.bb" \
+  "$ROOT_DIR/saha-layers/meta-tegra-saha/scripts"; do
+  [ ! -e "$legacy_path" ] || fail "legacy path should be removed: $legacy_path"
+done
+
+if rg -n 'rolling|apollo-nx|xavier-nx|tegra-rolling-kernel|tegra-saha-layout|data-overlay-setup|packagegroup-saha-env|packagegroup-saha-basetests|environment-setup|ros2_arm64|meta-ros' \
+  "$ROOT_DIR/kas" "$ROOT_DIR/saha-layers" "$ROOT_DIR/scripts" >/tmp/saha-legacy-references.out; then
+  cat /tmp/saha-legacy-references.out >&2
+  fail "legacy machine, ROS, or removed recipe reference found"
 fi
 
 shell_dry_run_output="$(SAHA_DRY_RUN=1 "$ROOT_DIR/scripts/saha-shell" agx-thor-devkit)"

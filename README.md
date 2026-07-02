@@ -175,9 +175,9 @@ bash tests/test-build-framework.sh
 ./scripts/saha-validate <alias>
 ```
 
-## Legacy flow
+## Removed legacy flow
 
-The old `resources/*.repos`, `scripts/init.sh`, `setup-env`, and direct host `bitbake` flow is retained for reference only. The supported path is Docker plus kas through `scripts/saha-build`.
+The old `resources/*.repos`, `scripts/init.sh`, `setup-env`, `scripts-setup/`, local machine templates, Xavier NX / `rolling-nx` support, and target-side ROS runtime Dockerfile have been removed. The supported path is Docker plus kas through `scripts/saha-build`.
 
 ## License
 
