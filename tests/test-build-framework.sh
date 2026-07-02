@@ -174,6 +174,9 @@ grep -q 'Build saha-image-robot' "$ROOT_DIR/scripts/saha-build" ||
 [ -f "$ROOT_DIR/saha-layers/meta-tegra-saha/recipes-saha/images/saha-image-robot.bb" ] ||
   fail "saha-image-robot recipe must exist"
 
+grep -qxF 'hostname = "soybean"' "$ROOT_DIR/saha-layers/meta-tegra-saha/recipes-core/base-files/base-files_%.bbappend" ||
+  fail "base-files must set the device hostname to soybean"
+
 grep -q 'gfortran' "$ROOT_DIR/docker/Dockerfile.yocto-builder" ||
   fail "Yocto builder image must include gfortran"
 
