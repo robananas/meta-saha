@@ -17,7 +17,4 @@ BBLAYERS ?= " \
   ##OEROOT##/meta-tegra-community \
   ##OEROOT##/meta-tegra-support \
   ##OEROOT##/meta-tegra-saha \
-  ##OEROOT##/meta-ros/meta-ros2-rolling \
-  ##OEROOT##/meta-ros/meta-ros2 \
-  ##OEROOT##/meta-ros/meta-ros-common \
 "
