@@ -23,6 +23,7 @@ RUN apt-get update && \
       flex \
       gawk \
       gcc \
+      gfortran \
       git \
       iputils-ping \
       libacl1 \
