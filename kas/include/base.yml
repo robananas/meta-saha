@@ -25,6 +25,6 @@ local_conf_header:
     BB_NUMBER_PARSE_THREADS ?= "${@os.environ.get('SAHA_BB_NUMBER_PARSE_THREADS', '4')}"
     PARALLEL_MAKE ?= "${@os.environ.get('SAHA_PARALLEL_MAKE', '-j 4')}"
   saha-kas-compat: |
-    # These classes are designed for OE4T setup-env generated builds and
-    # mutate bblayers.conf, so kas builds disable them explicitly.
+    # These classes are designed for OE4T template-generated builds and mutate
+    # bblayers.conf, so kas builds disable them explicitly.
     INHERIT:remove = "tegra-support-sanity distro_layer_buildinfo"

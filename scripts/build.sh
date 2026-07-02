@@ -12,7 +12,6 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 #
-# Build through the Docker/kas entrypoint. The legacy setup-env flow remains
-# available for reference, but it is no longer the primary build path.
+# Build through the Docker/kas entrypoint.
 SCRIPT_PATH="$( cd -- "$(dirname "$0")" >/dev/null 2>&1 ; pwd -P )"
 exec "$SCRIPT_PATH/saha-build" "$@"

@@ -1,5 +1,0 @@
-repositories:
-  repos/tools/meta-virtualization:
-    type: git
-    url: https://github.com/cyber-zoo/meta-virtualization
-    version: kirkstone
