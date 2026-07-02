@@ -1,6 +1,6 @@
-repos
-layers
-build
 .docker-cache
+build
 downloads
+layers
+repos
 sstate-cache
