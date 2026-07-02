@@ -9,7 +9,6 @@ The current baseline is Yocto Project 6.0 Wrynose and OE4T `meta-tegra` Wrynose,
 | Target alias | OE4T `MACHINE` | Hardware |
 | --- | --- | --- |
 | `orin-nx-16g-p3768` | `p3768-0000-p3767-0000` | Jetson Orin NX 16GB module in P3768 carrier |
-| `orin-nx-16g-p3768-ros-jazzy` | `p3768-0000-p3767-0000` | Orin NX 16GB dependency image with ROS 2 Jazzy and FastDDS |
 | `agx-thor-devkit` | `jetson-agx-thor-devkit` | Jetson AGX Thor devkit |
 | `agx-orin-devkit` | `jetson-agx-orin-devkit` | Jetson AGX Orin devkit |
 
@@ -88,7 +87,7 @@ SAHA_SSTATE_DIR=/data/yocto/sstate-cache \
 Override the Docker image tag with:
 
 ```bash
-SAHA_BUILDER_IMAGE=my-saha-builder:wrynose-ros-jazzy ./scripts/saha-build orin-nx-16g-p3768
+SAHA_BUILDER_IMAGE=my-saha-builder:wrynose ./scripts/saha-build orin-nx-16g-p3768
 ```
 
 ## Network proxies
@@ -160,21 +159,9 @@ This is a fast schema/include/config expansion check. A full `saha-build` still 
 
 ## Image scope
 
-The default `saha-image-robot` image is intentionally a basic Jetson BSP image layered on the reusable `saha-image-base` recipe. ROS/meta-ros is not included in the default kas repository graph. Add ROS later through an optional kas include once a Wrynose-compatible ROS layer set and ROS distribution are selected.
+The default `saha-image-robot` image is intentionally a basic Jetson BSP image layered on the reusable `saha-image-base` recipe.
 
-The default MVP image does not include ROS, CUDA samples, or Jetson container runtime tooling. Add `nvidia-container-toolkit` later through an optional image or kas include if container runtime support is required; OE4T R39.2 removed the old `nvidia-docker` recipe.
-
-## Optional ROS 2 Jazzy dependencies
-
-The ROS target is opt-in and currently provided for Orin NX 16GB P3768:
-
-```bash
-./scripts/saha-build orin-nx-16g-p3768-ros-jazzy
-```
-
-This target adds `meta-ros` from `superflore/wrynose/jazzy/2026-06-18`, builds `saha-image-ros-jazzy-deps`, and sets `RMW_IMPLEMENTATION = "rmw_fastrtps_cpp"` for FastDDS. It provides ROS 2 Jazzy dependency support only: it does not include `scout_stack`, local `/home/homalozoa/roban_test` content, Livox driver recipes, Fast-LIO recipes, or any Scout package recipes.
-
-The dependency image includes the ROS base stack, launch/rclcpp/rclpy, standard message packages, TF, robot state publisher, ros2_control controller manager, differential drive controller support, PCL ROS bindings, rosbag2, colcon, Eigen headers, and FastDDS RMW packages.
+The default MVP image does not include CUDA samples or Jetson container runtime tooling. Add `nvidia-container-toolkit` later through an optional image or kas include if container runtime support is required; OE4T R39.2 removed the old `nvidia-docker` recipe.
 
 ## Add a target
 
@@ -190,7 +177,7 @@ bash tests/test-build-framework.sh
 
 ## Removed legacy flow
 
-The old `resources/*.repos`, `scripts/init.sh`, `setup-env`, `scripts-setup/`, local machine templates, Xavier NX / `rolling-nx` support, and target-side ROS runtime Dockerfile have been removed. The supported path is Docker plus kas through `scripts/saha-build`.
+The old `resources/*.repos`, `scripts/init.sh`, `setup-env`, `scripts-setup/`, local machine templates, and Xavier NX / `rolling-nx` support have been removed. The supported path is Docker plus kas through `scripts/saha-build`.
 
 ## License
 

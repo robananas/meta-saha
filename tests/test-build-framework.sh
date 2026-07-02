@@ -17,17 +17,19 @@ contains() {
 targets_output="$("$ROOT_DIR/scripts/saha-targets")"
 contains "$targets_output" "orin-nx-16g-p3768"
 contains "$targets_output" "p3768-0000-p3767-0000"
-contains "$targets_output" "orin-nx-16g-p3768-ros-jazzy"
 contains "$targets_output" "agx-thor-devkit"
 contains "$targets_output" "jetson-agx-thor-devkit"
 contains "$targets_output" "agx-orin-devkit"
 contains "$targets_output" "jetson-agx-orin-devkit"
+if [[ "$targets_output" == *"ros"* ]] || [[ "$targets_output" == *"ROS"* ]]; then
+  fail "supported target list must not include ROS targets"
+fi
 
 dry_run_output="$(SAHA_DRY_RUN=1 "$ROOT_DIR/scripts/saha-build" orin-nx-16g-p3768)"
 contains "$dry_run_output" "DOCKER_CONFIG="
 contains "$dry_run_output" "BUILDX_CONFIG="
 contains "$dry_run_output" "docker image inspect"
-contains "$dry_run_output" "meta-saha-yocto-builder:wrynose-ros-jazzy"
+contains "$dry_run_output" "meta-saha-yocto-builder:wrynose"
 contains "$dry_run_output" "kas build kas/targets/orin-nx-16g-p3768.yml"
 contains "$dry_run_output" "/work/build/orin-nx-16g-p3768"
 contains "$dry_run_output" "KAS_WORK_DIR=/work/build/orin-nx-16g-p3768"
@@ -173,7 +175,15 @@ grep -q 'Build saha-image-robot' "$ROOT_DIR/scripts/saha-build" ||
   fail "saha-image-robot recipe must exist"
 
 grep -q 'gfortran' "$ROOT_DIR/docker/Dockerfile.yocto-builder" ||
-  fail "Yocto builder image must include gfortran for meta-ros HOSTTOOLS"
+  fail "Yocto builder image must include gfortran"
+
+for removed_ros_path in \
+  "$ROOT_DIR/kas/include/ros-jazzy.yml" \
+  "$ROOT_DIR/kas/targets/orin-nx-16g-p3768-ros-jazzy.yml" \
+  "$ROOT_DIR/saha-layers/meta-tegra-saha/recipes-saha/images/saha-image-ros-jazzy-deps.bb" \
+  "$ROOT_DIR/saha-layers/meta-tegra-saha/recipes-saha/packagegroups/packagegroup-saha-ros-jazzy-deps.bb"; do
+  [ ! -e "$removed_ros_path" ] || fail "ROS build path should be removed: $removed_ros_path"
+done
 
 if rg -n 'CORE_IMAGE_BASE_INSTALL \+= ".*(cuda-samples|nvidia-container-toolkit|packagegroup-saha-basetests)' \
   "$ROOT_DIR/saha-layers/meta-tegra-saha/recipes-saha/images" >/tmp/saha-nonbasic-default-packages.out; then
@@ -215,7 +225,7 @@ for legacy_path in \
   [ ! -e "$legacy_path" ] || fail "legacy path should be removed: $legacy_path"
 done
 
-if rg -n 'rolling|apollo-nx|xavier-nx|tegra-rolling-kernel|tegra-saha-layout|data-overlay-setup|packagegroup-saha-env|packagegroup-saha-basetests|environment-setup|ros2_arm64' \
+if rg -n 'rolling|apollo-nx|xavier-nx|tegra-rolling-kernel|tegra-saha-layout|data-overlay-setup|packagegroup-saha-env|packagegroup-saha-basetests|environment-setup|ros2_arm64|meta-ros|ros-jazzy|saha-image-ros|packagegroup-saha-ros' \
   "$ROOT_DIR/kas" "$ROOT_DIR/saha-layers" "$ROOT_DIR/scripts" >/tmp/saha-legacy-references.out; then
   cat /tmp/saha-legacy-references.out >&2
   fail "legacy machine, ROS, or removed recipe reference found"
@@ -241,32 +251,5 @@ fi
 
 validate_dry_run_output="$(SAHA_DRY_RUN=1 "$ROOT_DIR/scripts/saha-validate" agx-orin-devkit)"
 contains "$validate_dry_run_output" "kas dump --skip repo_setup_loop --skip finish_setup_repos --skip repos_checkout --skip repos_apply_patches kas/targets/agx-orin-devkit.yml"
-
-ros_validate_dry_run_output="$(SAHA_DRY_RUN=1 "$ROOT_DIR/scripts/saha-validate" orin-nx-16g-p3768-ros-jazzy)"
-contains "$ros_validate_dry_run_output" "kas dump --skip repo_setup_loop --skip finish_setup_repos --skip repos_checkout --skip repos_apply_patches kas/targets/orin-nx-16g-p3768-ros-jazzy.yml"
-
-grep -qxF '    branch: "superflore/wrynose/jazzy/2026-06-18"' "$ROOT_DIR/kas/include/ros-jazzy.yml" ||
-  fail "ROS Jazzy include must pin the Wrynose/Jazzy superflore branch"
-
-grep -q '^target:$' "$ROOT_DIR/kas/include/ros-jazzy.yml" ||
-  fail "ROS Jazzy include must override the build target"
-
-grep -q 'saha-image-ros-jazzy-deps' "$ROOT_DIR/kas/include/ros-jazzy.yml" ||
-  fail "ROS Jazzy include must build the dependency-only image"
-
-grep -q 'meta-ros/meta-ros2-jazzy/recipes-support/fuse/' "$ROOT_DIR/kas/include/ros-jazzy.yml" ||
-  fail "ROS Jazzy include must mask stale upstream fuse support recipes"
-
-if rg -n 'scout_stack|roban_test|scout_bringup|scout_navigation|livox_ros_driver2|fast_lio' \
-  "$ROOT_DIR/kas" "$ROOT_DIR/saha-layers" >/tmp/saha-scout-source-references.out; then
-  cat /tmp/saha-scout-source-references.out >&2
-  fail "dependency-only ROS support must not reference scout_stack or local Scout/vendor packages"
-fi
-
-grep -q 'rmw-fastrtps-cpp' "$ROOT_DIR/saha-layers/meta-tegra-saha/recipes-saha/packagegroups/packagegroup-saha-ros-jazzy-deps.bb" ||
-  fail "ROS Jazzy dependency packagegroup must select FastDDS RMW"
-
-grep -q 'RMW_IMPLEMENTATION = "rmw_fastrtps_cpp"' "$ROOT_DIR/saha-layers/meta-tegra-saha/conf/distro/tegra-saha.conf" ||
-  fail "tegra-saha distro must default ROS builds to FastDDS"
 
 echo "PASS: build framework contract"

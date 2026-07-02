@@ -1,5 +1,0 @@
-header:
-  version: 17
-  includes:
-    - kas/targets/orin-nx-16g-p3768.yml
-    - kas/include/ros-jazzy.yml

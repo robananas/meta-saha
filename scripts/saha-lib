@@ -9,7 +9,6 @@ saha_repo_root() {
 saha_targets() {
   cat <<'TARGETS'
 orin-nx-16g-p3768|p3768-0000-p3767-0000|Jetson Orin NX 16GB P3767-0000 module in P3768 carrier
-orin-nx-16g-p3768-ros-jazzy|p3768-0000-p3767-0000|Jetson Orin NX 16GB P3767-0000 module in P3768 carrier with ROS 2 Jazzy dependencies
 agx-thor-devkit|jetson-agx-thor-devkit|AGX Thor devkit P3834-0008 module in P4071-0000 carrier with NVMe
 agx-orin-devkit|jetson-agx-orin-devkit|AGX Orin devkit P3701-0000 module in P3737-0000 carrier
 TARGETS
@@ -48,7 +47,7 @@ saha_require_target() {
 }
 
 saha_image_name() {
-  printf '%s\n' "${SAHA_BUILDER_IMAGE:-meta-saha-yocto-builder:wrynose-ros-jazzy}"
+  printf '%s\n' "${SAHA_BUILDER_IMAGE:-meta-saha-yocto-builder:wrynose}"
 }
 
 saha_prepare_docker_env() {
