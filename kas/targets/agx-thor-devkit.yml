@@ -1,0 +1,6 @@
+header:
+  version: 17
+  includes:
+    - kas/include/base.yml
+
+machine: jetson-agx-thor-devkit

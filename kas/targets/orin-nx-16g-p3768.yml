@@ -1,0 +1,6 @@
+header:
+  version: 17
+  includes:
+    - kas/include/base.yml
+
+machine: p3768-0000-p3767-0000

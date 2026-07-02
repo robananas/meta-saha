@@ -1,0 +1,47 @@
+header:
+  version: 17
+
+defaults:
+  repos:
+    branch: wrynose
+
+repos:
+  openembedded-core:
+    path: repos/openembedded-core
+    url: https://github.com/openembedded/openembedded-core.git
+    layers:
+      meta:
+
+  bitbake:
+    path: repos/bitbake
+    url: https://github.com/openembedded/bitbake.git
+    branch: "2.18"
+    layers:
+      .: disabled
+
+  meta-openembedded:
+    path: repos/meta-openembedded
+    url: https://git.openembedded.org/meta-openembedded
+    layers:
+      meta-filesystems:
+      meta-networking:
+      meta-oe:
+      meta-python:
+
+  meta-tegra:
+    path: repos/meta-tegra
+    url: https://github.com/OE4T/meta-tegra.git
+
+  meta-tegra-community:
+    path: repos/meta-tegra-community
+    url: https://github.com/OE4T/meta-tegra-community.git
+
+  meta-virtualization:
+    path: repos/meta-virtualization
+    url: https://git.yoctoproject.org/meta-virtualization
+
+  meta-saha:
+    path: /work/meta-saha
+    layers:
+      saha-layers/meta-tegra-support:
+      saha-layers/meta-tegra-saha:
