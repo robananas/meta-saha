@@ -177,6 +177,12 @@ grep -q 'Build saha-image-robot' "$ROOT_DIR/scripts/saha-build" ||
 grep -qxF 'hostname = "soybean"' "$ROOT_DIR/saha-layers/meta-tegra-saha/recipes-core/base-files/base-files_%.bbappend" ||
   fail "base-files must set the device hostname to soybean"
 
+USB_DEVICE_MODE_APPEND="$ROOT_DIR/saha-layers/meta-tegra-saha/recipes-bsp/l4t-usb-device-mode/l4t-usb-device-mode.bbappend"
+[ -f "$USB_DEVICE_MODE_APPEND" ] ||
+  fail "l4t-usb-device-mode bbappend must exist"
+grep -q 'multi-user.target.wants/usb-gadget.target' "$USB_DEVICE_MODE_APPEND" ||
+  fail "USB gadget target must be wanted by multi-user.target for default USB network access"
+
 grep -q 'gfortran' "$ROOT_DIR/docker/Dockerfile.yocto-builder" ||
   fail "Yocto builder image must include gfortran"
 
