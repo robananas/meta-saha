@@ -1,94 +1,186 @@
 # meta-saha
 
-## Introduction
+`meta-saha` is a Yocto Project distro layer and build framework for NVIDIA Jetson systems. The primary workflow builds Jetson Orin and Thor images with kas inside Docker, so the host only needs Docker and does not need kas, bitbake, vcstool, or Yocto build packages installed.
 
-`meta-saha` is a [Yocto Project](https://www.yoctoproject.org/) distro layer designed for building robot system. For hardware, it supports Jetson Xavier NX(hardware name: rolling-nx). For software. it supports the version [kirkstone](https://docs.yoctoproject.org/4.0.6/migration-guides/migration-4.0.html)(the latest LTS version of yocto) currently.
+The current baseline is Yocto Project 6.0 Wrynose and OE4T `meta-tegra` Wrynose, targeting JetPack 7.2 / L4T R39.2.0.
 
-This project is modified based on [OE4T/tegra-demo-distro](https://github.com/OE4T/tegra-demo-distro). Thanks for [OE4T](https://github.com/OE4T).
+## Supported targets
 
-## Prerequisite
+| Target alias | OE4T `MACHINE` | Hardware |
+| --- | --- | --- |
+| `orin-nx-16g-p3768` | `p3768-0000-p3767-0000` | Jetson Orin NX 16GB module in P3768 carrier |
+| `agx-thor-devkit` | `jetson-agx-thor-devkit` | Jetson AGX Thor devkit |
+| `agx-orin-devkit` | `jetson-agx-orin-devkit` | Jetson AGX Orin devkit |
 
-Read the documentation [Yocto Project Quick Build](https://docs.yoctoproject.org/4.0.6/brief-yoctoprojectqs/index.html) to setting up building environment for building yocto image. Also, if your OS distro is Arch Linux, read the documentation [Yocto - ArchWiki](https://wiki.archlinux.org/title/Yocto) for more information about how to set up environment in Arch Linux.
+List targets with:
 
-Besides, [vcs-tool](https://github.com/dirk-thomas/vcstool) is the other necessary tool. Install it by using `pip`.
-
-```
-$ pip install vcstool
-```
-
-## Building
-
-Make a empty directory for building saha image. Then get the code.
-
-```
-$ mkdir yocto_saha
-$ git clone https://github.com/cyber-zoo/meta-saha.git
+```bash
+./scripts/saha-targets
 ```
 
-Init the building environment with:
+## Prerequisites
 
-```
-$ . meta-saha/scripts/init.sh
-```
+- Docker with permission to run containers as your user.
+- Enough disk space for a Yocto build. A first build can consume hundreds of GB across build output, downloads, and sstate cache.
+- Network access to fetch Yocto, OpenEmbedded, OE4T, and NVIDIA sources.
 
-Then set the hardware board with [`meta-saha/setup-env`](./setup-env). For example, if the board is `rolling-nx`, set the image machine with:
+No host-side Yocto package setup is part of the primary build path.
 
-```
-$ . meta-saha/setup-env --machine rolling-nx
-```
+## Build
 
-The directory will be changed to a folder called `build`. Make sure there is no error messages during past steps. Then build image with `bitbake`. For example, if you wanna build the image `saha-image-base`, build it with:
+From the `meta-saha` repository root:
 
-```
-$ bitbake saha-image-base
+```bash
+./scripts/saha-build orin-nx-16g-p3768
 ```
 
-If there is no error occur, the image built by bitbake will be saved under `build/tmp/deploy/image/rolling-nx`. Just uncompress it and flash it to the board!
+Build the other priority targets with:
+
+```bash
+./scripts/saha-build agx-thor-devkit
+./scripts/saha-build agx-orin-devkit
+```
+
+The script builds the Docker builder image, mounts persistent cache directories, then runs:
+
+```bash
+kas build kas/targets/<target>.yml
+```
+
+## Output and caches
+
+Default host paths:
+
+| Path | Purpose |
+| --- | --- |
+| `build/<target>/` | Target-specific kas/bitbake build directory |
+| `downloads/` | Shared Yocto download cache |
+| `sstate-cache/` | Shared Yocto sstate cache |
+
+Images are emitted under:
+
+```text
+build/<target>/tmp/deploy/images/<machine>/
+```
+
+RPM packages are emitted under:
+
+```text
+build/<target>/tmp/deploy/rpm/
+```
+
+Generate RPM feed metadata after a build with:
+
+```bash
+./scripts/saha-shell orin-nx-16g-p3768 -c "bitbake package-index"
+```
+
+Override cache/build locations with environment variables:
+
+```bash
+SAHA_BUILD_DIR=/data/yocto/build-orin \
+SAHA_DOWNLOADS_DIR=/data/yocto/downloads \
+SAHA_SSTATE_DIR=/data/yocto/sstate-cache \
+./scripts/saha-build orin-nx-16g-p3768
+```
+
+Override the Docker image tag with:
+
+```bash
+SAHA_BUILDER_IMAGE=my-saha-builder:wrynose ./scripts/saha-build orin-nx-16g-p3768
+```
+
+## Network proxies
+
+`saha-build`, `saha-shell`, and `saha-validate` pass standard proxy variables into both Docker image builds and Docker containers:
+
+```text
+HTTP_PROXY HTTPS_PROXY ALL_PROXY NO_PROXY
+http_proxy https_proxy all_proxy no_proxy
+```
+
+If none of those variables are present in the current environment, the scripts try to read them from a login interactive `zsh` session. This supports setups where proxy exports live in `~/.zshrc`. Disable this fallback with:
+
+```bash
+SAHA_LOAD_ZSHRC_PROXY=0 ./scripts/saha-build orin-nx-16g-p3768
+```
+
+If the container can reach upstream sources directly but the host proxy is unstable under Yocto fetch load, force a proxy-free container environment:
+
+```bash
+SAHA_NO_PROXY=1 ./scripts/saha-build orin-nx-16g-p3768
+```
+
+Dry-run output shows only proxy variable names, not proxy values:
+
+```bash
+SAHA_DRY_RUN=1 ./scripts/saha-build orin-nx-16g-p3768
+```
+
+## Build tuning
+
+The wrapper defaults to conservative Yocto parallelism to avoid overloading local proxies and developer workstations:
+
+```text
+SAHA_BB_NUMBER_THREADS=4
+SAHA_BB_NUMBER_PARSE_THREADS=4
+SAHA_PARALLEL_MAKE="-j 4"
+```
+
+Override these when the network and machine can support more concurrency:
+
+```bash
+SAHA_NO_PROXY=1 \
+SAHA_BB_NUMBER_THREADS=8 \
+SAHA_BB_NUMBER_PARSE_THREADS=8 \
+SAHA_PARALLEL_MAKE="-j 8" \
+./scripts/saha-build orin-nx-16g-p3768
+```
+
+## Interactive shell
+
+Open a Dockerized kas shell for a target:
+
+```bash
+./scripts/saha-shell orin-nx-16g-p3768
+```
+
+This uses the same mounts and builder image as `saha-build`.
+
+## Validate configuration
+
+Validate a target kas configuration without fetching repositories or starting a build:
+
+```bash
+./scripts/saha-validate orin-nx-16g-p3768
+```
+
+This is a fast schema/include/config expansion check. A full `saha-build` still depends on network checkout and bitbake.
+
+## Image scope
+
+The default `saha-image-base` image is intentionally a basic Jetson BSP image. ROS/meta-ros is not included in the default kas repository graph. Add ROS later through an optional kas include once a Wrynose-compatible ROS layer set and ROS distribution are selected.
+
+The default MVP image does not include ROS, CUDA samples, or Jetson container runtime tooling. Add `nvidia-container-toolkit` later through an optional image or kas include if container runtime support is required; OE4T R39.2 removed the old `nvidia-docker` recipe.
+
+## Add a target
+
+1. Confirm the machine exists in OE4T `meta-tegra` Wrynose.
+2. Add an alias to `scripts/saha-lib`.
+3. Add `kas/targets/<alias>.yml` with the matching `machine`.
+4. Run:
+
+```bash
+bash tests/test-build-framework.sh
+./scripts/saha-validate <alias>
+```
+
+## Legacy flow
+
+The old `resources/*.repos`, `scripts/init.sh`, `setup-env`, and direct host `bitbake` flow is retained for reference only. The supported path is Docker plus kas through `scripts/saha-build`.
 
 ## License
 
 This project is open sourced under Apache 2.0 License.
 
-```
-Copyright (c) 2022 CyberZoo
-
-Licensed under the Apache License, Version 2.0 (the"License");
-you may not use this file except in compliance with theLicense.
-You may obtain a copy of the License at
-    http://www.apache.org/licenses/LICENSE-2.0
-Unless required by applicable law or agreed to inwriting, software
-distributed under the License is distributed on an "ASIS" BASIS,
-WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, eitherexpress or implied.
-See the License for the specific language governingpermissions and
-limitations under the License.
-```
-
-Also, the source code forked from OE4T/tegra-demo-distro is under [MIT License](./docs/licenses/OE4T.license).
-
-```
-The MIT License (MIT)
-
-Copyright (c) 2020, Matthew Madison and the OE4T contributors
-
-Permission is hereby granted, free of charge, to any person obtaining a copy
-of this software and associated documentation files (the "Software"), to deal
-in the Software without restriction, including without limitation the rights
-to use, copy, modify, merge, publish, distribute, sublicense, and/or sell
-copies of the Software, and to permit persons to whom the Software is
-furnished to do so, subject to the following conditions:
-
-The above copyright notice and this permission notice shall be included in all
-copies or substantial portions of the Software.
-
-THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR
-IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY,
-FITNESS FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT. IN NO EVENT SHALL THE
-AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER
-LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM,
-OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
-SOFTWARE.
-```
-
-## Contributing
-
-Welcome to contribute to this project!
+The source code originally forked from OE4T `tegra-demo-distro` is under the MIT License; see `docs/licenses/OE4T.license`.
