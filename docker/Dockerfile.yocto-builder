@@ -1,0 +1,50 @@
+FROM ubuntu:24.04
+
+LABEL org.opencontainers.image.authors="Homalozoa <nx.tardis@gmail.com>"
+LABEL org.opencontainers.image.description="meta-saha Yocto Wrynose kas builder"
+
+ENV DEBIAN_FRONTEND=noninteractive
+ENV LANG=C.UTF-8
+ENV LC_ALL=C.UTF-8
+ENV GIT_HTTP_VERSION=HTTP/1.1
+
+RUN apt-get update && \
+    apt-get install -y --no-install-recommends \
+      bc \
+      bison \
+      build-essential \
+      ca-certificates \
+      chrpath \
+      cpio \
+      curl \
+      debianutils \
+      diffstat \
+      file \
+      flex \
+      gawk \
+      gcc \
+      git \
+      iputils-ping \
+      libacl1 \
+      liblz4-tool \
+      locales \
+      make \
+      python3 \
+      python3-pip \
+      python3-pexpect \
+      python3-venv \
+      socat \
+      unzip \
+      wget \
+      xz-utils \
+      zstd && \
+    locale-gen en_US.UTF-8 && \
+    python3 -m pip install --break-system-packages --no-cache-dir kas && \
+    apt-get clean && \
+    rm -rf /var/lib/apt/lists/*
+
+RUN mkdir -p /work/home /work/build /work/downloads /work/sstate-cache && \
+    chmod 0777 /work/home /work/build /work/downloads /work/sstate-cache
+
+WORKDIR /work/meta-saha
+CMD ["bash"]
