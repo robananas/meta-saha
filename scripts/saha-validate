@@ -11,6 +11,7 @@ Usage: scripts/saha-validate <target>
 
 Expand and validate the kas configuration for a supported Jetson target inside
 Docker without fetching repositories or running bitbake.
+Set SAHA_ROS_DISTRO=jazzy or SAHA_ROS_DISTRO=lyrical to choose the ROS 2 distro.
 Run scripts/saha-targets to list targets.
 USAGE
 }
@@ -27,6 +28,7 @@ fi
 
 TARGET=$1
 saha_require_target "$TARGET" >/dev/null
+KAS_CONFIG="$(saha_kas_config_for_target "$TARGET")"
 ROOT_DIR="$(saha_repo_root)"
 saha_prepare_docker_env "$ROOT_DIR"
 saha_apply_build_tuning_defaults
@@ -38,4 +40,4 @@ saha_run_docker "$ROOT_DIR" "$TARGET" 0 \
   --skip finish_setup_repos \
   --skip repos_checkout \
   --skip repos_apply_patches \
-  "kas/targets/$TARGET.yml"
+  "$KAS_CONFIG"

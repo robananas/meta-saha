@@ -1,0 +1,12 @@
+header:
+  version: 17
+
+repos:
+  meta-ros:
+    path: repos/meta-ros
+    url: https://github.com/ros/meta-ros.git
+    branch: wrynose
+    layers:
+      meta-ros-common:
+      meta-ros2:
+      meta-ros2-jazzy:

@@ -44,7 +44,13 @@ Build the other priority targets with:
 The script builds the Docker builder image, mounts persistent cache directories, then runs:
 
 ```bash
-kas build kas/targets/<target>.yml
+kas build kas/targets/<target>.yml:kas/include/ros-distro-jazzy.yml
+```
+
+`jazzy` is the default ROS 2 distro. Build the same `saha-image-robot` image with ROS 2 Lyrical by setting `SAHA_ROS_DISTRO`:
+
+```bash
+SAHA_ROS_DISTRO=lyrical ./scripts/saha-build orin-nx-16g-p3768
 ```
 
 ## Output and caches
@@ -53,7 +59,8 @@ Default host paths:
 
 | Path | Purpose |
 | --- | --- |
-| `build/<target>/` | Target-specific kas/bitbake build directory |
+| `build/<target>/` | Default target-specific kas/bitbake build directory for `SAHA_ROS_DISTRO=jazzy` |
+| `build/<target>-ros-<distro>/` | Target-specific kas/bitbake build directory for non-default ROS distros such as `lyrical` |
 | `downloads/` | Shared Yocto download cache |
 | `sstate-cache/` | Shared Yocto sstate cache |
 
@@ -191,18 +198,25 @@ This is a fast schema/include/config expansion check. A full `saha-build` still 
 
 ## ROS 2
 
-`saha-image-robot` includes ROS 2 Jazzy by default through `ros-base` and `ros2cli-common-extensions`. There is no separate ROS image target; build and flash `saha-image-robot` for the robot rootfs.
+`saha-image-robot` includes ROS 2 by default through `ros-base` and `ros2cli-common-extensions`. There is no separate ROS image target; build and flash `saha-image-robot` for the robot rootfs.
+
+Supported ROS 2 distros:
+
+| `SAHA_ROS_DISTRO` | kas include |
+| --- | --- |
+| `jazzy` | `kas/include/ros-distro-jazzy.yml` |
+| `lyrical` | `kas/include/ros-distro-lyrical.yml` |
 
 After flashing, initialize the ROS environment with:
 
 ```bash
-source /opt/ros/jazzy/setup.sh
+source /opt/ros/<distro>/setup.sh
 ros2 --help
 ```
 
 ## Image scope
 
-The supported image target is `saha-image-robot`. It is layered on the reusable `saha-image-base` recipe and includes the Jetson BSP base, CUDA runtime libraries, OpenSSH bring-up access, USB device-mode networking support, and ROS 2 Jazzy runtime and CLI tools.
+The supported image target is `saha-image-robot`. It is layered on the reusable `saha-image-base` recipe and includes the Jetson BSP base, CUDA runtime libraries, OpenSSH bring-up access, USB device-mode networking support, and the configured ROS 2 runtime and CLI tools.
 
 The image does not include CUDA samples or Jetson container runtime tooling. Add `nvidia-container-toolkit` later through an optional image or kas include if container runtime support is required; OE4T R39.2 removed the old `nvidia-docker` recipe.
 

@@ -30,10 +30,13 @@ contains "$dry_run_output" "DOCKER_CONFIG="
 contains "$dry_run_output" "BUILDX_CONFIG="
 contains "$dry_run_output" "docker image inspect"
 contains "$dry_run_output" "meta-saha-yocto-builder:wrynose"
-contains "$dry_run_output" "kas build kas/targets/orin-nx-16g-p3768.yml"
+contains "$dry_run_output" "kas build kas/targets/orin-nx-16g-p3768.yml:kas/include/ros-distro-jazzy.yml"
 contains "$dry_run_output" "/work/build/orin-nx-16g-p3768"
 contains "$dry_run_output" "KAS_WORK_DIR=/work/build/orin-nx-16g-p3768"
 contains "$dry_run_output" "GIT_HTTP_VERSION=HTTP/1.1"
+contains "$dry_run_output" "GIT_CONFIG_COUNT=1"
+contains "$dry_run_output" "GIT_CONFIG_KEY_0=http.version"
+contains "$dry_run_output" "GIT_CONFIG_VALUE_0=HTTP/1.1"
 contains "$dry_run_output" "SAHA_BB_NUMBER_THREADS=4"
 contains "$dry_run_output" "SAHA_BB_NUMBER_PARSE_THREADS=4"
 contains "$dry_run_output" "SAHA_PARALLEL_MAKE=-j\\ 4"
@@ -54,6 +57,15 @@ tuning_dry_run_output="$(
 contains "$tuning_dry_run_output" "SAHA_BB_NUMBER_THREADS=2"
 contains "$tuning_dry_run_output" "SAHA_BB_NUMBER_PARSE_THREADS=3"
 contains "$tuning_dry_run_output" "SAHA_PARALLEL_MAKE=-j\\ 6"
+
+lyrical_dry_run_output="$(
+  env \
+    SAHA_DRY_RUN=1 \
+    SAHA_ROS_DISTRO=lyrical \
+    "$ROOT_DIR/scripts/saha-build" orin-nx-16g-p3768
+)"
+contains "$lyrical_dry_run_output" "kas build kas/targets/orin-nx-16g-p3768.yml:kas/include/ros-distro-lyrical.yml"
+contains "$lyrical_dry_run_output" "/build/orin-nx-16g-p3768-ros-lyrical:/work/build/orin-nx-16g-p3768"
 
 proxy_dry_run_output="$(
   env \
@@ -143,6 +155,12 @@ if "$ROOT_DIR/scripts/saha-build" invalid-target >/tmp/saha-invalid-target.out 2
 fi
 contains "$(cat /tmp/saha-invalid-target.out)" "Unsupported target: invalid-target"
 
+if SAHA_ROS_DISTRO=humble "$ROOT_DIR/scripts/saha-build" orin-nx-16g-p3768 >/tmp/saha-invalid-ros.out 2>&1; then
+  fail "invalid ROS distro unexpectedly succeeded"
+fi
+contains "$(cat /tmp/saha-invalid-ros.out)" "Unsupported ROS distro: humble"
+contains "$(cat /tmp/saha-invalid-ros.out)" "Supported ROS distros:"
+
 for ignored in ".docker-cache" "build" "downloads" "sstate-cache" "repos"; do
   grep -qxF "$ignored" "$ROOT_DIR/.dockerignore" || fail ".dockerignore missing $ignored"
 done
@@ -155,12 +173,24 @@ grep -A3 '^  meta-saha:' "$ROOT_DIR/kas/include/repos-wrynose.yml" |
   grep -qxF '    path: /work/meta-saha' ||
   fail "local meta-saha repo path must match the Docker mount point"
 
-grep -A10 '^  meta-ros:' "$ROOT_DIR/kas/include/repos-wrynose.yml" |
-  grep -qxF '    url: https://github.com/ros/meta-ros.git' ||
-  fail "default kas graph must include meta-ros for ROS 2 support in saha-image-robot"
-grep -A10 '^  meta-ros:' "$ROOT_DIR/kas/include/repos-wrynose.yml" |
-  grep -qxF '      meta-ros2-jazzy:' ||
-  fail "default kas graph must include the ROS 2 Jazzy layer"
+if grep -q '^  meta-ros:' "$ROOT_DIR/kas/include/repos-wrynose.yml"; then
+  fail "base Wrynose repo graph must not hard-code one ROS distro layer"
+fi
+for ros_distro in jazzy lyrical; do
+  ros_include="$ROOT_DIR/kas/include/ros-distro-$ros_distro.yml"
+  [ -f "$ros_include" ] || fail "ROS distro kas include missing: $ros_include"
+  grep -A10 '^  meta-ros:' "$ros_include" |
+    grep -qxF '    url: https://github.com/ros/meta-ros.git' ||
+    fail "ROS distro kas include must define meta-ros: $ros_include"
+  grep -A10 '^  meta-ros:' "$ros_include" |
+    grep -qxF '    branch: wrynose' ||
+    fail "ROS distro kas include must pin the Wrynose branch: $ros_include"
+  grep -A10 '^  meta-ros:' "$ros_include" |
+    grep -qxF "      meta-ros2-$ros_distro:" ||
+    fail "ROS distro kas include must select meta-ros2-$ros_distro"
+done
+grep -q 'ROS_WORLD_SKIP_GROUPS:append = " zenoh"' "$ROOT_DIR/kas/include/ros-distro-lyrical.yml" ||
+  fail "Lyrical builds must skip the zenoh group unless meta-zenoh is added"
 
 grep -q 'EXTRA_IMAGE_FEATURES ?= "empty-root-password allow-root-login"' "$ROOT_DIR/kas/include/base.yml" ||
   fail "Wrynose image features must not use removed debug-tweaks alias"
@@ -193,9 +223,28 @@ ROS2_PACKAGEGROUP="$ROOT_DIR/saha-layers/meta-tegra-saha/recipes-saha/packagegro
 [ -f "$ROS2_PACKAGEGROUP" ] ||
   fail "Saha ROS 2 packagegroup must exist"
 grep -q 'ros-base' "$ROS2_PACKAGEGROUP" ||
-  fail "Saha ROS 2 packagegroup must install ROS 2 Jazzy ros-base"
+  fail "Saha ROS 2 packagegroup must install ROS 2 ros-base"
 grep -q 'ros2cli-common-extensions' "$ROS2_PACKAGEGROUP" ||
   fail "Saha ROS 2 packagegroup must install ROS 2 CLI extensions"
+RMW_IMPLEMENTATION_APPEND="$ROOT_DIR/saha-layers/meta-tegra-saha/recipes-ros/rmw-implementation/rmw-implementation_%.bbappend"
+[ -f "$RMW_IMPLEMENTATION_APPEND" ] ||
+  fail "Saha rmw-implementation bbappend must exist for Lyrical without meta-zenoh"
+grep -q 'ROS_BUILD_DEPENDS:remove = "rmw-zenoh-cpp"' "$RMW_IMPLEMENTATION_APPEND" ||
+  fail "Lyrical rmw-implementation must not require rmw-zenoh-cpp without meta-zenoh"
+ROS_CORE_APPEND="$ROOT_DIR/saha-layers/meta-tegra-saha/recipes-ros/variants/ros-core_%.bbappend"
+[ -f "$ROS_CORE_APPEND" ] ||
+  fail "Saha ros-core bbappend must exist for Lyrical without meta-zenoh"
+grep -q "d.getVar('ROS_DISTRO') == 'lyrical'" "$ROS_CORE_APPEND" ||
+  fail "ros-core launch-testing-ros removal must be limited to Lyrical"
+grep -q "launch-testing-ros" "$ROS_CORE_APPEND" ||
+  fail "Lyrical ros-core must not require skipped launch-testing-ros"
+AMENT_CMAKE_ROS_APPEND="$ROOT_DIR/saha-layers/meta-tegra-saha/recipes-ros/ament-cmake-ros/ament-cmake-ros_%.bbappend"
+[ -f "$AMENT_CMAKE_ROS_APPEND" ] ||
+  fail "Saha ament-cmake-ros bbappend must exist for Lyrical without meta-zenoh"
+grep -q "d.getVar('ROS_DISTRO') == 'lyrical'" "$AMENT_CMAKE_ROS_APPEND" ||
+  fail "ament-cmake-ros fixture removal must be limited to Lyrical"
+grep -q "rmw-test-fixture-implementation" "$AMENT_CMAKE_ROS_APPEND" ||
+  fail "Lyrical ament-cmake-ros must not require skipped rmw-test-fixture-implementation"
 
 PROFILE_PACKAGEGROUP="$ROOT_DIR/saha-layers/meta-tegra-saha/recipes-core/packagegroups/packagegroup-core-tools-profile.bbappend"
 [ -f "$PROFILE_PACKAGEGROUP" ] ||
@@ -284,16 +333,22 @@ if rg -n 'rolling|apollo-nx|xavier-nx|tegra-rolling-kernel|tegra-saha-layout|dat
 fi
 
 shell_dry_run_output="$(SAHA_DRY_RUN=1 "$ROOT_DIR/scripts/saha-shell" agx-thor-devkit)"
-contains "$shell_dry_run_output" "kas shell kas/targets/agx-thor-devkit.yml"
+contains "$shell_dry_run_output" "kas shell kas/targets/agx-thor-devkit.yml:kas/include/ros-distro-jazzy.yml"
 contains "$shell_dry_run_output" " -it "
 
 shell_command_dry_run_output="$(SAHA_DRY_RUN=1 "$ROOT_DIR/scripts/saha-shell" orin-nx-16g-p3768 -c "bitbake package-index")"
-contains "$shell_command_dry_run_output" "kas shell kas/targets/orin-nx-16g-p3768.yml -c bitbake\\ package-index"
+contains "$shell_command_dry_run_output" "kas shell kas/targets/orin-nx-16g-p3768.yml:kas/include/ros-distro-jazzy.yml -c bitbake\\ package-index"
 if [[ "$shell_command_dry_run_output" == *" -it "* ]]; then
   fail "non-interactive shell command should not allocate a TTY"
 fi
 
+lyrical_shell_command_dry_run_output="$(SAHA_DRY_RUN=1 SAHA_ROS_DISTRO=lyrical "$ROOT_DIR/scripts/saha-shell" orin-nx-16g-p3768 -c "bitbake -p")"
+contains "$lyrical_shell_command_dry_run_output" "kas shell kas/targets/orin-nx-16g-p3768.yml:kas/include/ros-distro-lyrical.yml -c bitbake\\ -p"
+
 validate_dry_run_output="$(SAHA_DRY_RUN=1 "$ROOT_DIR/scripts/saha-validate" agx-orin-devkit)"
-contains "$validate_dry_run_output" "kas dump --skip repo_setup_loop --skip finish_setup_repos --skip repos_checkout --skip repos_apply_patches kas/targets/agx-orin-devkit.yml"
+contains "$validate_dry_run_output" "kas dump --skip repo_setup_loop --skip finish_setup_repos --skip repos_checkout --skip repos_apply_patches kas/targets/agx-orin-devkit.yml:kas/include/ros-distro-jazzy.yml"
+
+lyrical_validate_dry_run_output="$(SAHA_DRY_RUN=1 SAHA_ROS_DISTRO=lyrical "$ROOT_DIR/scripts/saha-validate" agx-orin-devkit)"
+contains "$lyrical_validate_dry_run_output" "kas dump --skip repo_setup_loop --skip finish_setup_repos --skip repos_checkout --skip repos_apply_patches kas/targets/agx-orin-devkit.yml:kas/include/ros-distro-lyrical.yml"
 
 echo "PASS: build framework contract"
