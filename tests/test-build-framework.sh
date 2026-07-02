@@ -155,6 +155,13 @@ grep -A3 '^  meta-saha:' "$ROOT_DIR/kas/include/repos-wrynose.yml" |
   grep -qxF '    path: /work/meta-saha' ||
   fail "local meta-saha repo path must match the Docker mount point"
 
+grep -A10 '^  meta-ros:' "$ROOT_DIR/kas/include/repos-wrynose.yml" |
+  grep -qxF '    url: https://github.com/ros/meta-ros.git' ||
+  fail "default kas graph must include meta-ros for ROS 2 support in saha-image-robot"
+grep -A10 '^  meta-ros:' "$ROOT_DIR/kas/include/repos-wrynose.yml" |
+  grep -qxF '      meta-ros2-jazzy:' ||
+  fail "default kas graph must include the ROS 2 Jazzy layer"
+
 grep -q 'EXTRA_IMAGE_FEATURES ?= "empty-root-password allow-root-login"' "$ROOT_DIR/kas/include/base.yml" ||
   fail "Wrynose image features must not use removed debug-tweaks alias"
 
@@ -179,6 +186,27 @@ grep -q 'Build saha-image-robot' "$ROOT_DIR/scripts/saha-build" ||
 
 [ -f "$ROOT_DIR/saha-layers/meta-tegra-saha/recipes-saha/images/saha-image-robot.bb" ] ||
   fail "saha-image-robot recipe must exist"
+grep -q 'packagegroup-saha-ros2' "$ROOT_DIR/saha-layers/meta-tegra-saha/recipes-saha/images/saha-image-robot.bb" ||
+  fail "saha-image-robot must install the Saha ROS 2 packagegroup"
+
+ROS2_PACKAGEGROUP="$ROOT_DIR/saha-layers/meta-tegra-saha/recipes-saha/packagegroups/packagegroup-saha-ros2.bb"
+[ -f "$ROS2_PACKAGEGROUP" ] ||
+  fail "Saha ROS 2 packagegroup must exist"
+grep -q 'ros-base' "$ROS2_PACKAGEGROUP" ||
+  fail "Saha ROS 2 packagegroup must install ROS 2 Jazzy ros-base"
+grep -q 'ros2cli-common-extensions' "$ROS2_PACKAGEGROUP" ||
+  fail "Saha ROS 2 packagegroup must install ROS 2 CLI extensions"
+
+PROFILE_PACKAGEGROUP="$ROOT_DIR/saha-layers/meta-tegra-saha/recipes-core/packagegroups/packagegroup-core-tools-profile.bbappend"
+[ -f "$PROFILE_PACKAGEGROUP" ] ||
+  fail "profiling packagegroup override must exist"
+grep -qxF 'LTTNGTOOLS = "lttng-tools"' "$PROFILE_PACKAGEGROUP" ||
+  fail "profiling tools must not pull unsupported lttng kernel module"
+LTTNG_TOOLS_APPEND="$ROOT_DIR/saha-layers/meta-tegra-saha/recipes-support/lttng/lttng-tools_%.bbappend"
+[ -f "$LTTNG_TOOLS_APPEND" ] ||
+  fail "lttng-tools bbappend must exist"
+grep -qxF 'LTTNGMODULES = ""' "$LTTNG_TOOLS_APPEND" ||
+  fail "lttng-tools ptest dependencies must not pull unsupported lttng kernel module"
 
 grep -qxF 'hostname = "soybean"' "$ROOT_DIR/saha-layers/meta-tegra-saha/recipes-core/base-files/base-files_%.bbappend" ||
   fail "base-files must set the device hostname to soybean"
@@ -249,18 +277,10 @@ for legacy_path in \
   [ ! -e "$legacy_path" ] || fail "legacy path should be removed: $legacy_path"
 done
 
-if rg -n 'rolling|apollo-nx|xavier-nx|tegra-rolling-kernel|tegra-saha-layout|data-overlay-setup|packagegroup-saha-env|packagegroup-saha-basetests|environment-setup|ros2_arm64|meta-ros|ros-jazzy|saha-image-ros|packagegroup-saha-ros' \
+if rg -n 'rolling|apollo-nx|xavier-nx|tegra-rolling-kernel|tegra-saha-layout|data-overlay-setup|packagegroup-saha-env|packagegroup-saha-basetests|environment-setup|ros2_arm64|ros-jazzy|saha-image-ros|packagegroup-saha-ros-jazzy' \
   "$ROOT_DIR/kas" "$ROOT_DIR/saha-layers" "$ROOT_DIR/scripts" >/tmp/saha-legacy-references.out; then
   cat /tmp/saha-legacy-references.out >&2
   fail "legacy machine, ROS, or removed recipe reference found"
-fi
-
-if rg -n 'meta-ros|ros-jazzy|saha-image-ros-jazzy-deps' \
-  "$ROOT_DIR/kas/include/base.yml" "$ROOT_DIR/kas/include/repos-wrynose.yml" \
-  "$ROOT_DIR/kas/targets/orin-nx-16g-p3768.yml" "$ROOT_DIR/kas/targets/agx-thor-devkit.yml" "$ROOT_DIR/kas/targets/agx-orin-devkit.yml" \
-  >/tmp/saha-default-ros-references.out; then
-  cat /tmp/saha-default-ros-references.out >&2
-  fail "default kas graph must remain ROS-free"
 fi
 
 shell_dry_run_output="$(SAHA_DRY_RUN=1 "$ROOT_DIR/scripts/saha-shell" agx-thor-devkit)"

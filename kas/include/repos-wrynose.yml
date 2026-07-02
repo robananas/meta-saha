@@ -40,6 +40,14 @@ repos:
     path: repos/meta-virtualization
     url: https://git.yoctoproject.org/meta-virtualization
 
+  meta-ros:
+    path: repos/meta-ros
+    url: https://github.com/ros/meta-ros.git
+    layers:
+      meta-ros-common:
+      meta-ros2:
+      meta-ros2-jazzy:
+
   meta-saha:
     path: /work/meta-saha
     layers:
