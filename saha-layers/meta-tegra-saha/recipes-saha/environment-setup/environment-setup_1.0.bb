@@ -8,7 +8,7 @@ SRC_URI = "\
     file://ros_setup.sh \
 "
 
-S = "${WORKDIR}"
+S = "${UNPACKDIR}"
 
 do_install() {
     install -d ${D}/etc/profile.d/

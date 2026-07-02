@@ -9,7 +9,7 @@ SRC_URI = "file://flash_${MACHINE}.xml \
            file://flash_qspi_${MACHINE}.xml"
 PARTITION_LAYOUT_DIR = "tegra-saha-layout"
 
-S = "${WORKDIR}"
+S = "${UNPACKDIR}"
 
 do_install() {
     install -d ${D}${datadir}/${PARTITION_LAYOUT_DIR}
