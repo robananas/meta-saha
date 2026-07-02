@@ -160,7 +160,7 @@ This is a fast schema/include/config expansion check. A full `saha-build` still 
 
 ## Image scope
 
-The default `saha-image-base` image is intentionally a basic Jetson BSP image. ROS/meta-ros is not included in the default kas repository graph. Add ROS later through an optional kas include once a Wrynose-compatible ROS layer set and ROS distribution are selected.
+The default `saha-image-robot` image is intentionally a basic Jetson BSP image layered on the reusable `saha-image-base` recipe. ROS/meta-ros is not included in the default kas repository graph. Add ROS later through an optional kas include once a Wrynose-compatible ROS layer set and ROS distribution are selected.
 
 The default MVP image does not include ROS, CUDA samples, or Jetson container runtime tooling. Add `nvidia-container-toolkit` later through an optional image or kas include if container runtime support is required; OE4T R39.2 removed the old `nvidia-docker` recipe.
 

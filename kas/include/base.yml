@@ -6,7 +6,7 @@ header:
 distro: tegra-saha
 
 target:
-  - saha-image-base
+  - saha-image-robot
 
 local_conf_header:
   saha-cache: |

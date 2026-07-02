@@ -9,7 +9,7 @@ usage() {
   cat <<'USAGE'
 Usage: scripts/saha-build <target>
 
-Build saha-image-base for a supported Jetson target inside Docker.
+Build saha-image-robot for a supported Jetson target inside Docker.
 Run scripts/saha-targets to list targets.
 USAGE
 }

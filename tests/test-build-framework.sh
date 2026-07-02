@@ -162,6 +162,16 @@ grep -q 'BB_HASHSERVE_DB_DIR ?= "${SSTATE_DIR}"' "$ROOT_DIR/kas/include/base.yml
 grep -q 'PREFERRED_PROVIDER_edk2-nvidia-standalone-mm = "edk2-nvidia-standalone-mm-prebuilt"' "$ROOT_DIR/kas/include/base.yml" ||
   fail "default BSP build should use OE4T prebuilt standalone-mm provider"
 
+grep -A2 '^target:$' "$ROOT_DIR/kas/include/base.yml" |
+  grep -qxF '  - saha-image-robot' ||
+  fail "default kas build target must be saha-image-robot"
+
+grep -q 'Build saha-image-robot' "$ROOT_DIR/scripts/saha-build" ||
+  fail "saha-build help must describe the robot image target"
+
+[ -f "$ROOT_DIR/saha-layers/meta-tegra-saha/recipes-saha/images/saha-image-robot.bb" ] ||
+  fail "saha-image-robot recipe must exist"
+
 grep -q 'gfortran' "$ROOT_DIR/docker/Dockerfile.yocto-builder" ||
   fail "Yocto builder image must include gfortran for meta-ros HOSTTOOLS"
 
