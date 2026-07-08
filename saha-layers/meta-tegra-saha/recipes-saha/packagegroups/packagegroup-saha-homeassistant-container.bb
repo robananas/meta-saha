@@ -8,4 +8,5 @@ RDEPENDS:${PN} = " \
     ca-certificates \
     docker \
     saha-homeassistant-container \
+    saha-homeassistant-container-image \
 "

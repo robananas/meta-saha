@@ -85,6 +85,39 @@ grep -q 'ghcr.io/home-assistant/home-assistant:stable' \
 grep -q 'packagegroup-saha-homeassistant-container' \
   "$ROOT_DIR/kas/include/homeassistant-container.yml" ||
   fail "Home Assistant kas include must install the packagegroup"
+grep -q 'saha-homeassistant-container-image' \
+  "$ROOT_DIR/saha-layers/meta-tegra-saha/recipes-saha/packagegroups/packagegroup-saha-homeassistant-container.bb" ||
+  fail "Home Assistant packagegroup must include the preloaded image recipe"
+grep -q 'docker load -i' \
+  "$ROOT_DIR/saha-layers/meta-tegra-saha/recipes-saha/homeassistant-container/saha-homeassistant-container/saha-homeassistant-container.sh" ||
+  fail "Home Assistant launcher must load the preloaded docker archive"
+grep -q 'SAHA_HOMEASSISTANT_PULL=0' \
+  "$ROOT_DIR/saha-layers/meta-tegra-saha/recipes-saha/homeassistant-container/saha-homeassistant-container/saha-homeassistant-container.env" ||
+  fail "Home Assistant defaults must prefer the preloaded image over docker pull"
+grep -q 'docker save' \
+  "$ROOT_DIR/saha-layers/meta-tegra-saha/recipes-saha/homeassistant-container/saha-homeassistant-container-image/fetch-image.sh" ||
+  fail "Home Assistant fetch script must support local docker save"
+grep -q 'homeassistant-container.tar' \
+  "$ROOT_DIR/saha-layers/meta-tegra-saha/recipes-saha/homeassistant-container/saha-homeassistant-container-image/fetch-image.sh" ||
+  fail "Home Assistant fetch script must support local tarball cache"
+grep -q 'image_loaded' \
+  "$ROOT_DIR/saha-layers/meta-tegra-saha/recipes-saha/homeassistant-container/saha-homeassistant-container/saha-homeassistant-container.sh" ||
+  fail "Home Assistant launcher must prefer an existing local docker image"
+grep -q 'HA_CONTAINER_LOCAL_TAR' \
+  "$ROOT_DIR/kas/include/homeassistant-container.yml" ||
+  fail "Home Assistant kas include must define a local tarball cache path"
+grep -q 'wait-docker' \
+  "$ROOT_DIR/saha-layers/meta-tegra-saha/recipes-saha/homeassistant-container/saha-homeassistant-container/saha-homeassistant-container.sh" ||
+  fail "Home Assistant launcher must wait for docker"
+grep -q 'multi-user.target.wants/homeassistant-container.service' \
+  "$ROOT_DIR/saha-layers/meta-tegra-saha/recipes-saha/homeassistant-container/saha-homeassistant-container.bb" ||
+  fail "Home Assistant launcher must enable systemd service at install time"
+grep -q 'IMAGE_ROOTFS_EXTRA_SPACE' \
+  "$ROOT_DIR/kas/include/homeassistant-container.yml" ||
+  fail "Home Assistant kas include must reserve extra rootfs space"
+grep -q 'IMAGE_INSTALL:append:pn-saha-image-robot' \
+  "$ROOT_DIR/kas/include/homeassistant-container.yml" ||
+  fail "Home Assistant kas include must scope packagegroup to saha-image-robot only"
 
 proxy_dry_run_output="$(
   env \

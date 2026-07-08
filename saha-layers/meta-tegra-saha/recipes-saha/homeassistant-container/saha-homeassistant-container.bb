@@ -26,6 +26,13 @@ do_install() {
 
     install -d ${D}${systemd_system_unitdir}
     install -m 0644 ${UNPACKDIR}/homeassistant-container.service ${D}${systemd_system_unitdir}
+
+    install -d ${D}${sysconfdir}/systemd/system/multi-user.target.wants
+    ln -sf ${systemd_system_unitdir}/homeassistant-container.service \
+        ${D}${sysconfdir}/systemd/system/multi-user.target.wants/homeassistant-container.service
 }
 
-FILES:${PN} += "${sysconfdir}/default/homeassistant-container"
+FILES:${PN} += " \
+    ${sysconfdir}/default/homeassistant-container \
+    ${sysconfdir}/systemd/system/multi-user.target.wants/homeassistant-container.service \
+"

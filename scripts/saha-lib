@@ -238,6 +238,23 @@ saha_docker_network_args() {
   fi
 }
 
+saha_docker_host_docker_args() {
+  if [ "${SAHA_USE_HOST_DOCKER:-1}" != "1" ]; then
+    return 0
+  fi
+  if [ ! -S /var/run/docker.sock ]; then
+    return 0
+  fi
+
+  printf '%s\n' "-v" "/var/run/docker.sock:/var/run/docker.sock"
+
+  local docker_gid
+  docker_gid="$(getent group docker 2>/dev/null | cut -d: -f3 || true)"
+  if [ -n "$docker_gid" ]; then
+    printf '%s\n' "--group-add" "$docker_gid"
+  fi
+}
+
 saha_docker_args() {
   local root_dir=$1
   local target=$2
@@ -283,6 +300,8 @@ saha_docker_args() {
     "-e" "SAHA_PARALLEL_MAKE=${SAHA_PARALLEL_MAKE}"
 
   saha_docker_proxy_run_args
+
+  saha_docker_host_docker_args
 
   printf '%s\n' \
     "-v" "$root_dir:/work/meta-saha" \

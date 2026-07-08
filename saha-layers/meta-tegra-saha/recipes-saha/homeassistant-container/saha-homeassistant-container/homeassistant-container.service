@@ -9,9 +9,12 @@ Requires=docker.service
 Type=oneshot
 RemainAfterExit=yes
 EnvironmentFile=-/etc/default/homeassistant-container
+ExecStartPre=/usr/bin/saha-homeassistant-container wait-docker
 ExecStart=/usr/bin/saha-homeassistant-container start
 ExecStop=/usr/bin/saha-homeassistant-container stop
-TimeoutStartSec=600
+TimeoutStartSec=900
+Restart=on-failure
+RestartSec=30
 
 [Install]
 WantedBy=multi-user.target

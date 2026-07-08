@@ -3,6 +3,12 @@ header:
 
 local_conf_header:
   saha-homeassistant-container: |
-    require conf/distro/include/meta-virt-container-default.inc
+    VIRTUAL-RUNTIME_container_engine ??= "docker"
+    VIRTUAL-RUNTIME_container_runtime ??= "virtual-runc"
+    VIRTUAL-RUNTIME_container_networking ??= "cni"
+    VIRTUAL-RUNTIME_container_dns ??= "cni"
     DISTRO_FEATURES:append = " seccomp"
-    IMAGE_INSTALL:append = " packagegroup-saha-homeassistant-container"
+    IMAGE_INSTALL:append:pn-saha-image-robot = " packagegroup-saha-homeassistant-container"
+    HA_CONTAINER_LOCAL_TAR ?= "${DL_DIR}/homeassistant-container.tar"
+    # Home Assistant container image is ~1.5-2 GiB once imported.
+    IMAGE_ROOTFS_EXTRA_SPACE:append:pn-saha-image-robot = " + 3145728"

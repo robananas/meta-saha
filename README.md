@@ -204,7 +204,33 @@ This is a fast schema/include/config expansion check. A full `saha-build` still 
 
 ## Home Assistant container
 
-`saha-image-robot` includes Docker and the official Home Assistant container launcher by default. A `homeassistant-container.service` systemd unit runs `ghcr.io/home-assistant/home-assistant:stable` with host networking. The service is enabled on boot and starts after `docker.service`.
+`saha-image-robot` includes Docker, the official Home Assistant container launcher, and a preloaded Home Assistant container image by default. During the Yocto build, `saha-homeassistant-container-image` installs it at `/usr/share/saha/homeassistant/image.tar`. On first boot, `homeassistant-container.service` uses any existing local Docker image first, otherwise runs `docker load` from that tarball, and only pulls remotely when `SAHA_HOMEASSISTANT_PULL=1`.
+
+### Build-time image source priority
+
+While building `saha-homeassistant-container-image`, bitbake uses the first available source:
+
+1. `${DL_DIR}/homeassistant-container.tar` (default host path: `downloads/homeassistant-container.tar`)
+2. A local Docker image via the host Docker socket (`SAHA_USE_HOST_DOCKER=1`, default)
+3. Remote registry fetch with `skopeo`
+
+Export your local Docker image into the shared download cache:
+
+```bash
+docker pull --platform linux/arm64 ghcr.io/home-assistant/home-assistant:stable
+docker save ghcr.io/home-assistant/home-assistant:stable -o downloads/homeassistant-container.tar
+./scripts/saha-build orin-nx-16g-p3768
+```
+
+The Jetson target needs the `linux/arm64` image. An amd64-only local image is skipped automatically.
+
+Disable host Docker reuse during Yocto builds with:
+
+```bash
+SAHA_USE_HOST_DOCKER=0 ./scripts/saha-build orin-nx-16g-p3768
+```
+
+After flashing, Home Assistant can start offline as long as the preloaded image is present.
 
 Defaults live in `/etc/default/homeassistant-container`:
 
@@ -212,11 +238,14 @@ Defaults live in `/etc/default/homeassistant-container`:
 | --- | --- |
 | `SAHA_HOMEASSISTANT_CONFIG_DIR` | `/var/lib/homeassistant` |
 | `SAHA_HOMEASSISTANT_IMAGE` | `ghcr.io/home-assistant/home-assistant:stable` |
+| `SAHA_HOMEASSISTANT_IMAGE_TAR` | `/usr/share/saha/homeassistant/image.tar` |
 | `SAHA_HOMEASSISTANT_CONTAINER_NAME` | `homeassistant` |
 | `SAHA_HOMEASSISTANT_TIMEZONE` | `UTC` |
-| `SAHA_HOMEASSISTANT_PULL` | `1` |
+| `SAHA_HOMEASSISTANT_PULL` | `0` |
 
-After flashing and first boot, Home Assistant pulls its container image on first start. This needs network access. Then open:
+Set `SAHA_HOMEASSISTANT_PULL=1` to fall back to `docker pull` when the preloaded tarball is missing.
+
+Then open:
 
 ```text
 http://<device-ip>:8123
@@ -225,9 +254,19 @@ http://<device-ip>:8123
 Check service status on the device:
 
 ```bash
-systemctl status homeassistant-container
-systemctl status docker
-docker ps
+systemctl status homeassistant-container docker
+journalctl -u homeassistant-container -b --no-pager
+ls -lh /usr/share/saha/homeassistant/image.tar
+/usr/bin/saha-homeassistant-container start
+docker images
+docker ps -a
+```
+
+If the service failed on first boot, reload the preloaded image manually:
+
+```bash
+docker load -i /usr/share/saha/homeassistant/image.tar
+systemctl restart homeassistant-container
 ```
 
 ## ROS 2
