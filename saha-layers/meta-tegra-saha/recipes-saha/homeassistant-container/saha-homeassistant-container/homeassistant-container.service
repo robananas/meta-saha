@@ -1,0 +1,17 @@
+[Unit]
+Description=Home Assistant Container
+Documentation=https://www.home-assistant.io/installation/linux#install-home-assistant-container
+After=docker.service network-online.target
+Wants=network-online.target
+Requires=docker.service
+
+[Service]
+Type=oneshot
+RemainAfterExit=yes
+EnvironmentFile=-/etc/default/homeassistant-container
+ExecStart=/usr/bin/saha-homeassistant-container start
+ExecStop=/usr/bin/saha-homeassistant-container stop
+TimeoutStartSec=600
+
+[Install]
+WantedBy=multi-user.target

@@ -1,0 +1,8 @@
+header:
+  version: 17
+
+local_conf_header:
+  saha-homeassistant-container: |
+    require conf/distro/include/meta-virt-container-default.inc
+    DISTRO_FEATURES:append = " seccomp"
+    IMAGE_INSTALL:append = " packagegroup-saha-homeassistant-container"

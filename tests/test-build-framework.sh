@@ -67,6 +67,25 @@ lyrical_dry_run_output="$(
 contains "$lyrical_dry_run_output" "kas build kas/targets/orin-nx-16g-p3768.yml:kas/include/ros-distro-lyrical.yml"
 contains "$lyrical_dry_run_output" "/build/orin-nx-16g-p3768-ros-lyrical:/work/build/orin-nx-16g-p3768"
 
+grep -q 'kas/include/homeassistant-container.yml' "$ROOT_DIR/kas/include/base.yml" ||
+  fail "base kas config must include Home Assistant container by default"
+
+if [ ! -f "$ROOT_DIR/kas/include/homeassistant-container.yml" ]; then
+  fail "Home Assistant kas include must exist"
+fi
+if [ ! -f "$ROOT_DIR/saha-layers/meta-tegra-saha/recipes-saha/homeassistant-container/saha-homeassistant-container.bb" ]; then
+  fail "Home Assistant container recipe must exist"
+fi
+grep -q 'Requires=docker.service' \
+  "$ROOT_DIR/saha-layers/meta-tegra-saha/recipes-saha/homeassistant-container/saha-homeassistant-container/homeassistant-container.service" ||
+  fail "Home Assistant systemd unit must depend on docker.service"
+grep -q 'ghcr.io/home-assistant/home-assistant:stable' \
+  "$ROOT_DIR/saha-layers/meta-tegra-saha/recipes-saha/homeassistant-container/saha-homeassistant-container/saha-homeassistant-container.env" ||
+  fail "Home Assistant default image must use the official container"
+grep -q 'packagegroup-saha-homeassistant-container' \
+  "$ROOT_DIR/kas/include/homeassistant-container.yml" ||
+  fail "Home Assistant kas include must install the packagegroup"
+
 proxy_dry_run_output="$(
   env \
     SAHA_DRY_RUN=1 \

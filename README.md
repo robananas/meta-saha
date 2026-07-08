@@ -202,6 +202,34 @@ Validate a target kas configuration without fetching repositories or starting a 
 
 This is a fast schema/include/config expansion check. A full `saha-build` still depends on network checkout and bitbake.
 
+## Home Assistant container
+
+`saha-image-robot` includes Docker and the official Home Assistant container launcher by default. A `homeassistant-container.service` systemd unit runs `ghcr.io/home-assistant/home-assistant:stable` with host networking. The service is enabled on boot and starts after `docker.service`.
+
+Defaults live in `/etc/default/homeassistant-container`:
+
+| Variable | Default |
+| --- | --- |
+| `SAHA_HOMEASSISTANT_CONFIG_DIR` | `/var/lib/homeassistant` |
+| `SAHA_HOMEASSISTANT_IMAGE` | `ghcr.io/home-assistant/home-assistant:stable` |
+| `SAHA_HOMEASSISTANT_CONTAINER_NAME` | `homeassistant` |
+| `SAHA_HOMEASSISTANT_TIMEZONE` | `UTC` |
+| `SAHA_HOMEASSISTANT_PULL` | `1` |
+
+After flashing and first boot, Home Assistant pulls its container image on first start. This needs network access. Then open:
+
+```text
+http://<device-ip>:8123
+```
+
+Check service status on the device:
+
+```bash
+systemctl status homeassistant-container
+systemctl status docker
+docker ps
+```
+
 ## ROS 2
 
 `saha-image-robot` includes ROS 2 by default through `ros-base` and `ros2cli-common-extensions`. There is no separate ROS image target; build and flash `saha-image-robot` for the robot rootfs.
@@ -222,9 +250,9 @@ ros2 --help
 
 ## Image scope
 
-The supported image target is `saha-image-robot`. It is layered on the reusable `saha-image-base` recipe and includes the Jetson BSP base, CUDA runtime libraries, OpenSSH bring-up access, USB device-mode networking support, and the configured ROS 2 runtime and CLI tools.
+The supported image target is `saha-image-robot`. It is layered on the reusable `saha-image-base` recipe and includes the Jetson BSP base, CUDA runtime libraries, OpenSSH bring-up access, USB device-mode networking support, Docker with the official Home Assistant container launcher, and the configured ROS 2 runtime and CLI tools.
 
-The image does not include CUDA samples or Jetson container runtime tooling. Add `nvidia-container-toolkit` later through an optional image or kas include if container runtime support is required; OE4T R39.2 removed the old `nvidia-docker` recipe.
+The image does not include CUDA samples or Jetson GPU container runtime tooling. Add `nvidia-container-toolkit` later through an optional image or kas include if GPU-backed containers are required; OE4T R39.2 removed the old `nvidia-docker` recipe.
 
 ## Add a target
 

@@ -2,6 +2,7 @@ header:
   version: 17
   includes:
     - kas/include/repos-wrynose.yml
+    - kas/include/homeassistant-container.yml
 
 distro: tegra-saha
 
