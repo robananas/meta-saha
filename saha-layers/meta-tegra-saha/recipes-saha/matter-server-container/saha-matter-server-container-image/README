@@ -1,0 +1,11 @@
+Matter Server container image preload for Saha images.
+
+Build-time source priority:
+
+1. ${DL_DIR}/matter-server-container.tar
+2. Host Docker image tagged ghcr.io/matter-js/python-matter-server:arm64
+3. Host Docker image ghcr.io/matter-js/python-matter-server:stable (retagged to arm64)
+4. Remote registry fetch of ghcr.io/matter-js/python-matter-server:stable with skopeo
+
+At runtime the launcher loads the archive and ensures the image is available as
+ghcr.io/matter-js/python-matter-server:arm64.

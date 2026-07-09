@@ -84,20 +84,20 @@ saha_current_ros_distro() {
   saha_require_ros_distro "${SAHA_ROS_DISTRO:-$(saha_default_ros_distro)}"
 }
 
-saha_default_homeassistant() {
+saha_default_have_docker_image() {
   printf '%s\n' "1"
 }
 
-saha_require_homeassistant_setting() {
+saha_require_have_docker_image_setting() {
   local value
-  value="$(printf '%s' "${SAHA_HOMEASSISTANT:-$(saha_default_homeassistant)}" | tr '[:upper:]' '[:lower:]')"
+  value="$(printf '%s' "${HAVE_DOCKER_IMAGE:-$(saha_default_have_docker_image)}" | tr '[:upper:]' '[:lower:]')"
   case "$value" in
     0|false|no|off|1|true|yes|on)
       return 0
       ;;
     *)
       {
-        printf 'Unsupported SAHA_HOMEASSISTANT value: %s\n\n' "$value"
+        printf 'Unsupported HAVE_DOCKER_IMAGE value: %s\n\n' "$value"
         printf 'Supported values: 1 (default), 0\n'
       } >&2
       return 2
@@ -105,10 +105,10 @@ saha_require_homeassistant_setting() {
   esac
 }
 
-saha_homeassistant_enabled() {
+saha_have_docker_image_enabled() {
   local value
-  saha_require_homeassistant_setting || return $?
-  value="$(printf '%s' "${SAHA_HOMEASSISTANT:-$(saha_default_homeassistant)}" | tr '[:upper:]' '[:lower:]')"
+  saha_require_have_docker_image_setting || return $?
+  value="$(printf '%s' "${HAVE_DOCKER_IMAGE:-$(saha_default_have_docker_image)}" | tr '[:upper:]' '[:lower:]')"
   case "$value" in
     0|false|no|off)
       return 1
@@ -124,10 +124,10 @@ saha_kas_config_for_target() {
   local ros_distro
   local kas_config
   ros_distro="$(saha_current_ros_distro)" || return $?
-  saha_require_homeassistant_setting || return $?
+  saha_require_have_docker_image_setting || return $?
   kas_config="kas/targets/${target}.yml:kas/include/ros-distro-${ros_distro}.yml"
-  if saha_homeassistant_enabled; then
-    kas_config="${kas_config}:kas/include/homeassistant-container.yml"
+  if saha_have_docker_image_enabled; then
+    kas_config="${kas_config}:kas/include/docker-images.yml"
   fi
   printf '%s\n' "$kas_config"
 }

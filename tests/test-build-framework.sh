@@ -30,7 +30,7 @@ contains "$dry_run_output" "DOCKER_CONFIG="
 contains "$dry_run_output" "BUILDX_CONFIG="
 contains "$dry_run_output" "docker image inspect"
 contains "$dry_run_output" "meta-saha-yocto-builder:wrynose"
-contains "$dry_run_output" "kas build kas/targets/orin-nx-16g-p3768.yml:kas/include/ros-distro-jazzy.yml:kas/include/homeassistant-container.yml"
+contains "$dry_run_output" "kas build kas/targets/orin-nx-16g-p3768.yml:kas/include/ros-distro-jazzy.yml:kas/include/docker-images.yml"
 contains "$dry_run_output" "/work/build/orin-nx-16g-p3768"
 contains "$dry_run_output" "KAS_WORK_DIR=/work/build/orin-nx-16g-p3768"
 contains "$dry_run_output" "GIT_HTTP_VERSION=HTTP/1.1"
@@ -64,77 +64,71 @@ lyrical_dry_run_output="$(
     SAHA_ROS_DISTRO=lyrical \
     "$ROOT_DIR/scripts/saha-build" orin-nx-16g-p3768
 )"
-contains "$lyrical_dry_run_output" "kas build kas/targets/orin-nx-16g-p3768.yml:kas/include/ros-distro-lyrical.yml:kas/include/homeassistant-container.yml"
+contains "$lyrical_dry_run_output" "kas build kas/targets/orin-nx-16g-p3768.yml:kas/include/ros-distro-lyrical.yml:kas/include/docker-images.yml"
 contains "$lyrical_dry_run_output" "/build/orin-nx-16g-p3768-ros-lyrical:/work/build/orin-nx-16g-p3768"
 
-no_ha_dry_run_output="$(
+no_docker_dry_run_output="$(
   env \
     SAHA_DRY_RUN=1 \
-    SAHA_HOMEASSISTANT=0 \
+    HAVE_DOCKER_IMAGE=0 \
     "$ROOT_DIR/scripts/saha-build" orin-nx-16g-p3768
 )"
-contains "$no_ha_dry_run_output" "kas build kas/targets/orin-nx-16g-p3768.yml:kas/include/ros-distro-jazzy.yml"
-if [[ "$no_ha_dry_run_output" == *"homeassistant-container.yml"* ]]; then
-  fail "SAHA_HOMEASSISTANT=0 must omit the Home Assistant kas include"
+contains "$no_docker_dry_run_output" "kas build kas/targets/orin-nx-16g-p3768.yml:kas/include/ros-distro-jazzy.yml"
+if [[ "$no_docker_dry_run_output" == *"docker-images.yml"* ]]; then
+  fail "HAVE_DOCKER_IMAGE=0 must omit the docker images kas include"
 fi
 
-if SAHA_HOMEASSISTANT=maybe "$ROOT_DIR/scripts/saha-build" orin-nx-16g-p3768 >/tmp/saha-invalid-ha.out 2>&1; then
-  fail "invalid SAHA_HOMEASSISTANT values must be rejected"
+if HAVE_DOCKER_IMAGE=maybe "$ROOT_DIR/scripts/saha-build" orin-nx-16g-p3768 >/tmp/saha-invalid-docker.out 2>&1; then
+  fail "invalid HAVE_DOCKER_IMAGE values must be rejected"
 fi
-grep -q 'Unsupported SAHA_HOMEASSISTANT value' /tmp/saha-invalid-ha.out ||
-  fail "invalid SAHA_HOMEASSISTANT values must report a clear error"
+grep -q 'Unsupported HAVE_DOCKER_IMAGE value' /tmp/saha-invalid-docker.out ||
+  fail "invalid HAVE_DOCKER_IMAGE values must report a clear error"
 
-! grep -q 'kas/include/homeassistant-container.yml' "$ROOT_DIR/kas/include/base.yml" ||
-  fail "Home Assistant kas include must be selected by SAHA_HOMEASSISTANT, not base.yml"
+! grep -q 'kas/include/docker-images.yml' "$ROOT_DIR/kas/include/base.yml" ||
+  fail "docker images kas include must be selected by HAVE_DOCKER_IMAGE, not base.yml"
 
-if [ ! -f "$ROOT_DIR/kas/include/homeassistant-container.yml" ]; then
-  fail "Home Assistant kas include must exist"
+if [ ! -f "$ROOT_DIR/kas/include/docker-images.yml" ]; then
+  fail "docker images kas include must exist"
 fi
-if [ ! -f "$ROOT_DIR/saha-layers/meta-tegra-saha/recipes-saha/homeassistant-container/saha-homeassistant-container.bb" ]; then
-  fail "Home Assistant container recipe must exist"
-fi
-grep -q 'Requires=docker.service' \
-  "$ROOT_DIR/saha-layers/meta-tegra-saha/recipes-saha/homeassistant-container/saha-homeassistant-container/homeassistant-container.service" ||
-  fail "Home Assistant systemd unit must depend on docker.service"
-grep -q 'ghcr.io/home-assistant/home-assistant:stable' \
-  "$ROOT_DIR/saha-layers/meta-tegra-saha/recipes-saha/homeassistant-container/saha-homeassistant-container/saha-homeassistant-container.env" ||
-  fail "Home Assistant default image must use the official container"
-grep -q 'packagegroup-saha-homeassistant-container' \
-  "$ROOT_DIR/kas/include/homeassistant-container.yml" ||
-  fail "Home Assistant kas include must install the packagegroup"
+grep -q 'packagegroup-saha-docker-images' \
+  "$ROOT_DIR/kas/include/docker-images.yml" ||
+  fail "docker images kas include must install the packagegroup"
+grep -q 'saha-docker-compose' \
+  "$ROOT_DIR/saha-layers/meta-tegra-saha/recipes-saha/packagegroups/packagegroup-saha-docker-images.bb" ||
+  fail "docker images packagegroup must install docker compose launcher"
+grep -q 'roban-app' \
+  "$ROOT_DIR/saha-layers/meta-tegra-saha/recipes-saha/packagegroups/packagegroup-saha-docker-images.bb" ||
+  fail "docker images packagegroup must install roban-app image recipe"
+grep -q 'docker compose' \
+  "$ROOT_DIR/saha-layers/meta-tegra-saha/recipes-saha/docker-compose/saha-docker-compose/saha-docker-compose.sh" ||
+  fail "docker compose launcher must start the stack with docker compose"
+grep -q '/opt/roban/compose/compose.yaml' \
+  "$ROOT_DIR/saha-layers/meta-tegra-saha/recipes-saha/docker-compose/saha-docker-compose.bb" ||
+  fail "docker compose launcher must install compose.yaml under /opt/roban/compose"
+grep -q 'ghcr.io/matter-js/python-matter-server:arm64' \
+  "$ROOT_DIR/saha-layers/meta-tegra-saha/recipes-saha/docker-compose/saha-docker-compose/compose.yaml" ||
+  fail "compose stack must use the arm64 Matter Server image"
+grep -q 'roban-workflow-api:arm64' \
+  "$ROOT_DIR/saha-layers/meta-tegra-saha/recipes-saha/docker-compose/saha-docker-compose/compose.yaml" ||
+  fail "compose stack must include roban-workflow-api"
+grep -q 'roban-workflow-api.tar' \
+  "$ROOT_DIR/saha-layers/meta-tegra-saha/recipes-saha/roban-app/roban-app/fetch-image.sh" ||
+  fail "roban-app fetch script must support local tarball cache"
 grep -q 'saha-homeassistant-container-image' \
-  "$ROOT_DIR/saha-layers/meta-tegra-saha/recipes-saha/packagegroups/packagegroup-saha-homeassistant-container.bb" ||
-  fail "Home Assistant packagegroup must include the preloaded image recipe"
-grep -q 'docker load -i' \
-  "$ROOT_DIR/saha-layers/meta-tegra-saha/recipes-saha/homeassistant-container/saha-homeassistant-container/saha-homeassistant-container.sh" ||
-  fail "Home Assistant launcher must load the preloaded docker archive"
-grep -q 'SAHA_HOMEASSISTANT_PULL=0' \
-  "$ROOT_DIR/saha-layers/meta-tegra-saha/recipes-saha/homeassistant-container/saha-homeassistant-container/saha-homeassistant-container.env" ||
-  fail "Home Assistant defaults must prefer the preloaded image over docker pull"
-grep -q 'docker save' \
-  "$ROOT_DIR/saha-layers/meta-tegra-saha/recipes-saha/homeassistant-container/saha-homeassistant-container-image/fetch-image.sh" ||
-  fail "Home Assistant fetch script must support local docker save"
+  "$ROOT_DIR/saha-layers/meta-tegra-saha/recipes-saha/packagegroups/packagegroup-saha-docker-images.bb" ||
+  fail "docker images packagegroup must include the Home Assistant image recipe"
+grep -q 'saha-matter-server-container-image' \
+  "$ROOT_DIR/saha-layers/meta-tegra-saha/recipes-saha/packagegroups/packagegroup-saha-docker-images.bb" ||
+  fail "docker images packagegroup must include the Matter Server image recipe"
 grep -q 'homeassistant-container.tar' \
   "$ROOT_DIR/saha-layers/meta-tegra-saha/recipes-saha/homeassistant-container/saha-homeassistant-container-image/fetch-image.sh" ||
   fail "Home Assistant fetch script must support local tarball cache"
-grep -q 'image_loaded' \
-  "$ROOT_DIR/saha-layers/meta-tegra-saha/recipes-saha/homeassistant-container/saha-homeassistant-container/saha-homeassistant-container.sh" ||
-  fail "Home Assistant launcher must prefer an existing local docker image"
-grep -q 'HA_CONTAINER_LOCAL_TAR' \
-  "$ROOT_DIR/kas/include/homeassistant-container.yml" ||
-  fail "Home Assistant kas include must define a local tarball cache path"
-grep -q 'wait-docker' \
-  "$ROOT_DIR/saha-layers/meta-tegra-saha/recipes-saha/homeassistant-container/saha-homeassistant-container/saha-homeassistant-container.sh" ||
-  fail "Home Assistant launcher must wait for docker"
-grep -q 'multi-user.target.wants/homeassistant-container.service' \
-  "$ROOT_DIR/saha-layers/meta-tegra-saha/recipes-saha/homeassistant-container/saha-homeassistant-container.bb" ||
-  fail "Home Assistant launcher must enable systemd service at install time"
-grep -q 'IMAGE_ROOTFS_EXTRA_SPACE' \
-  "$ROOT_DIR/kas/include/homeassistant-container.yml" ||
-  fail "Home Assistant kas include must reserve extra rootfs space"
-grep -q 'IMAGE_INSTALL:append:pn-saha-image-robot' \
-  "$ROOT_DIR/kas/include/homeassistant-container.yml" ||
-  fail "Home Assistant kas include must scope packagegroup to saha-image-robot only"
+grep -q 'matter-server-container.tar' \
+  "$ROOT_DIR/saha-layers/meta-tegra-saha/recipes-saha/matter-server-container/saha-matter-server-container-image/fetch-image.sh" ||
+  fail "Matter Server fetch script must support local tarball cache"
+grep -q 'multi-user.target.wants/saha-docker-compose.service' \
+  "$ROOT_DIR/saha-layers/meta-tegra-saha/recipes-saha/docker-compose/saha-docker-compose.bb" ||
+  fail "docker compose launcher must enable systemd service at install time"
 
 proxy_dry_run_output="$(
   env \
@@ -419,22 +413,22 @@ if rg -n 'rolling|apollo-nx|xavier-nx|tegra-rolling-kernel|tegra-saha-layout|dat
 fi
 
 shell_dry_run_output="$(SAHA_DRY_RUN=1 "$ROOT_DIR/scripts/saha-shell" agx-thor-devkit)"
-contains "$shell_dry_run_output" "kas shell kas/targets/agx-thor-devkit.yml:kas/include/ros-distro-jazzy.yml:kas/include/homeassistant-container.yml"
+contains "$shell_dry_run_output" "kas shell kas/targets/agx-thor-devkit.yml:kas/include/ros-distro-jazzy.yml:kas/include/docker-images.yml"
 contains "$shell_dry_run_output" " -it "
 
 shell_command_dry_run_output="$(SAHA_DRY_RUN=1 "$ROOT_DIR/scripts/saha-shell" orin-nx-16g-p3768 -c "bitbake package-index")"
-contains "$shell_command_dry_run_output" "kas shell kas/targets/orin-nx-16g-p3768.yml:kas/include/ros-distro-jazzy.yml:kas/include/homeassistant-container.yml -c bitbake\\ package-index"
+contains "$shell_command_dry_run_output" "kas shell kas/targets/orin-nx-16g-p3768.yml:kas/include/ros-distro-jazzy.yml:kas/include/docker-images.yml -c bitbake\\ package-index"
 if [[ "$shell_command_dry_run_output" == *" -it "* ]]; then
   fail "non-interactive shell command should not allocate a TTY"
 fi
 
 lyrical_shell_command_dry_run_output="$(SAHA_DRY_RUN=1 SAHA_ROS_DISTRO=lyrical "$ROOT_DIR/scripts/saha-shell" orin-nx-16g-p3768 -c "bitbake -p")"
-contains "$lyrical_shell_command_dry_run_output" "kas shell kas/targets/orin-nx-16g-p3768.yml:kas/include/ros-distro-lyrical.yml:kas/include/homeassistant-container.yml -c bitbake\\ -p"
+contains "$lyrical_shell_command_dry_run_output" "kas shell kas/targets/orin-nx-16g-p3768.yml:kas/include/ros-distro-lyrical.yml:kas/include/docker-images.yml -c bitbake\\ -p"
 
 validate_dry_run_output="$(SAHA_DRY_RUN=1 "$ROOT_DIR/scripts/saha-validate" agx-orin-devkit)"
-contains "$validate_dry_run_output" "kas dump --skip repo_setup_loop --skip finish_setup_repos --skip repos_checkout --skip repos_apply_patches kas/targets/agx-orin-devkit.yml:kas/include/ros-distro-jazzy.yml:kas/include/homeassistant-container.yml"
+contains "$validate_dry_run_output" "kas dump --skip repo_setup_loop --skip finish_setup_repos --skip repos_checkout --skip repos_apply_patches kas/targets/agx-orin-devkit.yml:kas/include/ros-distro-jazzy.yml:kas/include/docker-images.yml"
 
 lyrical_validate_dry_run_output="$(SAHA_DRY_RUN=1 SAHA_ROS_DISTRO=lyrical "$ROOT_DIR/scripts/saha-validate" agx-orin-devkit)"
-contains "$lyrical_validate_dry_run_output" "kas dump --skip repo_setup_loop --skip finish_setup_repos --skip repos_checkout --skip repos_apply_patches kas/targets/agx-orin-devkit.yml:kas/include/ros-distro-lyrical.yml:kas/include/homeassistant-container.yml"
+contains "$lyrical_validate_dry_run_output" "kas dump --skip repo_setup_loop --skip finish_setup_repos --skip repos_checkout --skip repos_apply_patches kas/targets/agx-orin-devkit.yml:kas/include/ros-distro-lyrical.yml:kas/include/docker-images.yml"
 
 echo "PASS: build framework contract"

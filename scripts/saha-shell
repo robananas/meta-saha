@@ -12,7 +12,7 @@ Usage: scripts/saha-shell <target> [-c <command>]
 Open a kas shell for a supported Jetson target inside Docker.
 With -c, run a non-interactive command inside the kas shell.
 Set SAHA_ROS_DISTRO=jazzy or SAHA_ROS_DISTRO=lyrical to choose the ROS 2 distro.
-Set SAHA_HOMEASSISTANT=0 to omit Docker and the preloaded Home Assistant image.
+Set HAVE_DOCKER_IMAGE=0 to omit Docker, docker compose, and preloaded container images.
 Run scripts/saha-targets to list targets.
 USAGE
 }

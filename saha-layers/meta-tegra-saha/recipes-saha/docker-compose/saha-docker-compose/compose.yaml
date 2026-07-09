@@ -1,0 +1,34 @@
+services:
+  homeassistant:
+    container_name: homeassistant
+    image: ghcr.io/home-assistant/home-assistant:stable
+    volumes:
+      - /var/lib/homeassistant:/config
+      - /etc/localtime:/etc/localtime:ro
+      - /run/dbus:/run/dbus:ro
+    restart: unless-stopped
+    privileged: true
+    network_mode: host
+    environment:
+      TZ: ${TZ:-Asia/Shanghai}
+
+  matter-server:
+    container_name: matter-server
+    image: ghcr.io/matter-js/python-matter-server:arm64
+    restart: unless-stopped
+    network_mode: host
+    security_opt:
+      - apparmor:unconfined
+    volumes:
+      - /var/lib/matter-server:/data
+      - /run/dbus:/run/dbus:ro
+    environment:
+      TZ: ${TZ:-Asia/Shanghai}
+
+  roban-workflow-api:
+    container_name: roban-workflow-api
+    image: roban-workflow-api:arm64
+    restart: unless-stopped
+    network_mode: host
+    environment:
+      TZ: ${TZ:-Asia/Shanghai}
