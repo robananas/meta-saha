@@ -7,4 +7,5 @@ inherit packagegroup
 RDEPENDS:${PN} = " \
     bluez5 \
     tegra-bluetooth \
+    saha-bt-wifi-provision \
 "

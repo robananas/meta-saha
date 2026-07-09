@@ -1,0 +1,17 @@
+[Unit]
+Description=Saha Bluetooth WiFi provisioning GATT service
+Documentation=file:///usr/share/doc/saha-bt-wifi-provision/GATT.md
+After=bluetooth.service tegra-bluetooth.service NetworkManager.service
+Wants=NetworkManager.service
+Requires=bluetooth.service
+
+[Service]
+Type=simple
+EnvironmentFile=-/etc/default/saha-bt-wifi-provision
+Environment=PYTHONUNBUFFERED=1
+ExecStart=/usr/bin/saha-bt-wifi-provision
+Restart=on-failure
+RestartSec=5
+
+[Install]
+WantedBy=multi-user.target

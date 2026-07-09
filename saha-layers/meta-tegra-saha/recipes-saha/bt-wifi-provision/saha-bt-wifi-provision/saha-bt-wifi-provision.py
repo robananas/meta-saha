@@ -1,0 +1,29 @@
+#!/usr/bin/env python3
+
+from __future__ import annotations
+
+import logging
+import os
+import sys
+
+from gatt_server import GattProvisioner
+
+
+def main() -> int:
+    logging.basicConfig(
+        level=logging.INFO,
+        format="%(asctime)s %(levelname)s %(name)s: %(message)s",
+    )
+    local_name = os.environ.get("SAHA_BT_WIFI_LOCAL_NAME", "Roban-Bluetooth")
+    try:
+        GattProvisioner(local_name=local_name).run()
+    except KeyboardInterrupt:
+        return 0
+    except Exception:
+        logging.exception("saha-bt-wifi-provision failed")
+        return 1
+    return 0
+
+
+if __name__ == "__main__":
+    sys.exit(main())

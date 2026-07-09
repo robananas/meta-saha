@@ -149,6 +149,21 @@ For Matter Server commissioning, ensure the adapter is powered and discoverable 
 bluetoothctl power on
 ```
 
+### Bluetooth WiFi provisioning (Android app)
+
+`saha-bt-wifi-provision` is included in the default image via `packagegroup-saha-bluetooth`. It exposes a BLE GATT peripheral named `Roban-Bluetooth`. A phone app can:
+
+1. Connect over BLE and subscribe to the WiFi Event characteristic
+2. Read current WiFi status (SSID, IP, gateway, signal)
+3. Trigger a WiFi scan
+4. Send SSID/password to connect and receive the assigned LAN IP in the response
+
+GATT UUIDs and JSON payloads are documented on the device at `/usr/share/doc/saha-bt-wifi-provision/GATT.md`.
+
+```bash
+systemctl status saha-bt-wifi-provision
+```
+
 Override cache/build locations with environment variables:
 
 ```bash

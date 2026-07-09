@@ -114,6 +114,21 @@ grep -q 'roban-workflow-api:arm64' \
 grep -q 'roban-workflow-api.tar' \
   "$ROOT_DIR/saha-layers/meta-tegra-saha/recipes-saha/roban-app/roban-app/fetch-image.sh" ||
   fail "roban-app fetch script must support local tarball cache"
+grep -q 'saha-bt-wifi-provision' \
+  "$ROOT_DIR/saha-layers/meta-tegra-saha/recipes-saha/packagegroups/packagegroup-saha-bluetooth.bb" ||
+  fail "bluetooth packagegroup must install saha-bt-wifi-provision"
+BT_WIFI_PROVISION="$ROOT_DIR/saha-layers/meta-tegra-saha/recipes-saha/bt-wifi-provision/saha-bt-wifi-provision.bb"
+[ -f "$BT_WIFI_PROVISION" ] ||
+  fail "saha-bt-wifi-provision recipe must exist"
+grep -q 'a0a0ff10-0000-1000-8000-00805f9b34fb' \
+  "$ROOT_DIR/saha-layers/meta-tegra-saha/recipes-saha/bt-wifi-provision/saha-bt-wifi-provision/GATT.md" ||
+  fail "GATT API doc must define the WiFi provision service UUID"
+grep -q 'nmcli' \
+  "$ROOT_DIR/saha-layers/meta-tegra-saha/recipes-saha/bt-wifi-provision/saha-bt-wifi-provision/wifi_manager.py" ||
+  fail "WiFi provision service must integrate with nmcli"
+grep -q 'multi-user.target.wants/saha-bt-wifi-provision.service' \
+  "$BT_WIFI_PROVISION" ||
+  fail "saha-bt-wifi-provision must enable systemd service at install time"
 grep -q 'saha-homeassistant-container-image' \
   "$ROOT_DIR/saha-layers/meta-tegra-saha/recipes-saha/packagegroups/packagegroup-saha-docker-images.bb" ||
   fail "docker images packagegroup must include the Home Assistant image recipe"
