@@ -327,6 +327,23 @@ grep -q '/sys/class/usb_role/usb2-0-role-switch/role' "$USB_ROLE_HELPER" ||
 grep -q 'echo device >' "$USB_ROLE_HELPER" ||
   fail "Saha USB role helper must force device role before gadget start"
 
+NETWORK_PACKAGEGROUP="$ROOT_DIR/saha-layers/meta-tegra-saha/recipes-saha/packagegroups/packagegroup-saha-network.bb"
+[ -f "$NETWORK_PACKAGEGROUP" ] ||
+  fail "network packagegroup must exist"
+grep -q 'networkmanager-nmcli' "$NETWORK_PACKAGEGROUP" ||
+  fail "network packagegroup must install nmcli"
+grep -q 'networkmanager-wifi' "$NETWORK_PACKAGEGROUP" ||
+  fail "network packagegroup must install WiFi support"
+NETWORKMANAGER_APPEND="$ROOT_DIR/saha-layers/meta-tegra-saha/recipes-connectivity/networkmanager/networkmanager_%.bbappend"
+[ -f "$NETWORKMANAGER_APPEND" ] ||
+  fail "NetworkManager bbappend must exist"
+grep -q 'except:type:wifi' "$ROOT_DIR/saha-layers/meta-tegra-saha/recipes-connectivity/networkmanager/networkmanager/99-saha-unmanaged-devices.conf" ||
+  fail "NetworkManager must leave USB gadget interfaces to systemd-networkd"
+grep -q 'packagegroup-saha-network' "$ROOT_DIR/saha-layers/meta-tegra-saha/recipes-saha/images/saha-image-common.inc" ||
+  fail "default Saha images must include network packagegroup"
+grep -q 'wifi' "$ROOT_DIR/saha-layers/meta-tegra-saha/conf/distro/tegra-saha.conf" ||
+  fail "tegra-saha distro must enable wifi DISTRO_FEATURE"
+
 grep -q 'gfortran' "$ROOT_DIR/docker/Dockerfile.yocto-builder" ||
   fail "Yocto builder image must include gfortran"
 

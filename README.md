@@ -120,6 +120,19 @@ minicom -D /dev/ttyUSB0
 
 Change the empty root password before using the image outside bring-up.
 
+### WiFi on the device
+
+Saha images include NetworkManager with `nmcli` for WiFi setup. USB gadget networking (`l4tbr0`, `192.168.55.1`) stays on systemd-networkd; NetworkManager manages WiFi only.
+
+```bash
+nmcli dev wifi list
+nmcli dev wifi connect "YOUR_SSID" password "YOUR_PASSWORD"
+nmcli dev status
+ip addr show wlan0
+```
+
+If the WiFi interface name is not `wlan0`, use the name shown by `nmcli dev status`.
+
 Override cache/build locations with environment variables:
 
 ```bash
