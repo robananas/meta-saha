@@ -133,6 +133,22 @@ ip addr show wlan0
 
 If the WiFi interface name is not `wlan0`, use the name shown by `nmcli dev status`.
 
+### Bluetooth on the device
+
+Saha images include BlueZ and Jetson `tegra-bluetooth` support on devkits with an onboard WiFi/Bluetooth module (for example Orin NX on P3768). The adapter name is `Roban-Bluetooth`, and `bluetooth.service` starts automatically on boot.
+
+```bash
+systemctl status bluetooth tegra-bluetooth
+hciconfig -a
+bluetoothctl show
+```
+
+For Matter Server commissioning, ensure the adapter is powered and discoverable when needed:
+
+```bash
+bluetoothctl power on
+```
+
 Override cache/build locations with environment variables:
 
 ```bash
@@ -299,7 +315,7 @@ ros2 --help
 
 ## Image scope
 
-The supported image target is `saha-image-robot`. It is layered on the reusable `saha-image-base` recipe and includes the Jetson BSP base, CUDA runtime libraries, OpenSSH bring-up access, USB device-mode networking support, NetworkManager with `nmcli` for WiFi, the configured ROS 2 runtime and CLI tools, and by default Docker with a compose-managed application stack (Home Assistant, Matter Server, and Roban workflow API).
+The supported image target is `saha-image-robot`. It is layered on the reusable `saha-image-base` recipe and includes the Jetson BSP base, CUDA runtime libraries, OpenSSH bring-up access, USB device-mode networking support, NetworkManager with `nmcli` for WiFi, BlueZ with Jetson Bluetooth support, the configured ROS 2 runtime and CLI tools, and by default Docker with a compose-managed application stack (Home Assistant, Matter Server, and Roban workflow API).
 
 The image does not include CUDA samples or Jetson GPU container runtime tooling. Add `nvidia-container-toolkit` later through an optional image or kas include if GPU-backed containers are required; OE4T R39.2 removed the old `nvidia-docker` recipe.
 

@@ -355,6 +355,25 @@ grep -q 'packagegroup-saha-network' "$ROOT_DIR/saha-layers/meta-tegra-saha/recip
 grep -q 'wifi' "$ROOT_DIR/saha-layers/meta-tegra-saha/conf/distro/tegra-saha.conf" ||
   fail "tegra-saha distro must enable wifi DISTRO_FEATURE"
 
+BLUETOOTH_PACKAGEGROUP="$ROOT_DIR/saha-layers/meta-tegra-saha/recipes-saha/packagegroups/packagegroup-saha-bluetooth.bb"
+[ -f "$BLUETOOTH_PACKAGEGROUP" ] ||
+  fail "bluetooth packagegroup must exist"
+grep -q 'bluez5' "$BLUETOOTH_PACKAGEGROUP" ||
+  fail "bluetooth packagegroup must install bluez5"
+grep -q 'tegra-bluetooth' "$BLUETOOTH_PACKAGEGROUP" ||
+  fail "bluetooth packagegroup must install tegra-bluetooth"
+BLUEZ_APPEND="$ROOT_DIR/saha-layers/meta-tegra-saha/recipes-connectivity/bluez/bluez5_%.bbappend"
+[ -f "$BLUEZ_APPEND" ] ||
+  fail "bluez5 bbappend must exist"
+grep -q 'Roban-Bluetooth' "$ROOT_DIR/saha-layers/meta-tegra-saha/recipes-connectivity/bluez/bluez5/main.conf" ||
+  fail "bluez5 must set the Roban-Bluetooth adapter name"
+grep -q 'SYSTEMD_AUTO_ENABLE:${PN} = "enable"' "$BLUEZ_APPEND" ||
+  fail "bluez5 must enable bluetooth.service at install time"
+grep -q 'packagegroup-saha-bluetooth' "$ROOT_DIR/saha-layers/meta-tegra-saha/recipes-saha/images/saha-image-common.inc" ||
+  fail "default Saha images must include bluetooth packagegroup"
+grep -q 'bluetooth' "$ROOT_DIR/saha-layers/meta-tegra-saha/conf/distro/tegra-saha.conf" ||
+  fail "tegra-saha distro must enable bluetooth DISTRO_FEATURE"
+
 grep -q 'gfortran' "$ROOT_DIR/docker/Dockerfile.yocto-builder" ||
   fail "Yocto builder image must include gfortran"
 
