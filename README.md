@@ -217,7 +217,15 @@ This is a fast schema/include/config expansion check. A full `saha-build` still 
 
 ## Home Assistant container
 
-`saha-image-robot` includes Docker, the official Home Assistant container launcher, and a preloaded Home Assistant container image by default. During the Yocto build, `saha-homeassistant-container-image` installs it at `/usr/share/saha/homeassistant/image.tar`. On first boot, `homeassistant-container.service` uses any existing local Docker image first, otherwise runs `docker load` from that tarball, and only pulls remotely when `SAHA_HOMEASSISTANT_PULL=1`.
+By default, `saha-image-robot` includes Docker, the official Home Assistant container launcher, and a preloaded Home Assistant container image. Disable that stack at build time with:
+
+```bash
+SAHA_HOMEASSISTANT=0 ./scripts/saha-build orin-nx-16g-p3768
+```
+
+This omits `docker`, the Home Assistant launcher, the preloaded tarball, and the extra rootfs space reserved for it. ROS 2, USB gadget networking, and WiFi support are unaffected.
+
+During the Yocto build, `saha-homeassistant-container-image` installs the image at `/usr/share/saha/homeassistant/image.tar`. On first boot, `homeassistant-container.service` uses any existing local Docker image first, otherwise runs `docker load` from that tarball, and only pulls remotely when `SAHA_HOMEASSISTANT_PULL=1`.
 
 ### Build-time image source priority
 
@@ -293,6 +301,11 @@ Supported ROS 2 distros:
 | `jazzy` | `kas/include/ros-distro-jazzy.yml` |
 | `lyrical` | `kas/include/ros-distro-lyrical.yml` |
 
+| `SAHA_HOMEASSISTANT` | Effect |
+| --- | --- |
+| `1` (default) | Include Docker and the preloaded Home Assistant image |
+| `0` | Omit Docker, Home Assistant launcher, and preloaded image |
+
 After flashing, initialize the ROS environment with:
 
 ```bash
@@ -302,7 +315,7 @@ ros2 --help
 
 ## Image scope
 
-The supported image target is `saha-image-robot`. It is layered on the reusable `saha-image-base` recipe and includes the Jetson BSP base, CUDA runtime libraries, OpenSSH bring-up access, USB device-mode networking support, Docker with the official Home Assistant container launcher, and the configured ROS 2 runtime and CLI tools.
+The supported image target is `saha-image-robot`. It is layered on the reusable `saha-image-base` recipe and includes the Jetson BSP base, CUDA runtime libraries, OpenSSH bring-up access, USB device-mode networking support, NetworkManager with `nmcli` for WiFi, the configured ROS 2 runtime and CLI tools, and by default Docker with the official Home Assistant container launcher.
 
 The image does not include CUDA samples or Jetson GPU container runtime tooling. Add `nvidia-container-toolkit` later through an optional image or kas include if GPU-backed containers are required; OE4T R39.2 removed the old `nvidia-docker` recipe.
 

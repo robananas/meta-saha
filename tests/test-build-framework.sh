@@ -30,7 +30,7 @@ contains "$dry_run_output" "DOCKER_CONFIG="
 contains "$dry_run_output" "BUILDX_CONFIG="
 contains "$dry_run_output" "docker image inspect"
 contains "$dry_run_output" "meta-saha-yocto-builder:wrynose"
-contains "$dry_run_output" "kas build kas/targets/orin-nx-16g-p3768.yml:kas/include/ros-distro-jazzy.yml"
+contains "$dry_run_output" "kas build kas/targets/orin-nx-16g-p3768.yml:kas/include/ros-distro-jazzy.yml:kas/include/homeassistant-container.yml"
 contains "$dry_run_output" "/work/build/orin-nx-16g-p3768"
 contains "$dry_run_output" "KAS_WORK_DIR=/work/build/orin-nx-16g-p3768"
 contains "$dry_run_output" "GIT_HTTP_VERSION=HTTP/1.1"
@@ -64,11 +64,28 @@ lyrical_dry_run_output="$(
     SAHA_ROS_DISTRO=lyrical \
     "$ROOT_DIR/scripts/saha-build" orin-nx-16g-p3768
 )"
-contains "$lyrical_dry_run_output" "kas build kas/targets/orin-nx-16g-p3768.yml:kas/include/ros-distro-lyrical.yml"
+contains "$lyrical_dry_run_output" "kas build kas/targets/orin-nx-16g-p3768.yml:kas/include/ros-distro-lyrical.yml:kas/include/homeassistant-container.yml"
 contains "$lyrical_dry_run_output" "/build/orin-nx-16g-p3768-ros-lyrical:/work/build/orin-nx-16g-p3768"
 
-grep -q 'kas/include/homeassistant-container.yml' "$ROOT_DIR/kas/include/base.yml" ||
-  fail "base kas config must include Home Assistant container by default"
+no_ha_dry_run_output="$(
+  env \
+    SAHA_DRY_RUN=1 \
+    SAHA_HOMEASSISTANT=0 \
+    "$ROOT_DIR/scripts/saha-build" orin-nx-16g-p3768
+)"
+contains "$no_ha_dry_run_output" "kas build kas/targets/orin-nx-16g-p3768.yml:kas/include/ros-distro-jazzy.yml"
+if [[ "$no_ha_dry_run_output" == *"homeassistant-container.yml"* ]]; then
+  fail "SAHA_HOMEASSISTANT=0 must omit the Home Assistant kas include"
+fi
+
+if SAHA_HOMEASSISTANT=maybe "$ROOT_DIR/scripts/saha-build" orin-nx-16g-p3768 >/tmp/saha-invalid-ha.out 2>&1; then
+  fail "invalid SAHA_HOMEASSISTANT values must be rejected"
+fi
+grep -q 'Unsupported SAHA_HOMEASSISTANT value' /tmp/saha-invalid-ha.out ||
+  fail "invalid SAHA_HOMEASSISTANT values must report a clear error"
+
+! grep -q 'kas/include/homeassistant-container.yml' "$ROOT_DIR/kas/include/base.yml" ||
+  fail "Home Assistant kas include must be selected by SAHA_HOMEASSISTANT, not base.yml"
 
 if [ ! -f "$ROOT_DIR/kas/include/homeassistant-container.yml" ]; then
   fail "Home Assistant kas include must exist"
@@ -402,22 +419,22 @@ if rg -n 'rolling|apollo-nx|xavier-nx|tegra-rolling-kernel|tegra-saha-layout|dat
 fi
 
 shell_dry_run_output="$(SAHA_DRY_RUN=1 "$ROOT_DIR/scripts/saha-shell" agx-thor-devkit)"
-contains "$shell_dry_run_output" "kas shell kas/targets/agx-thor-devkit.yml:kas/include/ros-distro-jazzy.yml"
+contains "$shell_dry_run_output" "kas shell kas/targets/agx-thor-devkit.yml:kas/include/ros-distro-jazzy.yml:kas/include/homeassistant-container.yml"
 contains "$shell_dry_run_output" " -it "
 
 shell_command_dry_run_output="$(SAHA_DRY_RUN=1 "$ROOT_DIR/scripts/saha-shell" orin-nx-16g-p3768 -c "bitbake package-index")"
-contains "$shell_command_dry_run_output" "kas shell kas/targets/orin-nx-16g-p3768.yml:kas/include/ros-distro-jazzy.yml -c bitbake\\ package-index"
+contains "$shell_command_dry_run_output" "kas shell kas/targets/orin-nx-16g-p3768.yml:kas/include/ros-distro-jazzy.yml:kas/include/homeassistant-container.yml -c bitbake\\ package-index"
 if [[ "$shell_command_dry_run_output" == *" -it "* ]]; then
   fail "non-interactive shell command should not allocate a TTY"
 fi
 
 lyrical_shell_command_dry_run_output="$(SAHA_DRY_RUN=1 SAHA_ROS_DISTRO=lyrical "$ROOT_DIR/scripts/saha-shell" orin-nx-16g-p3768 -c "bitbake -p")"
-contains "$lyrical_shell_command_dry_run_output" "kas shell kas/targets/orin-nx-16g-p3768.yml:kas/include/ros-distro-lyrical.yml -c bitbake\\ -p"
+contains "$lyrical_shell_command_dry_run_output" "kas shell kas/targets/orin-nx-16g-p3768.yml:kas/include/ros-distro-lyrical.yml:kas/include/homeassistant-container.yml -c bitbake\\ -p"
 
 validate_dry_run_output="$(SAHA_DRY_RUN=1 "$ROOT_DIR/scripts/saha-validate" agx-orin-devkit)"
-contains "$validate_dry_run_output" "kas dump --skip repo_setup_loop --skip finish_setup_repos --skip repos_checkout --skip repos_apply_patches kas/targets/agx-orin-devkit.yml:kas/include/ros-distro-jazzy.yml"
+contains "$validate_dry_run_output" "kas dump --skip repo_setup_loop --skip finish_setup_repos --skip repos_checkout --skip repos_apply_patches kas/targets/agx-orin-devkit.yml:kas/include/ros-distro-jazzy.yml:kas/include/homeassistant-container.yml"
 
 lyrical_validate_dry_run_output="$(SAHA_DRY_RUN=1 SAHA_ROS_DISTRO=lyrical "$ROOT_DIR/scripts/saha-validate" agx-orin-devkit)"
-contains "$lyrical_validate_dry_run_output" "kas dump --skip repo_setup_loop --skip finish_setup_repos --skip repos_checkout --skip repos_apply_patches kas/targets/agx-orin-devkit.yml:kas/include/ros-distro-lyrical.yml"
+contains "$lyrical_validate_dry_run_output" "kas dump --skip repo_setup_loop --skip finish_setup_repos --skip repos_checkout --skip repos_apply_patches kas/targets/agx-orin-devkit.yml:kas/include/ros-distro-lyrical.yml:kas/include/homeassistant-container.yml"
 
 echo "PASS: build framework contract"
