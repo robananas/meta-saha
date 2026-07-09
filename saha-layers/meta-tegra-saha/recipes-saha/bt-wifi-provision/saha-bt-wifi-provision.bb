@@ -24,7 +24,6 @@ RDEPENDS:${PN} = " \
     networkmanager-nmcli \
     python3-core \
     python3-dbus \
-    python3-pygobject3 \
 "
 
 do_install() {

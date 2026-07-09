@@ -4,14 +4,13 @@
 from __future__ import annotations
 
 import logging
+import queue
 import threading
 from typing import Any, Callable
 
 import dbus
 import dbus.exceptions
-import dbus.mainloop.glib
 import dbus.service
-from gi.repository import GLib
 
 from wifi_manager import WifiError, decode_json, encode_json, get_wifi_status, handle_command
 
@@ -205,10 +204,11 @@ class Advertisement(dbus.service.Object):
 class GattProvisioner:
     def __init__(self, local_name: str) -> None:
         self.local_name = local_name
-        self.mainloop: GLib.MainLoop | None = None
         self.bus: dbus.SystemBus | None = None
         self.adapter_path: str | None = None
         self.event_characteristic: Characteristic | None = None
+        self._event_queue: queue.Queue[dict[str, Any]] = queue.Queue()
+        self._running = True
 
     def _find_adapter(self) -> str:
         assert self.bus is not None
@@ -223,8 +223,6 @@ class GattProvisioner:
         raise RuntimeError("no BLE adapter with GATT and advertising support found")
 
     def _on_command(self, data: bytes) -> None:
-        assert self.event_characteristic is not None
-
         def worker() -> None:
             try:
                 payload = decode_json(data)
@@ -234,7 +232,7 @@ class GattProvisioner:
             except Exception as exc:  # noqa: BLE001
                 logger.exception("command failed")
                 response = {"event": "error", "error": str(exc)}
-            GLib.idle_add(self.event_characteristic.send_notification, response)
+            self._event_queue.put(response)
 
         threading.Thread(target=worker, daemon=True).start()
 
@@ -301,13 +299,20 @@ class GattProvisioner:
     def _register_error(self, label: str) -> Callable[[Any], None]:
         def handler(error: Any) -> None:
             logger.error("%s registration failed: %s", label, error)
-            if self.mainloop is not None:
-                self.mainloop.quit()
+            self._running = False
 
         return handler
 
+    def _dispatch_pending_events(self) -> None:
+        while True:
+            try:
+                response = self._event_queue.get_nowait()
+            except queue.Empty:
+                break
+            if self.event_characteristic is not None:
+                self.event_characteristic.send_notification(response)
+
     def run(self) -> None:
-        dbus.mainloop.glib.DBusGMainLoop(set_as_default=True)
         self.bus = dbus.SystemBus()
         self.adapter_path = self._find_adapter()
         logger.info("using adapter %s", self.adapter_path)
@@ -322,5 +327,7 @@ class GattProvisioner:
         self._register_application()
         self._register_advertisement()
 
-        self.mainloop = GLib.MainLoop()
-        self.mainloop.run()
+        while self._running:
+            self._dispatch_pending_events()
+            if self.bus.connection.read_write_dispatch(timeout=200):
+                continue
