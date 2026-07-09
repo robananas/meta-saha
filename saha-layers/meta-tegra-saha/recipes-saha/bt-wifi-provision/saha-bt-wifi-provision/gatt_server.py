@@ -6,12 +6,14 @@ from __future__ import annotations
 import logging
 import queue
 import threading
+import time
 from typing import Any, Callable
 
 import dbus
 import dbus.exceptions
 import dbus.service
 
+from dbus_mainloop import iterate_main_loop, setup_dbus_main_loop
 from wifi_manager import WifiError, decode_json, encode_json, get_wifi_status, handle_command
 
 BLUEZ_SERVICE_NAME = "org.bluez"
@@ -180,35 +182,66 @@ class Advertisement(dbus.service.Object):
     def get_path(self) -> dbus.ObjectPath:
         return dbus.ObjectPath(self.path)
 
+    def _advertisement_properties(self) -> dict[str, Any]:
+        return {
+            "Type": "peripheral",
+            "ServiceUUIDs": dbus.Array([SERVICE_UUID], signature="s"),
+            "LocalName": self.local_name,
+            "IncludeTxPower": dbus.Boolean(False),
+        }
+
+    @dbus.service.method(DBUS_PROP_IFACE, in_signature="s", out_signature="a{sv}")
+    def GetAll(self, interface: str) -> dict[str, Any]:
+        if interface != LE_ADVERTISEMENT_IFACE:
+            raise InvalidArgsException()
+        return self._advertisement_properties()
+
+    @dbus.service.method(DBUS_PROP_IFACE, in_signature="ss", out_signature="v")
+    def Get(self, interface: str, prop: str) -> Any:
+        if interface != LE_ADVERTISEMENT_IFACE:
+            raise InvalidArgsException()
+        props = self._advertisement_properties()
+        if prop not in props:
+            raise InvalidArgsException()
+        return props[prop]
+
+    @dbus.service.method(DBUS_PROP_IFACE, in_signature="ssv")
+    def Set(self, interface: str, prop: str, value: Any) -> None:  # noqa: ARG002
+        raise NotSupportedException()
+
     @dbus.service.method(LE_ADVERTISEMENT_IFACE, in_signature="", out_signature="")
     def Release(self) -> None:
         logger.info("advertisement released")
 
-    @dbus.service.property(LE_ADVERTISEMENT_IFACE, "Type", in_signature="s", emit_constant=True)
-    def Type(self) -> str:
-        return "peripheral"
-
-    @dbus.service.property(LE_ADVERTISEMENT_IFACE, "ServiceUUIDs", in_signature="as", emit_constant=True)
-    def ServiceUUIDs(self) -> list[str]:
-        return [SERVICE_UUID]
-
-    @dbus.service.property(LE_ADVERTISEMENT_IFACE, "LocalName", in_signature="s", emit_constant=True)
-    def LocalName(self) -> str:
-        return self.local_name
-
-    @dbus.service.property(LE_ADVERTISEMENT_IFACE, "IncludeTxPower", in_signature="b", emit_constant=True)
-    def IncludeTxPower(self) -> bool:
-        return False
-
 
 class GattProvisioner:
-    def __init__(self, local_name: str) -> None:
+    def __init__(self, local_name: str, adapter_wait: int = 30) -> None:
         self.local_name = local_name
+        self.adapter_wait = adapter_wait
         self.bus: dbus.SystemBus | None = None
         self.adapter_path: str | None = None
         self.event_characteristic: Characteristic | None = None
         self._event_queue: queue.Queue[dict[str, Any]] = queue.Queue()
         self._running = True
+        self._gatt_registered = False
+        self._ad_registered = False
+        self._registration_failed = False
+        self._loop_mode = "null"
+
+    def _list_adapters(self) -> None:
+        assert self.bus is not None
+        remote_om = dbus.Interface(
+            self.bus.get_object(BLUEZ_SERVICE_NAME, "/"),
+            DBUS_OM_IFACE,
+        )
+        objects = remote_om.GetManagedObjects()
+        for path, interfaces in objects.items():
+            if "org.bluez.Adapter1" in interfaces:
+                logger.info(
+                    "adapter %s interfaces: %s",
+                    path,
+                    ", ".join(sorted(interfaces.keys())),
+                )
 
     def _find_adapter(self) -> str:
         assert self.bus is not None
@@ -221,6 +254,20 @@ class GattProvisioner:
             if GATT_MANAGER_IFACE in interfaces and LE_ADVERTISING_MANAGER_IFACE in interfaces:
                 return str(path)
         raise RuntimeError("no BLE adapter with GATT and advertising support found")
+
+    def _wait_for_adapter(self) -> str:
+        assert self.bus is not None
+        deadline = time.time() + self.adapter_wait
+        while time.time() < deadline:
+            try:
+                return self._find_adapter()
+            except RuntimeError:
+                iterate_main_loop(self.bus, self._loop_mode)
+        self._list_adapters()
+        raise RuntimeError(
+            "no BLE adapter with GATT and advertising support found after "
+            f"{self.adapter_wait}s"
+        )
 
     def _on_command(self, data: bytes) -> None:
         def worker() -> None:
@@ -246,9 +293,17 @@ class GattProvisioner:
         ad_manager.RegisterAdvertisement(
             advertisement.get_path(),
             {},
-            reply_handler=lambda: logger.info("advertisement registered"),
+            reply_handler=lambda: self._mark_ad_registered(),
             error_handler=self._register_error("advertisement"),
         )
+
+    def _mark_gatt_registered(self) -> None:
+        self._gatt_registered = True
+        logger.info("GATT application registered")
+
+    def _mark_ad_registered(self) -> None:
+        self._ad_registered = True
+        logger.info("advertisement registered")
 
     def _register_application(self) -> None:
         assert self.bus is not None and self.adapter_path is not None
@@ -292,16 +347,27 @@ class GattProvisioner:
         gatt_manager.RegisterApplication(
             app.get_path(),
             {},
-            reply_handler=lambda: logger.info("GATT application registered"),
+            reply_handler=lambda: self._mark_gatt_registered(),
             error_handler=self._register_error("GATT application"),
         )
 
     def _register_error(self, label: str) -> Callable[[Any], None]:
         def handler(error: Any) -> None:
             logger.error("%s registration failed: %s", label, error)
+            self._registration_failed = True
             self._running = False
 
         return handler
+
+    def _wait_for_registration(self) -> None:
+        assert self.bus is not None
+        for _ in range(100):
+            if self._registration_failed:
+                raise RuntimeError("GATT or advertisement registration failed")
+            if self._gatt_registered and self._ad_registered:
+                return
+            iterate_main_loop(self.bus, self._loop_mode)
+        raise RuntimeError("timed out waiting for GATT registration")
 
     def _dispatch_pending_events(self) -> None:
         while True:
@@ -313,8 +379,9 @@ class GattProvisioner:
                 self.event_characteristic.send_notification(response)
 
     def run(self) -> None:
+        self._loop_mode = setup_dbus_main_loop()
         self.bus = dbus.SystemBus()
-        self.adapter_path = self._find_adapter()
+        self.adapter_path = self._wait_for_adapter()
         logger.info("using adapter %s", self.adapter_path)
 
         props = dbus.Interface(
@@ -322,12 +389,17 @@ class GattProvisioner:
             DBUS_PROP_IFACE,
         )
         props.Set("org.bluez.Adapter1", "Powered", dbus.Boolean(True))
+        props.Set("org.bluez.Adapter1", "Discoverable", dbus.Boolean(True))
         props.Set("org.bluez.Adapter1", "Alias", self.local_name)
 
         self._register_application()
         self._register_advertisement()
+        self._wait_for_registration()
+        logger.info("BLE WiFi provisioning active as %s", self.local_name)
 
         while self._running:
             self._dispatch_pending_events()
-            if self.bus.connection.read_write_dispatch(timeout=200):
-                continue
+            iterate_main_loop(self.bus, self._loop_mode)
+
+        if self._registration_failed:
+            raise RuntimeError("GATT or advertisement registration failed")

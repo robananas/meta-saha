@@ -126,9 +126,12 @@ grep -q 'a0a0ff10-0000-1000-8000-00805f9b34fb' \
 grep -q 'nmcli' \
   "$ROOT_DIR/saha-layers/meta-tegra-saha/recipes-saha/bt-wifi-provision/saha-bt-wifi-provision/wifi_manager.py" ||
   fail "WiFi provision service must integrate with nmcli"
-grep -q 'multi-user.target.wants/saha-bt-wifi-provision.service' \
+grep -q 'dbus-glib' \
   "$BT_WIFI_PROVISION" ||
-  fail "saha-bt-wifi-provision must enable systemd service at install time"
+  fail "saha-bt-wifi-provision must depend on dbus-glib for dbus main loop integration"
+grep -q 'setup_dbus_main_loop' \
+  "$ROOT_DIR/saha-layers/meta-tegra-saha/recipes-saha/bt-wifi-provision/saha-bt-wifi-provision/gatt_server.py" ||
+  fail "gatt server must install a dbus main loop before exporting objects"
 grep -q 'saha-homeassistant-container-image' \
   "$ROOT_DIR/saha-layers/meta-tegra-saha/recipes-saha/packagegroups/packagegroup-saha-docker-images.bb" ||
   fail "docker images packagegroup must include the Home Assistant image recipe"
@@ -382,8 +385,12 @@ BLUEZ_APPEND="$ROOT_DIR/saha-layers/meta-tegra-saha/recipes-connectivity/bluez/b
   fail "bluez5 bbappend must exist"
 grep -q 'Roban-Bluetooth' "$ROOT_DIR/saha-layers/meta-tegra-saha/recipes-connectivity/bluez/bluez5/main.conf" ||
   fail "bluez5 must set the Roban-Bluetooth adapter name"
-grep -q 'SYSTEMD_AUTO_ENABLE:${PN} = "enable"' "$BLUEZ_APPEND" ||
-  fail "bluez5 must enable bluetooth.service at install time"
+grep -q 'Experimental = true' \
+  "$ROOT_DIR/saha-layers/meta-tegra-saha/recipes-connectivity/bluez/bluez5/main.conf" ||
+  fail "bluez5 must enable experimental GATT support"
+grep -q 'saha-bt-wifi-provision-wait' \
+  "$BT_WIFI_PROVISION" ||
+  fail "saha-bt-wifi-provision must install adapter wait helper"
 grep -q 'packagegroup-saha-bluetooth' "$ROOT_DIR/saha-layers/meta-tegra-saha/recipes-saha/images/saha-image-common.inc" ||
   fail "default Saha images must include bluetooth packagegroup"
 grep -q 'bluetooth' "$ROOT_DIR/saha-layers/meta-tegra-saha/conf/distro/tegra-saha.conf" ||

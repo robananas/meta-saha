@@ -4,3 +4,5 @@ build
 .docker-cache
 downloads
 sstate-cache
+__pycache__/
+*.pyc

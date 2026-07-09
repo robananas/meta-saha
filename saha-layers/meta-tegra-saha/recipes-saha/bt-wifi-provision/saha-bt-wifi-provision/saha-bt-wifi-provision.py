@@ -15,8 +15,9 @@ def main() -> int:
         format="%(asctime)s %(levelname)s %(name)s: %(message)s",
     )
     local_name = os.environ.get("SAHA_BT_WIFI_LOCAL_NAME", "Roban-Bluetooth")
+    adapter_wait = int(os.environ.get("SAHA_BT_WIFI_ADAPTER_WAIT", "120"))
     try:
-        GattProvisioner(local_name=local_name).run()
+        GattProvisioner(local_name=local_name, adapter_wait=adapter_wait).run()
     except KeyboardInterrupt:
         return 0
     except Exception:

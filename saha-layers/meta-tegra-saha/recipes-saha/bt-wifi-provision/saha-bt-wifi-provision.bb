@@ -7,6 +7,8 @@ LIC_FILES_CHKSUM = "file://${COMMON_LICENSE_DIR}/MIT;md5=0835ade698e0bcf8506ecda
 SRC_URI = " \
     file://saha-bt-wifi-provision.py \
     file://saha-bt-wifi-provision.sh \
+    file://saha-bt-wifi-provision-wait.sh \
+    file://dbus_mainloop.py \
     file://gatt_server.py \
     file://wifi_manager.py \
     file://saha-bt-wifi-provision.env \
@@ -21,6 +23,7 @@ SYSTEMD_AUTO_ENABLE:${PN} = "enable"
 
 RDEPENDS:${PN} = " \
     bluez5 \
+    dbus-glib \
     networkmanager-nmcli \
     python3-core \
     python3-dbus \
@@ -29,11 +32,13 @@ RDEPENDS:${PN} = " \
 do_install() {
     install -d ${D}${libdir}/saha-bt-wifi-provision
     install -m 0644 ${UNPACKDIR}/saha-bt-wifi-provision.py ${D}${libdir}/saha-bt-wifi-provision/
+    install -m 0644 ${UNPACKDIR}/dbus_mainloop.py ${D}${libdir}/saha-bt-wifi-provision/
     install -m 0644 ${UNPACKDIR}/gatt_server.py ${D}${libdir}/saha-bt-wifi-provision/
     install -m 0644 ${UNPACKDIR}/wifi_manager.py ${D}${libdir}/saha-bt-wifi-provision/
 
     install -d ${D}${bindir}
     install -m 0755 ${UNPACKDIR}/saha-bt-wifi-provision.sh ${D}${bindir}/saha-bt-wifi-provision
+    install -m 0755 ${UNPACKDIR}/saha-bt-wifi-provision-wait.sh ${D}${bindir}/saha-bt-wifi-provision-wait
     sed -i "s,@libdir@,${libdir},g" ${D}${bindir}/saha-bt-wifi-provision
 
     install -d ${D}${sysconfdir}/default
