@@ -1,0 +1,8 @@
+This recipe fetches the official Home Assistant container image during
+bitbake and installs it as a docker-archive tarball for offline docker
+load on the target.
+
+Build-time source priority:
+1. ${DL_DIR}/homeassistant-container.tar
+2. Local Docker image via host docker socket (docker save)
+3. Remote registry fetch with skopeo

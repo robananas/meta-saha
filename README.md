@@ -120,6 +120,19 @@ minicom -D /dev/ttyUSB0
 
 Change the empty root password before using the image outside bring-up.
 
+### WiFi on the device
+
+Saha images include NetworkManager with `nmcli` for WiFi setup. USB gadget networking (`l4tbr0`, `192.168.55.1`) stays on systemd-networkd; NetworkManager manages WiFi only.
+
+```bash
+nmcli dev wifi list
+nmcli dev wifi connect "YOUR_SSID" password "YOUR_PASSWORD"
+nmcli dev status
+ip addr show wlan0
+```
+
+If the WiFi interface name is not `wlan0`, use the name shown by `nmcli dev status`.
+
 Override cache/build locations with environment variables:
 
 ```bash
@@ -202,6 +215,81 @@ Validate a target kas configuration without fetching repositories or starting a 
 
 This is a fast schema/include/config expansion check. A full `saha-build` still depends on network checkout and bitbake.
 
+## Home Assistant container
+
+By default, `saha-image-robot` includes Docker, the official Home Assistant container launcher, and a preloaded Home Assistant container image. Disable that stack at build time with:
+
+```bash
+SAHA_HOMEASSISTANT=0 ./scripts/saha-build orin-nx-16g-p3768
+```
+
+This omits `docker`, the Home Assistant launcher, the preloaded tarball, and the extra rootfs space reserved for it. ROS 2, USB gadget networking, and WiFi support are unaffected.
+
+During the Yocto build, `saha-homeassistant-container-image` installs the image at `/usr/share/saha/homeassistant/image.tar`. On first boot, `homeassistant-container.service` uses any existing local Docker image first, otherwise runs `docker load` from that tarball, and only pulls remotely when `SAHA_HOMEASSISTANT_PULL=1`.
+
+### Build-time image source priority
+
+While building `saha-homeassistant-container-image`, bitbake uses the first available source:
+
+1. `${DL_DIR}/homeassistant-container.tar` (default host path: `downloads/homeassistant-container.tar`)
+2. A local Docker image via the host Docker socket (`SAHA_USE_HOST_DOCKER=1`, default)
+3. Remote registry fetch with `skopeo`
+
+Export your local Docker image into the shared download cache:
+
+```bash
+docker pull --platform linux/arm64 ghcr.io/home-assistant/home-assistant:stable
+docker save ghcr.io/home-assistant/home-assistant:stable -o downloads/homeassistant-container.tar
+./scripts/saha-build orin-nx-16g-p3768
+```
+
+The Jetson target needs the `linux/arm64` image. An amd64-only local image is skipped automatically.
+
+Disable host Docker reuse during Yocto builds with:
+
+```bash
+SAHA_USE_HOST_DOCKER=0 ./scripts/saha-build orin-nx-16g-p3768
+```
+
+After flashing, Home Assistant can start offline as long as the preloaded image is present.
+
+Defaults live in `/etc/default/homeassistant-container`:
+
+| Variable | Default |
+| --- | --- |
+| `SAHA_HOMEASSISTANT_CONFIG_DIR` | `/var/lib/homeassistant` |
+| `SAHA_HOMEASSISTANT_IMAGE` | `ghcr.io/home-assistant/home-assistant:stable` |
+| `SAHA_HOMEASSISTANT_IMAGE_TAR` | `/usr/share/saha/homeassistant/image.tar` |
+| `SAHA_HOMEASSISTANT_CONTAINER_NAME` | `homeassistant` |
+| `SAHA_HOMEASSISTANT_TIMEZONE` | `UTC` |
+| `SAHA_HOMEASSISTANT_PULL` | `0` |
+
+Set `SAHA_HOMEASSISTANT_PULL=1` to fall back to `docker pull` when the preloaded tarball is missing.
+
+Then open:
+
+```text
+http://<device-ip>:8123
+```
+
+Check service status on the device:
+
+```bash
+systemctl status homeassistant-container docker
+journalctl -u homeassistant-container -b --no-pager
+ls -lh /usr/share/saha/homeassistant/image.tar
+/usr/bin/saha-homeassistant-container start
+docker images
+docker ps -a
+```
+
+If the service failed on first boot, reload the preloaded image manually:
+
+```bash
+docker load -i /usr/share/saha/homeassistant/image.tar
+systemctl restart homeassistant-container
+```
+
 ## ROS 2
 
 `saha-image-robot` includes ROS 2 by default through `ros-base` and `ros2cli-common-extensions`. There is no separate ROS image target; build and flash `saha-image-robot` for the robot rootfs.
@@ -213,6 +301,11 @@ Supported ROS 2 distros:
 | `jazzy` | `kas/include/ros-distro-jazzy.yml` |
 | `lyrical` | `kas/include/ros-distro-lyrical.yml` |
 
+| `SAHA_HOMEASSISTANT` | Effect |
+| --- | --- |
+| `1` (default) | Include Docker and the preloaded Home Assistant image |
+| `0` | Omit Docker, Home Assistant launcher, and preloaded image |
+
 After flashing, initialize the ROS environment with:
 
 ```bash
@@ -222,9 +315,9 @@ ros2 --help
 
 ## Image scope
 
-The supported image target is `saha-image-robot`. It is layered on the reusable `saha-image-base` recipe and includes the Jetson BSP base, CUDA runtime libraries, OpenSSH bring-up access, USB device-mode networking support, and the configured ROS 2 runtime and CLI tools.
+The supported image target is `saha-image-robot`. It is layered on the reusable `saha-image-base` recipe and includes the Jetson BSP base, CUDA runtime libraries, OpenSSH bring-up access, USB device-mode networking support, NetworkManager with `nmcli` for WiFi, the configured ROS 2 runtime and CLI tools, and by default Docker with the official Home Assistant container launcher.
 
-The image does not include CUDA samples or Jetson container runtime tooling. Add `nvidia-container-toolkit` later through an optional image or kas include if container runtime support is required; OE4T R39.2 removed the old `nvidia-docker` recipe.
+The image does not include CUDA samples or Jetson GPU container runtime tooling. Add `nvidia-container-toolkit` later through an optional image or kas include if GPU-backed containers are required; OE4T R39.2 removed the old `nvidia-docker` recipe.
 
 ## Add a target
 
