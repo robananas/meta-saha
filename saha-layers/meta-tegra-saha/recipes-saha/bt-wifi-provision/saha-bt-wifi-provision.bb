@@ -26,7 +26,10 @@ RDEPENDS:${PN} = " \
     dbus-glib \
     networkmanager-nmcli \
     python3-core \
+    python3-ctypes \
     python3-dbus \
+    python3-json \
+    python3-threading \
 "
 
 do_install() {

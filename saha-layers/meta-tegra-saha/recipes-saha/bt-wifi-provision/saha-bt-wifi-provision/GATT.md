@@ -7,6 +7,8 @@ This document describes the BLE GATT interface exposed by
 
 - Local name: `Roban-Bluetooth` (override with `SAHA_BT_WIFI_LOCAL_NAME`)
 - Transport: BLE (GATT client connects to the Jetson peripheral)
+- Pairing: BlueZ `NoInputNoOutput` / Just Works bonding (no PIN entry)
+- Security: characteristics require an encrypted, paired connection
 
 ## Service
 
@@ -120,11 +122,12 @@ Failure example:
 ## Recommended Android flow
 
 1. Scan for BLE peripheral `Roban-Bluetooth`
-2. Connect GATT and discover service `a0a0ff10-...`
-3. Enable notifications on `a0a0ff13-...`
-4. Read `a0a0ff11-...` or write `{"cmd":"status"}` to check current WiFi
-5. Write `{"cmd":"scan"}` and wait for scan event
-6. Write `{"cmd":"connect",...}` and wait for connect event with IP details
+2. Pair/bond using Just Works when Android prompts (no PIN)
+3. Connect GATT and discover service `a0a0ff10-...`
+4. Enable notifications on `a0a0ff13-...`
+5. Read `a0a0ff11-...` or write `{"cmd":"status"}` to check current WiFi
+6. Write `{"cmd":"scan"}` and wait for scan event
+7. Write `{"cmd":"connect",...}` and wait for connect event with IP details
 
 ## Notes
 

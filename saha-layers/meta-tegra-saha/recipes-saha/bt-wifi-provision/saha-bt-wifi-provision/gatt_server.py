@@ -24,6 +24,8 @@ DBUS_PROP_IFACE = "org.freedesktop.DBus.Properties"
 GATT_SERVICE_IFACE = "org.bluez.GattService1"
 GATT_CHRC_IFACE = "org.bluez.GattCharacteristic1"
 LE_ADVERTISEMENT_IFACE = "org.bluez.LEAdvertisement1"
+AGENT_MANAGER_IFACE = "org.bluez.AgentManager1"
+AGENT_IFACE = "org.bluez.Agent1"
 
 SERVICE_UUID = "a0a0ff10-0000-1000-8000-00805f9b34fb"
 WIFI_STATUS_UUID = "a0a0ff11-0000-1000-8000-00805f9b34fb"
@@ -36,6 +38,7 @@ STATUS_PATH = f"{SERVICE_PATH}/char0000"
 COMMAND_PATH = f"{SERVICE_PATH}/char0001"
 EVENT_PATH = f"{SERVICE_PATH}/char0002"
 ADVERTISEMENT_PATH = f"{APPLICATION_PATH}/advertisement0000"
+AGENT_PATH = f"{APPLICATION_PATH}/agent"
 
 logger = logging.getLogger("saha-bt-wifi-provision")
 
@@ -46,6 +49,37 @@ class InvalidArgsException(dbus.exceptions.DBusException):
 
 class NotSupportedException(dbus.exceptions.DBusException):
     _dbus_error_name = "org.bluez.Error.NotSupported"
+
+
+class PairingAgent(dbus.service.Object):
+    """BlueZ NoInputNoOutput agent for Just Works bonding."""
+
+    def __init__(self, bus: dbus.SystemBus) -> None:
+        self.path = AGENT_PATH
+        dbus.service.Object.__init__(self, bus, self.path)
+
+    def get_path(self) -> dbus.ObjectPath:
+        return dbus.ObjectPath(self.path)
+
+    @dbus.service.method(AGENT_IFACE, in_signature="", out_signature="")
+    def Release(self) -> None:
+        logger.info("pairing agent released")
+
+    @dbus.service.method(AGENT_IFACE, in_signature="ou", out_signature="")
+    def RequestConfirmation(self, device: dbus.ObjectPath, passkey: int) -> None:
+        logger.info("accepting Just Works pairing from %s (passkey %06d)", device, passkey)
+
+    @dbus.service.method(AGENT_IFACE, in_signature="o", out_signature="")
+    def RequestAuthorization(self, device: dbus.ObjectPath) -> None:
+        logger.info("authorizing Just Works pairing from %s", device)
+
+    @dbus.service.method(AGENT_IFACE, in_signature="os", out_signature="")
+    def AuthorizeService(self, device: dbus.ObjectPath, uuid: str) -> None:
+        logger.info("authorizing service %s for %s", uuid, device)
+
+    @dbus.service.method(AGENT_IFACE, in_signature="", out_signature="")
+    def Cancel(self) -> None:
+        logger.info("pairing request cancelled")
 
 
 class Application(dbus.service.Object):
@@ -227,6 +261,7 @@ class GattProvisioner:
         self._ad_registered = False
         self._registration_failed = False
         self._loop_mode = "null"
+        self._pairing_agent: PairingAgent | None = None
 
     def _list_adapters(self) -> None:
         assert self.bus is not None
@@ -283,6 +318,17 @@ class GattProvisioner:
 
         threading.Thread(target=worker, daemon=True).start()
 
+    def _register_pairing_agent(self) -> None:
+        assert self.bus is not None
+        self._pairing_agent = PairingAgent(self.bus)
+        manager = dbus.Interface(
+            self.bus.get_object(BLUEZ_SERVICE_NAME, "/org/bluez"),
+            AGENT_MANAGER_IFACE,
+        )
+        manager.RegisterAgent(self._pairing_agent.get_path(), "NoInputNoOutput")
+        manager.RequestDefaultAgent(self._pairing_agent.get_path())
+        logger.info("registered NoInputNoOutput pairing agent")
+
     def _register_advertisement(self) -> None:
         assert self.bus is not None and self.adapter_path is not None
         ad_manager = dbus.Interface(
@@ -314,7 +360,7 @@ class GattProvisioner:
             self.bus,
             0,
             WIFI_STATUS_UUID,
-            ["read"],
+            ["read", "encrypt-read"],
             service,
             read_handler=lambda: encode_json(get_wifi_status()),
         )
@@ -322,7 +368,7 @@ class GattProvisioner:
             self.bus,
             1,
             WIFI_COMMAND_UUID,
-            ["write", "write-without-response"],
+            ["write", "write-without-response", "encrypt-write"],
             service,
             write_handler=self._on_command,
         )
@@ -330,7 +376,7 @@ class GattProvisioner:
             self.bus,
             2,
             WIFI_EVENT_UUID,
-            ["notify"],
+            ["notify", "encrypt-read"],
             service,
         )
         self.event_characteristic = event_char
@@ -390,8 +436,10 @@ class GattProvisioner:
         )
         props.Set("org.bluez.Adapter1", "Powered", dbus.Boolean(True))
         props.Set("org.bluez.Adapter1", "Discoverable", dbus.Boolean(True))
+        props.Set("org.bluez.Adapter1", "Pairable", dbus.Boolean(True))
         props.Set("org.bluez.Adapter1", "Alias", self.local_name)
 
+        self._register_pairing_agent()
         self._register_application()
         self._register_advertisement()
         self._wait_for_registration()

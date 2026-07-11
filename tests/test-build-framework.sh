@@ -191,9 +191,30 @@ grep -q 'nmcli' \
 grep -q 'dbus-glib' \
   "$BT_WIFI_PROVISION" ||
   fail "saha-bt-wifi-provision must depend on dbus-glib for dbus main loop integration"
+grep -q 'python3-ctypes' \
+  "$BT_WIFI_PROVISION" ||
+  fail "saha-bt-wifi-provision must depend on python3-ctypes for glib main loop integration"
+grep -q 'python3-json' \
+  "$BT_WIFI_PROVISION" ||
+  fail "saha-bt-wifi-provision must depend on python3-json for WiFi command payloads"
+grep -q 'python3-threading' \
+  "$BT_WIFI_PROVISION" ||
+  fail "saha-bt-wifi-provision must depend on python3-threading for BLE command queue handling"
+grep -q 'python3-subprocess' \
+  "$BT_WIFI_PROVISION" &&
+  fail "saha-bt-wifi-provision must not depend on python3-subprocess on wrynose; subprocess is in python3-core"
 grep -q 'setup_dbus_main_loop' \
   "$ROOT_DIR/saha-layers/meta-tegra-saha/recipes-saha/bt-wifi-provision/saha-bt-wifi-provision/gatt_server.py" ||
   fail "gatt server must install a dbus main loop before exporting objects"
+grep -q 'RegisterAgent' \
+  "$ROOT_DIR/saha-layers/meta-tegra-saha/recipes-saha/bt-wifi-provision/saha-bt-wifi-provision/gatt_server.py" ||
+  fail "gatt server must register a BlueZ pairing agent"
+grep -q 'NoInputNoOutput' \
+  "$ROOT_DIR/saha-layers/meta-tegra-saha/recipes-saha/bt-wifi-provision/saha-bt-wifi-provision/gatt_server.py" ||
+  fail "gatt server must use Just Works pairing capability"
+grep -q 'encrypt-write' \
+  "$ROOT_DIR/saha-layers/meta-tegra-saha/recipes-saha/bt-wifi-provision/saha-bt-wifi-provision/gatt_server.py" ||
+  fail "WiFi provisioning writes must require an encrypted connection"
 grep -q 'saha-homeassistant-container-image' \
   "$ROOT_DIR/saha-layers/meta-tegra-saha/recipes-saha/packagegroups/packagegroup-saha-docker-images.bb" ||
   fail "docker images packagegroup must include the Home Assistant image recipe"
