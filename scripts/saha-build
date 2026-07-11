@@ -9,10 +9,16 @@ usage() {
   cat <<'USAGE'
 Usage: scripts/saha-build <target>
 
-Build saha-image-robot for a supported Jetson target inside Docker.
-Set SAHA_ROS_DISTRO=jazzy or SAHA_ROS_DISTRO=lyrical to choose the ROS 2 distro.
-Set HAVE_DOCKER_IMAGE=0 to omit Docker, docker compose, and preloaded container images.
-Run scripts/saha-targets to list targets.
+Build a Saha robot image for a supported Jetson target inside Docker.
+Run scripts/saha-robot-images to list image profiles and recipes.
+Set SAHA_ROBOT_IMAGE=robot|robot-base|robot-ros|robot-docker to choose the image.
+  robot (default)        saha-image-robot         ROS + Docker
+  robot-base             saha-image-robot-base    base system only
+  robot-ros              saha-image-robot-ros     ROS, no Docker
+  robot-docker           saha-image-robot-docker  Docker, no ROS
+Set SAHA_ROS_DISTRO=jazzy or SAHA_ROS_DISTRO=lyrical when the profile includes ROS 2.
+HAVE_DOCKER_IMAGE and HAVE_ROS remain supported as legacy aliases for the profiles above.
+Run scripts/saha-targets to list hardware targets.
 USAGE
 }
 

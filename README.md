@@ -246,15 +246,46 @@ Validate a target kas configuration without fetching repositories or starting a 
 
 This is a fast schema/include/config expansion check. A full `saha-build` still depends on network checkout and bitbake.
 
-## Docker application stack
+## Robot image profiles
 
-By default, `saha-image-robot` includes Docker, `docker compose`, and preloaded container images for Home Assistant, Matter Server, and `roban-workflow-api:arm64`. Disable the stack at build time with:
+Four bitbake image recipes cover the ROS/Docker combinations:
+
+| `SAHA_ROBOT_IMAGE` | Image recipe | ROS 2 | Docker stack |
+| --- | --- | --- | --- |
+| `robot` (default) | `saha-image-robot` | yes | yes |
+| `robot-base` | `saha-image-robot-base` | no | no |
+| `robot-ros` | `saha-image-robot-ros` | yes | no |
+| `robot-docker` | `saha-image-robot-docker` | no | yes |
+
+List profiles:
 
 ```bash
-HAVE_DOCKER_IMAGE=0 ./scripts/saha-build orin-nx-16g-p3768
+./scripts/saha-robot-images
 ```
 
-This omits `docker`, `docker-compose`, the compose launcher, preloaded tarballs, and the extra rootfs space reserved for them. ROS 2, USB gadget networking, and WiFi support are unaffected.
+Examples:
+
+```bash
+# Full image (default)
+./scripts/saha-build orin-nx-16g-p3768
+
+# Bluetooth WiFi provisioning only
+SAHA_ROBOT_IMAGE=robot-base ./scripts/saha-build orin-nx-16g-p3768
+
+# ROS without containers
+SAHA_ROBOT_IMAGE=robot-ros ./scripts/saha-build orin-nx-16g-p3768
+
+# Containers without ROS
+SAHA_ROBOT_IMAGE=robot-docker ./scripts/saha-build orin-nx-16g-p3768
+```
+
+Build output goes to profile-specific directories such as `build/orin-nx-16g-p3768-robot-base/`. Flash artifacts use the selected recipe name, for example `saha-image-robot-base-p3768-0000-p3767-0000.rootfs.tegraflash-tar.zst`.
+
+`HAVE_DOCKER_IMAGE` and `HAVE_ROS` remain supported as legacy aliases that map to the profiles above.
+
+## Docker application stack
+
+By default, `saha-image-robot` includes Docker, `docker compose`, and preloaded container images for Home Assistant, Matter Server, and `roban-workflow-api:arm64`. Use `SAHA_ROBOT_IMAGE=robot-ros` or `robot-base` to omit the stack.
 
 On the device, `saha-docker-compose.service` loads the prebuilt images and starts the stack from `/opt/roban/compose/compose.yaml`. Data paths use `/var/lib/homeassistant` and `/var/lib/matter-server`. To change the stack, edit `saha-layers/meta-tegra-saha/recipes-saha/docker-compose/saha-docker-compose/compose.yaml` and rebuild.
 
@@ -307,7 +338,7 @@ Home Assistant is available at `http://<device-ip>:8123` once the stack is runni
 
 ## ROS 2
 
-`saha-image-robot` includes ROS 2 by default through `ros-base` and `ros2cli-common-extensions`. There is no separate ROS image target; build and flash `saha-image-robot` for the robot rootfs.
+`saha-image-robot` and `saha-image-robot-ros` include ROS 2 through `ros-base` and `ros2cli-common-extensions`. Profiles without ROS skip the `meta-ros` layer entirely.
 
 Supported ROS 2 distros:
 
@@ -316,10 +347,15 @@ Supported ROS 2 distros:
 | `jazzy` | `kas/include/ros-distro-jazzy.yml` |
 | `lyrical` | `kas/include/ros-distro-lyrical.yml` |
 
-| `HAVE_DOCKER_IMAGE` | Effect |
+| `HAVE_DOCKER_IMAGE` | Legacy alias |
 | --- | --- |
-| `1` (default) | Include Docker, docker compose stack, and preloaded container images |
-| `0` | Omit Docker, compose launcher, and preloaded images |
+| `1` (default) | `robot` or `robot-ros` / `robot-docker` depending on `HAVE_ROS` |
+| `0` | selects a profile without Docker |
+
+| `HAVE_ROS` | Legacy alias |
+| --- | --- |
+| `1` (default) | `robot` or `robot-ros` / `robot-docker` depending on `HAVE_DOCKER_IMAGE` |
+| `0` | selects a profile without ROS 2 |
 
 After flashing, initialize the ROS environment with:
 
@@ -330,7 +366,7 @@ ros2 --help
 
 ## Image scope
 
-The supported image target is `saha-image-robot`. It is layered on the reusable `saha-image-base` recipe and includes the Jetson BSP base, CUDA runtime libraries, OpenSSH bring-up access, USB device-mode networking support, NetworkManager with `nmcli` for WiFi, BlueZ with Jetson Bluetooth support, the configured ROS 2 runtime and CLI tools, and by default Docker with a compose-managed application stack (Home Assistant, Matter Server, and Roban workflow API).
+All robot profiles share `saha-image-base` (Jetson BSP, CUDA runtime, OpenSSH, USB gadget networking, NetworkManager/`nmcli`, BlueZ/`saha-bt-wifi-provision`). The full `saha-image-robot` image adds ROS 2 and the Docker compose stack (Home Assistant, Matter Server, Roban workflow API).
 
 The image does not include CUDA samples or Jetson GPU container runtime tooling. Add `nvidia-container-toolkit` later through an optional image or kas include if GPU-backed containers are required; OE4T R39.2 removed the old `nvidia-docker` recipe.
 

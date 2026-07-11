@@ -1,0 +1,6 @@
+header:
+  version: 17
+
+local_conf_header:
+  saha-no-ros: |
+    SAHA_HAVE_ROS = "0"

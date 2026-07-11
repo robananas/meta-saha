@@ -1,0 +1,1 @@
+SAHA_ROBOT_IMAGE=robot-ros ./scripts/saha-build orin-nx-16g-p3768

@@ -7,7 +7,7 @@ if [ -f "$ENV_FILE" ]; then
     . "$ENV_FILE"
 fi
 
-WAIT="${SAHA_BT_WIFI_ADAPTER_WAIT:-120}"
+WAIT="${SAHA_BT_WIFI_ADAPTER_WAIT:-45}"
 INTERVAL=2
 elapsed=0
 

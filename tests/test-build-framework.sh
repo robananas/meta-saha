@@ -30,7 +30,7 @@ contains "$dry_run_output" "DOCKER_CONFIG="
 contains "$dry_run_output" "BUILDX_CONFIG="
 contains "$dry_run_output" "docker image inspect"
 contains "$dry_run_output" "meta-saha-yocto-builder:wrynose"
-contains "$dry_run_output" "kas build kas/targets/orin-nx-16g-p3768.yml:kas/include/ros-distro-jazzy.yml:kas/include/docker-images.yml"
+contains "$dry_run_output" "kas build kas/targets/orin-nx-16g-p3768.yml:kas/include/image-profile-robot.yml:kas/include/ros-distro-jazzy.yml:kas/include/docker-images.yml"
 contains "$dry_run_output" "/work/build/orin-nx-16g-p3768"
 contains "$dry_run_output" "KAS_WORK_DIR=/work/build/orin-nx-16g-p3768"
 contains "$dry_run_output" "GIT_HTTP_VERSION=HTTP/1.1"
@@ -64,7 +64,7 @@ lyrical_dry_run_output="$(
     SAHA_ROS_DISTRO=lyrical \
     "$ROOT_DIR/scripts/saha-build" orin-nx-16g-p3768
 )"
-contains "$lyrical_dry_run_output" "kas build kas/targets/orin-nx-16g-p3768.yml:kas/include/ros-distro-lyrical.yml:kas/include/docker-images.yml"
+contains "$lyrical_dry_run_output" "kas build kas/targets/orin-nx-16g-p3768.yml:kas/include/image-profile-robot.yml:kas/include/ros-distro-lyrical.yml:kas/include/docker-images.yml"
 contains "$lyrical_dry_run_output" "/build/orin-nx-16g-p3768-ros-lyrical:/work/build/orin-nx-16g-p3768"
 
 no_docker_dry_run_output="$(
@@ -73,10 +73,63 @@ no_docker_dry_run_output="$(
     HAVE_DOCKER_IMAGE=0 \
     "$ROOT_DIR/scripts/saha-build" orin-nx-16g-p3768
 )"
-contains "$no_docker_dry_run_output" "kas build kas/targets/orin-nx-16g-p3768.yml:kas/include/ros-distro-jazzy.yml"
+contains "$no_docker_dry_run_output" "kas build kas/targets/orin-nx-16g-p3768.yml:kas/include/image-profile-robot-ros.yml:kas/include/ros-distro-jazzy.yml"
+contains "$no_docker_dry_run_output" "/build/orin-nx-16g-p3768-robot-ros:/work/build/orin-nx-16g-p3768"
 if [[ "$no_docker_dry_run_output" == *"docker-images.yml"* ]]; then
   fail "HAVE_DOCKER_IMAGE=0 must omit the docker images kas include"
 fi
+
+no_ros_dry_run_output="$(
+  env \
+    SAHA_DRY_RUN=1 \
+    HAVE_ROS=0 \
+    "$ROOT_DIR/scripts/saha-build" orin-nx-16g-p3768
+)"
+contains "$no_ros_dry_run_output" "kas build kas/targets/orin-nx-16g-p3768.yml:kas/include/image-profile-robot-docker.yml:kas/include/no-ros.yml:kas/include/docker-images.yml"
+contains "$no_ros_dry_run_output" "/build/orin-nx-16g-p3768-robot-docker:/work/build/orin-nx-16g-p3768"
+if [[ "$no_ros_dry_run_output" == *"ros-distro-"* ]]; then
+  fail "HAVE_ROS=0 must omit ros-distro kas includes"
+fi
+
+slim_dry_run_output="$(
+  env \
+    SAHA_DRY_RUN=1 \
+    HAVE_DOCKER_IMAGE=0 \
+    HAVE_ROS=0 \
+    "$ROOT_DIR/scripts/saha-build" orin-nx-16g-p3768
+)"
+contains "$slim_dry_run_output" "kas build kas/targets/orin-nx-16g-p3768.yml:kas/include/image-profile-robot-base.yml:kas/include/no-ros.yml"
+contains "$slim_dry_run_output" "/build/orin-nx-16g-p3768-robot-base:/work/build/orin-nx-16g-p3768"
+if [[ "$slim_dry_run_output" == *"docker-images.yml"* ]] ||
+   [[ "$slim_dry_run_output" == *"ros-distro-"* ]]; then
+  fail "slim build must omit docker images and ros-distro kas includes"
+fi
+
+if SAHA_ROBOT_IMAGE=maybe "$ROOT_DIR/scripts/saha-build" orin-nx-16g-p3768 >/tmp/saha-invalid-robot-image.out 2>&1; then
+  fail "invalid SAHA_ROBOT_IMAGE values must be rejected"
+fi
+grep -q 'Unsupported robot image profile' /tmp/saha-invalid-robot-image.out ||
+  fail "invalid SAHA_ROBOT_IMAGE values must report a clear error"
+
+robot_base_dry_run_output="$(
+  env \
+    SAHA_DRY_RUN=1 \
+    SAHA_ROBOT_IMAGE=robot-base \
+    "$ROOT_DIR/scripts/saha-build" orin-nx-16g-p3768
+)"
+contains "$robot_base_dry_run_output" "kas build kas/targets/orin-nx-16g-p3768.yml:kas/include/image-profile-robot-base.yml:kas/include/no-ros.yml"
+contains "$robot_base_dry_run_output" "/build/orin-nx-16g-p3768-robot-base:/work/build/orin-nx-16g-p3768"
+
+robot_images_output="$("$ROOT_DIR/scripts/saha-robot-images")"
+contains "$robot_images_output" "robot-base"
+contains "$robot_images_output" "saha-image-robot-base"
+contains "$robot_images_output" "saha-image-robot-docker"
+
+if HAVE_ROS=maybe "$ROOT_DIR/scripts/saha-build" orin-nx-16g-p3768 >/tmp/saha-invalid-ros-flag.out 2>&1; then
+  fail "invalid HAVE_ROS values must be rejected"
+fi
+grep -q 'Unsupported HAVE_ROS value' /tmp/saha-invalid-ros-flag.out ||
+  fail "invalid HAVE_ROS values must report a clear error"
 
 if HAVE_DOCKER_IMAGE=maybe "$ROOT_DIR/scripts/saha-build" orin-nx-16g-p3768 >/tmp/saha-invalid-docker.out 2>&1; then
   fail "invalid HAVE_DOCKER_IMAGE values must be rejected"
@@ -90,9 +143,18 @@ grep -q 'Unsupported HAVE_DOCKER_IMAGE value' /tmp/saha-invalid-docker.out ||
 if [ ! -f "$ROOT_DIR/kas/include/docker-images.yml" ]; then
   fail "docker images kas include must exist"
 fi
-grep -q 'packagegroup-saha-docker-images' \
+grep -q 'IMAGE_ROOTFS_EXTRA_SPACE:append:pn-saha-image-robot' \
   "$ROOT_DIR/kas/include/docker-images.yml" ||
-  fail "docker images kas include must install the packagegroup"
+  fail "docker images kas include must reserve rootfs space for robot images"
+grep -q 'IMAGE_ROOTFS_EXTRA_SPACE:append:pn-saha-image-robot-docker' \
+  "$ROOT_DIR/kas/include/docker-images.yml" ||
+  fail "docker images kas include must reserve rootfs space for robot-docker"
+grep -q 'packagegroup-saha-docker-images' \
+  "$ROOT_DIR/saha-layers/meta-tegra-saha/recipes-saha/images/saha-image-robot.bb" ||
+  fail "saha-image-robot must install the docker images packagegroup"
+grep -q 'packagegroup-saha-docker-images' \
+  "$ROOT_DIR/saha-layers/meta-tegra-saha/recipes-saha/images/saha-image-robot-docker.bb" ||
+  fail "saha-image-robot-docker must install the docker images packagegroup"
 grep -q 'saha-docker-compose' \
   "$ROOT_DIR/saha-layers/meta-tegra-saha/recipes-saha/packagegroups/packagegroup-saha-docker-images.bb" ||
   fail "docker images packagegroup must install docker compose launcher"
@@ -292,17 +354,39 @@ grep -A2 '^target:$' "$ROOT_DIR/kas/include/base.yml" |
   grep -qxF '  - saha-image-robot' ||
   fail "default kas build target must be saha-image-robot"
 
-grep -q 'Build saha-image-robot' "$ROOT_DIR/scripts/saha-build" ||
-  fail "saha-build help must describe the robot image target"
+grep -q 'Build a Saha robot image' "$ROOT_DIR/scripts/saha-build" ||
+  fail "saha-build help must describe robot image profiles"
 
 [ -f "$ROOT_DIR/saha-layers/meta-tegra-saha/recipes-saha/images/saha-image-robot.bb" ] ||
   fail "saha-image-robot recipe must exist"
+[ -f "$ROOT_DIR/saha-layers/meta-tegra-saha/recipes-saha/images/saha-image-robot-base.bb" ] ||
+  fail "saha-image-robot-base recipe must exist"
+[ -f "$ROOT_DIR/saha-layers/meta-tegra-saha/recipes-saha/images/saha-image-robot-ros.bb" ] ||
+  fail "saha-image-robot-ros recipe must exist"
+[ -f "$ROOT_DIR/saha-layers/meta-tegra-saha/recipes-saha/images/saha-image-robot-docker.bb" ] ||
+  fail "saha-image-robot-docker recipe must exist"
 grep -q 'packagegroup-saha-ros2' "$ROOT_DIR/saha-layers/meta-tegra-saha/recipes-saha/images/saha-image-robot.bb" ||
   fail "saha-image-robot must install the Saha ROS 2 packagegroup"
+grep -q 'packagegroup-saha-ros2' "$ROOT_DIR/saha-layers/meta-tegra-saha/recipes-saha/images/saha-image-robot-ros.bb" ||
+  fail "saha-image-robot-ros must install the Saha ROS 2 packagegroup"
+grep -q 'packagegroup-saha-ros2' "$ROOT_DIR/saha-layers/meta-tegra-saha/recipes-saha/images/saha-image-robot-base.bb" &&
+  fail "saha-image-robot-base must not install ROS 2"
+[ -f "$ROOT_DIR/kas/include/image-profile-robot-base.yml" ] ||
+  fail "robot-base kas profile must exist"
+grep -q 'saha-image-robot-base' "$ROOT_DIR/kas/include/image-profile-robot-base.yml" ||
+  fail "robot-base kas profile must target saha-image-robot-base"
+[ -f "$ROOT_DIR/kas/include/no-ros.yml" ] ||
+  fail "no-ros kas include must exist for profiles without ROS 2"
 
-ROS2_PACKAGEGROUP="$ROOT_DIR/saha-layers/meta-tegra-saha/recipes-saha/packagegroups/packagegroup-saha-ros2.bb"
+ROS2_PACKAGEGROUP="$ROOT_DIR/saha-layers/meta-tegra-saha/recipes-ros/packagegroups/packagegroup-saha-ros2.bb"
 [ -f "$ROS2_PACKAGEGROUP" ] ||
   fail "Saha ROS 2 packagegroup must exist"
+grep -q 'recipes-bsp/\*/\*' "$ROOT_DIR/saha-layers/meta-tegra-saha/conf/layer.conf" ||
+  fail "tegra-saha layer must enumerate non-ROS recipe directories explicitly"
+grep -q 'BBFILES_DYNAMIC' "$ROOT_DIR/saha-layers/meta-tegra-saha/conf/layer.conf" ||
+  fail "tegra-saha layer must use BBFILES_DYNAMIC for recipes-ros"
+grep -q 'ros2-layer:${LAYERDIR}/recipes-ros' "$ROOT_DIR/saha-layers/meta-tegra-saha/conf/layer.conf" ||
+  fail "recipes-ros must load only when ros2-layer is present"
 grep -q 'ros-base' "$ROS2_PACKAGEGROUP" ||
   fail "Saha ROS 2 packagegroup must install ROS 2 ros-base"
 grep -q 'ros2cli-common-extensions' "$ROS2_PACKAGEGROUP" ||
@@ -454,22 +538,22 @@ if rg -n 'rolling|apollo-nx|xavier-nx|tegra-rolling-kernel|tegra-saha-layout|dat
 fi
 
 shell_dry_run_output="$(SAHA_DRY_RUN=1 "$ROOT_DIR/scripts/saha-shell" agx-thor-devkit)"
-contains "$shell_dry_run_output" "kas shell kas/targets/agx-thor-devkit.yml:kas/include/ros-distro-jazzy.yml:kas/include/docker-images.yml"
+contains "$shell_dry_run_output" "kas shell kas/targets/agx-thor-devkit.yml:kas/include/image-profile-robot.yml:kas/include/ros-distro-jazzy.yml:kas/include/docker-images.yml"
 contains "$shell_dry_run_output" " -it "
 
 shell_command_dry_run_output="$(SAHA_DRY_RUN=1 "$ROOT_DIR/scripts/saha-shell" orin-nx-16g-p3768 -c "bitbake package-index")"
-contains "$shell_command_dry_run_output" "kas shell kas/targets/orin-nx-16g-p3768.yml:kas/include/ros-distro-jazzy.yml:kas/include/docker-images.yml -c bitbake\\ package-index"
+contains "$shell_command_dry_run_output" "kas shell kas/targets/orin-nx-16g-p3768.yml:kas/include/image-profile-robot.yml:kas/include/ros-distro-jazzy.yml:kas/include/docker-images.yml -c bitbake\\ package-index"
 if [[ "$shell_command_dry_run_output" == *" -it "* ]]; then
   fail "non-interactive shell command should not allocate a TTY"
 fi
 
 lyrical_shell_command_dry_run_output="$(SAHA_DRY_RUN=1 SAHA_ROS_DISTRO=lyrical "$ROOT_DIR/scripts/saha-shell" orin-nx-16g-p3768 -c "bitbake -p")"
-contains "$lyrical_shell_command_dry_run_output" "kas shell kas/targets/orin-nx-16g-p3768.yml:kas/include/ros-distro-lyrical.yml:kas/include/docker-images.yml -c bitbake\\ -p"
+contains "$lyrical_shell_command_dry_run_output" "kas shell kas/targets/orin-nx-16g-p3768.yml:kas/include/image-profile-robot.yml:kas/include/ros-distro-lyrical.yml:kas/include/docker-images.yml -c bitbake\\ -p"
 
 validate_dry_run_output="$(SAHA_DRY_RUN=1 "$ROOT_DIR/scripts/saha-validate" agx-orin-devkit)"
-contains "$validate_dry_run_output" "kas dump --skip repo_setup_loop --skip finish_setup_repos --skip repos_checkout --skip repos_apply_patches kas/targets/agx-orin-devkit.yml:kas/include/ros-distro-jazzy.yml:kas/include/docker-images.yml"
+contains "$validate_dry_run_output" "kas dump --skip repo_setup_loop --skip finish_setup_repos --skip repos_checkout --skip repos_apply_patches kas/targets/agx-orin-devkit.yml:kas/include/image-profile-robot.yml:kas/include/ros-distro-jazzy.yml:kas/include/docker-images.yml"
 
 lyrical_validate_dry_run_output="$(SAHA_DRY_RUN=1 SAHA_ROS_DISTRO=lyrical "$ROOT_DIR/scripts/saha-validate" agx-orin-devkit)"
-contains "$lyrical_validate_dry_run_output" "kas dump --skip repo_setup_loop --skip finish_setup_repos --skip repos_checkout --skip repos_apply_patches kas/targets/agx-orin-devkit.yml:kas/include/ros-distro-lyrical.yml:kas/include/docker-images.yml"
+contains "$lyrical_validate_dry_run_output" "kas dump --skip repo_setup_loop --skip finish_setup_repos --skip repos_checkout --skip repos_apply_patches kas/targets/agx-orin-devkit.yml:kas/include/image-profile-robot.yml:kas/include/ros-distro-lyrical.yml:kas/include/docker-images.yml"
 
 echo "PASS: build framework contract"
