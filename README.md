@@ -287,7 +287,7 @@ Build output goes to profile-specific directories such as `build/orin-nx-16g-p37
 
 By default, `saha-image-robot` includes Docker, `docker compose`, and preloaded container images for Home Assistant, Matter Server, and `roban-workflow-api:arm64`. Use `SAHA_ROBOT_IMAGE=robot-ros` or `robot-base` to omit the stack.
 
-On the device, `saha-docker-compose.service` loads the prebuilt images and starts the stack from `/opt/roban/compose/compose.yaml`. Data paths use `/var/lib/homeassistant` and `/var/lib/matter-server`. To change the stack, edit `saha-layers/meta-tegra-saha/recipes-saha/docker-compose/saha-docker-compose/compose.yaml` and rebuild.
+On the device, `saha-docker-compose.service` loads the prebuilt images and starts the stack from `/opt/roban/compose/compose.yaml`. Data paths use `/var/lib/homeassistant` and `/var/lib/matter-server`. On first boot, if `/var/lib/homeassistant/configuration.yaml` is missing, the default config template from `saha-homeassistant-config` is copied in. That template includes **SmartIR**, **Xiaomi Home**, and **HACS** custom components, a preconfigured **Matter** integration pointing at the local matter-server (`ws://127.0.0.1:5580/ws`), and **Broadlink** discovery via `default_config`. Xiaomi Home, HACS, and Broadlink still require one-time setup in the Home Assistant UI (Mi account login, HACS onboarding, and RM device pairing). To change the stack, edit `saha-layers/meta-tegra-saha/recipes-saha/docker-compose/saha-docker-compose/compose.yaml` and rebuild.
 
 ### Build-time image caches
 

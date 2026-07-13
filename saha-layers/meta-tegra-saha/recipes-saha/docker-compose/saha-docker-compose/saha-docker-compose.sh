@@ -113,8 +113,27 @@ ensure_images() {
     fi
 }
 
+seed_homeassistant_config() {
+    template="${SAHA_HOMEASSISTANT_CONFIG_TEMPLATE:-/usr/share/saha/homeassistant/config-default}"
+    config_dir="/var/lib/homeassistant"
+
+    if [ -f "${config_dir}/configuration.yaml" ]; then
+        return 0
+    fi
+
+    if [ ! -d "$template" ]; then
+        log "homeassistant config template missing: ${template}"
+        return 0
+    fi
+
+    log "seeding homeassistant config from ${template} to ${config_dir}"
+    mkdir -p "$config_dir"
+    cp -a "${template}/." "${config_dir}/"
+}
+
 start_stack() {
     mkdir -p /var/lib/homeassistant /var/lib/matter-server
+    seed_homeassistant_config
     export TZ="$SAHA_DOCKER_COMPOSE_TZ"
     cd "$SAHA_DOCKER_COMPOSE_DIR"
     docker compose -f "$SAHA_DOCKER_COMPOSE_FILE" up -d

@@ -1,0 +1,134 @@
+title: 首页
+views:
+  - title: 客厅
+    path: home
+    icon: mdi:home
+    cards:
+      - type: vertical-stack
+        cards:
+          - type: markdown
+            content: |
+              **客厅电视**（SmartIR 1380）
+              1380 使用切换红外码，请用下方「电源」按钮开关；若状态不对，点「标记已开/已关」校正。
+
+          - type: horizontal-stack
+            cards:
+              - type: button
+                name: 电源
+                icon: mdi:power
+                tap_action:
+                  action: call-service
+                  service: script.meeting_room_tv_power_toggle
+
+              - type: entity
+                entity: input_boolean.meeting_room_tv_power
+                name: 状态
+
+          - type: horizontal-stack
+            cards:
+              - type: button
+                name: 标记已开
+                icon: mdi:television
+                tap_action:
+                  action: call-service
+                  service: script.meeting_room_tv_mark_on
+
+              - type: button
+                name: 标记已关
+                icon: mdi:television-off
+                tap_action:
+                  action: call-service
+                  service: script.meeting_room_tv_mark_off
+
+          - type: grid
+            columns: 3
+            square: false
+            cards:
+              - type: button
+                name: 上
+                icon: mdi:chevron-up
+                tap_action:
+                  action: call-service
+                  service: media_player.select_source
+                  service_data:
+                    entity_id: media_player.meeting_room_tv_02
+                    source: UP
+
+              - type: button
+                name: Home
+                icon: mdi:home
+                tap_action:
+                  action: call-service
+                  service: media_player.select_source
+                  service_data:
+                    entity_id: media_player.meeting_room_tv_02
+                    source: HOME
+
+              - type: button
+                name: 返回
+                icon: mdi:arrow-left
+                tap_action:
+                  action: call-service
+                  service: media_player.select_source
+                  service_data:
+                    entity_id: media_player.meeting_room_tv_02
+                    source: BACK
+
+              - type: button
+                name: 左
+                icon: mdi:chevron-left
+                tap_action:
+                  action: call-service
+                  service: media_player.select_source
+                  service_data:
+                    entity_id: media_player.meeting_room_tv_02
+                    source: LEFT
+
+              - type: button
+                name: 确认
+                icon: mdi:circle-outline
+                tap_action:
+                  action: call-service
+                  service: media_player.select_source
+                  service_data:
+                    entity_id: media_player.meeting_room_tv_02
+                    source: OK
+
+              - type: button
+                name: 右
+                icon: mdi:chevron-right
+                tap_action:
+                  action: call-service
+                  service: media_player.select_source
+                  service_data:
+                    entity_id: media_player.meeting_room_tv_02
+                    source: RIGHT
+
+              - type: button
+                name: 音量-
+                icon: mdi:volume-minus
+                tap_action:
+                  action: call-service
+                  service: media_player.volume_down
+                  target:
+                    entity_id: media_player.meeting_room_tv_02
+
+              - type: button
+                name: 下
+                icon: mdi:chevron-down
+                tap_action:
+                  action: call-service
+                  service: media_player.select_source
+                  service_data:
+                    entity_id: media_player.meeting_room_tv_02
+                    source: DOWN
+
+              - type: button
+                name: 音量+
+                icon: mdi:volume-plus
+                tap_action:
+                  action: call-service
+                  service: media_player.volume_up
+                  target:
+                    entity_id: media_player.meeting_room_tv_02
+

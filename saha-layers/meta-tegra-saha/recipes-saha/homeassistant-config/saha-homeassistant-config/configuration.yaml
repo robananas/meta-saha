@@ -1,0 +1,51 @@
+# Saha default Home Assistant configuration.
+# Custom components: SmartIR, Xiaomi Home, HACS (under custom_components/).
+# Integrations: Matter (local matter-server), Broadlink (auto-discovery).
+
+default_config:
+
+homeassistant:
+  packages: !include_dir_named packages
+
+frontend:
+  themes: !include_dir_merge_named themes
+
+automation: !include automations.yaml
+script: !include scripts.yaml
+scene: !include scenes.yaml
+
+logger:
+  default: info
+  logs:
+    custom_components.xiaomi_home: info
+
+smartir:
+  check_updates: false
+
+climate:
+  - platform: smartir
+    name: 日立空调1084
+    unique_id: hitachi_ac_rm4
+    device_code: 1084
+    controller_data: remote.rm4_mini_01
+
+media_player:
+  - platform: smartir
+    name: Meeting room TV-02
+    unique_id: meeting_room_tv_02
+    device_code: 1380
+    controller_data: remote.rm4_mini_01
+
+lovelace:
+  resource_mode: yaml
+  dashboards:
+    lovelace:
+      mode: yaml
+      filename: ui-lovelace.yaml
+      title: Overview
+      icon: mdi:view-dashboard
+      show_in_sidebar: true
+
+# Connect to the python-matter-server container started by saha-docker-compose.
+matter:
+  url: "ws://127.0.0.1:5580/ws"

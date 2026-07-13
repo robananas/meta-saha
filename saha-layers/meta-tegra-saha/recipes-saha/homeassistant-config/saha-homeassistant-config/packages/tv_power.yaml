@@ -1,0 +1,37 @@
+# SmartIR 1380 的 on/off 是同一组切换红外码，需要自行跟踪电源状态。
+input_boolean:
+  meeting_room_tv_power:
+    name: Meeting room TV 电源
+    icon: mdi:television
+
+template:
+  - binary_sensor:
+      - name: Meeting room TV power
+        unique_id: meeting_room_tv_power
+        state: "{{ is_state('input_boolean.meeting_room_tv_power', 'on') }}"
+
+script:
+  meeting_room_tv_power_toggle:
+    alias: 电视电源切换
+    mode: single
+    sequence:
+      - action: input_boolean.toggle
+        target:
+          entity_id: input_boolean.meeting_room_tv_power
+      - action: media_player.turn_on
+        target:
+          entity_id: media_player.meeting_room_tv_02
+
+  meeting_room_tv_mark_on:
+    alias: 标记电视已开机
+    sequence:
+      - action: input_boolean.turn_on
+        target:
+          entity_id: input_boolean.meeting_room_tv_power
+
+  meeting_room_tv_mark_off:
+    alias: 标记电视已关机
+    sequence:
+      - action: input_boolean.turn_off
+        target:
+          entity_id: input_boolean.meeting_room_tv_power

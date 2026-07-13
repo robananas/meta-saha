@@ -176,6 +176,40 @@ grep -q 'roban-workflow-api:arm64' \
 grep -q 'roban-workflow-api.tar' \
   "$ROOT_DIR/saha-layers/meta-tegra-saha/recipes-saha/roban-app/roban-app/fetch-image.sh" ||
   fail "roban-app fetch script must support local tarball cache"
+HA_CONFIG_RECIPE="$ROOT_DIR/saha-layers/meta-tegra-saha/recipes-saha/homeassistant-config/saha-homeassistant-config.bb"
+[ -f "$HA_CONFIG_RECIPE" ] ||
+  fail "saha-homeassistant-config recipe must exist"
+grep -q 'saha-homeassistant-config' \
+  "$ROOT_DIR/saha-layers/meta-tegra-saha/recipes-saha/packagegroups/packagegroup-saha-docker-images.bb" ||
+  fail "docker images packagegroup must install homeassistant config template"
+grep -q 'SmartIR' "$HA_CONFIG_RECIPE" ||
+  fail "homeassistant config recipe must fetch SmartIR"
+grep -q 'ha_xiaomi_home' "$HA_CONFIG_RECIPE" ||
+  fail "homeassistant config recipe must fetch Xiaomi Home"
+grep -q 'SRCREV_FORMAT = "smartir_xiaomi_hacs"' "$HA_CONFIG_RECIPE" ||
+  fail "homeassistant config recipe must set SRCREV_FORMAT for multiple git fetchers"
+grep -q 'hacs' \
+  "$ROOT_DIR/saha-layers/meta-tegra-saha/recipes-saha/homeassistant-config/saha-homeassistant-config/install-custom-components.sh" ||
+  fail "homeassistant config install script must install HACS"
+grep -q 'packages/tv_power.yaml' \
+  "$ROOT_DIR/saha-layers/meta-tegra-saha/recipes-saha/homeassistant-config/saha-homeassistant-config.bb" ||
+  fail "homeassistant config recipe must install tv_power package"
+grep -q 'ui-lovelace.yaml' \
+  "$ROOT_DIR/saha-layers/meta-tegra-saha/recipes-saha/homeassistant-config/saha-homeassistant-config.bb" ||
+  fail "homeassistant config recipe must install ui-lovelace.yaml"
+grep -q 'hitachi_ac_rm4' \
+  "$ROOT_DIR/saha-layers/meta-tegra-saha/recipes-saha/homeassistant-config/saha-homeassistant-config/configuration.yaml" ||
+  fail "default homeassistant config must include SmartIR climate device"
+grep -q 'meeting_room_tv_02' \
+  "$ROOT_DIR/saha-layers/meta-tegra-saha/recipes-saha/homeassistant-config/saha-homeassistant-config/configuration.yaml" ||
+  fail "default homeassistant config must include SmartIR media_player device"
+grep -q '1084.json' "$HA_CONFIG_RECIPE" ||
+  fail "homeassistant config recipe must bundle SmartIR climate code 1084"
+grep -q '1380.json' "$HA_CONFIG_RECIPE" ||
+  fail "homeassistant config recipe must bundle SmartIR media_player code 1380"
+grep -q 'seed_homeassistant_config' \
+  "$ROOT_DIR/saha-layers/meta-tegra-saha/recipes-saha/docker-compose/saha-docker-compose/saha-docker-compose.sh" ||
+  fail "docker compose launcher must seed homeassistant config on first boot"
 grep -q 'saha-bt-wifi-provision' \
   "$ROOT_DIR/saha-layers/meta-tegra-saha/recipes-saha/packagegroups/packagegroup-saha-bluetooth.bb" ||
   fail "bluetooth packagegroup must install saha-bt-wifi-provision"

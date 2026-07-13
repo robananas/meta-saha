@@ -8,7 +8,10 @@ RDEPENDS:${PN} = " \
     ca-certificates \
     docker \
     docker-compose \
+    iproute2 \
+    curl \
     saha-docker-compose \
+    saha-homeassistant-config \
     saha-homeassistant-container-image \
     saha-matter-server-container-image \
     roban-app \
