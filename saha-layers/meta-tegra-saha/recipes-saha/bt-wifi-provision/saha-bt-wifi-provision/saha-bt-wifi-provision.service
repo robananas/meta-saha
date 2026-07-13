@@ -4,6 +4,9 @@ Documentation=file:///usr/share/doc/saha-bt-wifi-provision/GATT.md
 After=bluetooth.service tegra-bluetooth.service NetworkManager.service
 Wants=tegra-bluetooth.service NetworkManager.service
 Requires=bluetooth.service
+# Stop immediately if BlueZ disappears and follow every BlueZ stop/restart job.
+BindsTo=bluetooth.service
+PartOf=bluetooth.service
 
 [Service]
 Type=simple
