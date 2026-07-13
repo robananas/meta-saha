@@ -435,7 +435,7 @@ class GattProvisioner:
             DBUS_PROP_IFACE,
         )
         props.Set("org.bluez.Adapter1", "Powered", dbus.Boolean(True))
-        props.Set("org.bluez.Adapter1", "Discoverable", dbus.Boolean(True))
+        props.Set("org.bluez.Adapter1", "Discoverable", dbus.Boolean(False))
         props.Set("org.bluez.Adapter1", "Pairable", dbus.Boolean(True))
         props.Set("org.bluez.Adapter1", "Alias", self.local_name)
 

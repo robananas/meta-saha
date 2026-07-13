@@ -212,6 +212,9 @@ grep -q 'RegisterAgent' \
 grep -q 'NoInputNoOutput' \
   "$ROOT_DIR/saha-layers/meta-tegra-saha/recipes-saha/bt-wifi-provision/saha-bt-wifi-provision/gatt_server.py" ||
   fail "gatt server must use Just Works pairing capability"
+grep -Fq '"Discoverable", dbus.Boolean(False)' \
+  "$ROOT_DIR/saha-layers/meta-tegra-saha/recipes-saha/bt-wifi-provision/saha-bt-wifi-provision/gatt_server.py" ||
+  fail "gatt server must keep classic Bluetooth non-discoverable"
 grep -q 'encrypt-write' \
   "$ROOT_DIR/saha-layers/meta-tegra-saha/recipes-saha/bt-wifi-provision/saha-bt-wifi-provision/gatt_server.py" ||
   fail "WiFi provisioning writes must require an encrypted connection"
