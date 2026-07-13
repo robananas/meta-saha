@@ -8,7 +8,7 @@ LIC_FILES_CHKSUM = "file://${COMMON_LICENSE_DIR}/MIT;md5=0835ade698e0bcf8506ecda
 
 PV = "1.0"
 
-HA_CONTAINER_IMAGE ?= "ghcr.io/home-assistant/home-assistant:stable"
+HA_CONTAINER_IMAGE ?= "ghcr.io/home-assistant/home-assistant:2026.7.1"
 HA_CONTAINER_IMAGE_OS ?= "linux"
 HA_CONTAINER_IMAGE_ARCH ?= "arm64"
 HA_CONTAINER_IMAGE_BASENAME ?= "homeassistant-container"
