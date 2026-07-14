@@ -3,6 +3,7 @@
 
 from __future__ import annotations
 
+import copy
 import logging
 import queue
 import threading
@@ -41,6 +42,22 @@ ADVERTISEMENT_PATH = f"{APPLICATION_PATH}/advertisement0000"
 AGENT_PATH = f"{APPLICATION_PATH}/agent"
 
 logger = logging.getLogger("saha-bt-wifi-provision")
+
+
+def _unavailable_wifi_status(error: str = "WiFi status has not been refreshed") -> dict[str, Any]:
+    return {
+        "connected": False,
+        "ssid": "",
+        "interface": "",
+        "ip": "",
+        "addresses": [],
+        "gateway": "",
+        "dns": [],
+        "signal": 0,
+        "security": "",
+        "available": False,
+        "error": error,
+    }
 
 
 class InvalidArgsException(dbus.exceptions.DBusException):
@@ -179,7 +196,11 @@ class Characteristic(dbus.service.Object):
     def ReadValue(self, options: dict[str, Any]) -> list[int]:  # noqa: ARG002
         if not self.read_handler:
             raise NotSupportedException()
-        return self.read_handler()
+        try:
+            return self.read_handler()
+        except Exception as exc:  # noqa: BLE001
+            logger.exception("characteristic read handler failed for %s", self.uuid)
+            return encode_json(_unavailable_wifi_status(str(exc) or "status read failed"))
 
     @dbus.service.method(GATT_CHRC_IFACE, in_signature="aya{sv}")
     def WriteValue(self, value: list[int], options: dict[str, Any]) -> None:  # noqa: ARG002
@@ -262,6 +283,53 @@ class GattProvisioner:
         self._registration_failed = False
         self._loop_mode = "null"
         self._pairing_agent: PairingAgent | None = None
+        self._status_lock = threading.Lock()
+        self._status_cache = _unavailable_wifi_status()
+        self._status_has_success = False
+        self._status_stop = threading.Event()
+        self._status_thread: threading.Thread | None = None
+
+    def _refresh_status(self) -> None:
+        try:
+            status = get_wifi_status()
+        except Exception as exc:  # noqa: BLE001
+            error = str(exc) or exc.__class__.__name__
+            logger.warning("failed to refresh WiFi status cache: %s", error)
+            with self._status_lock:
+                if self._status_has_success:
+                    status = copy.deepcopy(self._status_cache)
+                    status["available"] = False
+                    status["error"] = error
+                    self._status_cache = status
+                else:
+                    self._status_cache = _unavailable_wifi_status(error)
+            return
+
+        cached = copy.deepcopy(status)
+        cached["available"] = True
+        cached["error"] = ""
+        with self._status_lock:
+            self._status_cache = cached
+            self._status_has_success = True
+
+    def _status_refresh_worker(self) -> None:
+        while not self._status_stop.is_set():
+            self._refresh_status()
+            if self._status_stop.wait(2.5):
+                return
+
+    def _start_status_refresh(self) -> None:
+        self._status_thread = threading.Thread(
+            target=self._status_refresh_worker,
+            name="wifi-status-refresh",
+            daemon=True,
+        )
+        self._status_thread.start()
+
+    def _read_cached_status(self) -> list[int]:
+        with self._status_lock:
+            status = copy.deepcopy(self._status_cache)
+        return encode_json(status)
 
     def _list_adapters(self) -> None:
         assert self.bus is not None
@@ -362,7 +430,7 @@ class GattProvisioner:
             WIFI_STATUS_UUID,
             ["read", "encrypt-read"],
             service,
-            read_handler=lambda: encode_json(get_wifi_status()),
+            read_handler=self._read_cached_status,
         )
         command_char = Characteristic(
             self.bus,
@@ -440,14 +508,20 @@ class GattProvisioner:
         props.Set("org.bluez.Adapter1", "Alias", self.local_name)
 
         self._register_pairing_agent()
-        self._register_application()
-        self._register_advertisement()
-        self._wait_for_registration()
-        logger.info("BLE WiFi provisioning active as %s", self.local_name)
+        self._start_status_refresh()
+        try:
+            self._register_application()
+            self._register_advertisement()
+            self._wait_for_registration()
+            logger.info("BLE WiFi provisioning active as %s", self.local_name)
 
-        while self._running:
-            self._dispatch_pending_events()
-            iterate_main_loop(self.bus, self._loop_mode)
+            while self._running:
+                self._dispatch_pending_events()
+                iterate_main_loop(self.bus, self._loop_mode)
 
-        if self._registration_failed:
-            raise RuntimeError("GATT or advertisement registration failed")
+            if self._registration_failed:
+                raise RuntimeError("GATT or advertisement registration failed")
+        finally:
+            self._status_stop.set()
+            if self._status_thread is not None:
+                self._status_thread.join(timeout=1.0)

@@ -5,6 +5,7 @@ from __future__ import annotations
 
 import json
 import subprocess
+import threading
 from typing import Any
 
 
@@ -12,21 +13,27 @@ class WifiError(Exception):
     """Raised when nmcli fails."""
 
 
+_NMCLI_LOCK = threading.RLock()
+
+
 def _run_nmcli(args: list[str], timeout: int = 60) -> str:
     cmd = ["nmcli", *args]
     try:
-        completed = subprocess.run(
-            cmd,
-            check=True,
-            capture_output=True,
-            text=True,
-            timeout=timeout,
-        )
+        with _NMCLI_LOCK:
+            completed = subprocess.run(
+                cmd,
+                check=True,
+                capture_output=True,
+                text=True,
+                timeout=timeout,
+            )
     except subprocess.CalledProcessError as exc:
         message = (exc.stderr or exc.stdout or str(exc)).strip()
         raise WifiError(message or "nmcli command failed") from exc
     except subprocess.TimeoutExpired as exc:
         raise WifiError("nmcli command timed out") from exc
+    except OSError as exc:
+        raise WifiError(f"unable to run nmcli: {exc}") from exc
     return completed.stdout
 
 
