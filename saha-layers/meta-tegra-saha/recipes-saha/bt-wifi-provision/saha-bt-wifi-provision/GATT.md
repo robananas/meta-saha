@@ -135,3 +135,11 @@ Failure example:
 - USB gadget networking (`l4tbr0`) is unchanged; only WiFi is managed
 - Large scan results are capped at 30 networks
 - JSON payloads should fit within the negotiated ATT MTU; keep commands compact
+
+## Home Assistant credential transfer (v1)
+
+A bonded, encrypted client writes `{"cmd":"ha","id":N,"m":M}` to the encrypted Command characteristic. `id` is unsigned 16-bit and `m` is clamped to 20..180. Responses only use encrypted Event notifications and are never JSON events.
+
+Each binary notification starts with a 14-byte big-endian header: `RH` magic (2), version (1), kind (1: 0=data, 1=digest), request id u16, chunk index u16, chunk count u16, total JSON payload bytes u32. Remaining bytes are the chunk body. Data frames precede digest frames without ordinary-event interleaving. Kind 1 contains exactly the 32-byte SHA-256 digest, split when needed. Payload is UTF-8 JSON, at most 16 KiB; indices are zero-based and duplicates must be byte-identical.
+
+If notifications are not subscribed or credentials cannot be loaded/refreshed, firmware sends a secret-free ordinary error with code `HA_CREDENTIALS_UNAVAILABLE`. Older firmware may return unsupported or no response; clients must preserve normal BLE/WiFi operation.

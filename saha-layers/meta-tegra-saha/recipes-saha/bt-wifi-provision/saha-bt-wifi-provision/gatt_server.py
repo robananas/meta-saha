@@ -4,8 +4,10 @@
 from __future__ import annotations
 
 import copy
+import hashlib
 import logging
 import queue
+import struct
 import threading
 import time
 from typing import Any, Callable
@@ -15,6 +17,7 @@ import dbus.exceptions
 import dbus.service
 
 from dbus_mainloop import iterate_main_loop, setup_dbus_main_loop
+from ha_credential_manager import HaCredentialError, get_credential_payload
 from wifi_manager import WifiError, decode_json, encode_json, get_wifi_status, handle_command
 
 BLUEZ_SERVICE_NAME = "org.bluez"
@@ -42,6 +45,14 @@ ADVERTISEMENT_PATH = f"{APPLICATION_PATH}/advertisement0000"
 AGENT_PATH = f"{APPLICATION_PATH}/agent"
 
 logger = logging.getLogger("saha-bt-wifi-provision")
+
+HA_MAGIC = b"RH"
+HA_PROTOCOL_VERSION = 1
+HA_DATA_FRAME = 0
+HA_DIGEST_FRAME = 1
+HA_FRAME_HEADER = struct.Struct(">2sBBHHHI")
+HA_MAX_PAYLOAD = 16 * 1024
+HA_MAX_FRAME_BYTES = 180
 
 
 def _unavailable_wifi_status(error: str = "WiFi status has not been refreshed") -> dict[str, Any]:
@@ -187,10 +198,16 @@ class Characteristic(dbus.service.Object):
         }
 
     def send_notification(self, payload: dict[str, Any]) -> None:
+        self.send_raw_notification(bytes(encode_json(payload)))
+
+    def send_raw_notification(self, value: bytes) -> None:
         if not self.notifying:
             return
-        value = encode_json(payload)
-        self.PropertiesChanged(GATT_CHRC_IFACE, {"Value": dbus.Array(value, signature="y")}, [])
+        self.PropertiesChanged(
+            GATT_CHRC_IFACE,
+            {"Value": dbus.Array(list(value), signature="y")},
+            [],
+        )
 
     @dbus.service.method(GATT_CHRC_IFACE, in_signature="a{sv}", out_signature="ay")
     def ReadValue(self, options: dict[str, Any]) -> list[int]:  # noqa: ARG002
@@ -276,7 +293,7 @@ class GattProvisioner:
         self.bus: dbus.SystemBus | None = None
         self.adapter_path: str | None = None
         self.event_characteristic: Characteristic | None = None
-        self._event_queue: queue.Queue[dict[str, Any]] = queue.Queue()
+        self._event_queue: queue.Queue[dict[str, Any] | list[bytes]] = queue.Queue()
         self._running = True
         self._gatt_registered = False
         self._ad_registered = False
@@ -372,19 +389,59 @@ class GattProvisioner:
             f"{self.adapter_wait}s"
         )
 
+    def _build_ha_frames(self, request_id: int, frame_bytes: int, payload: bytes) -> list[bytes]:
+        if len(payload) > HA_MAX_PAYLOAD:
+            raise HaCredentialError("HA credentials unavailable")
+        body_size = frame_bytes - HA_FRAME_HEADER.size
+        if body_size < 1:
+            raise HaCredentialError("HA transfer frame size unavailable")
+
+        def frames(kind: int, body: bytes) -> list[bytes]:
+            count = max(1, (len(body) + body_size - 1) // body_size)
+            if count > 0xFFFF:
+                raise HaCredentialError("HA transfer has too many chunks")
+            return [
+                HA_FRAME_HEADER.pack(
+                    HA_MAGIC, HA_PROTOCOL_VERSION, kind, request_id, index, count, len(payload)
+                ) + body[index * body_size:(index + 1) * body_size]
+                for index in range(count)
+            ]
+
+        return frames(HA_DATA_FRAME, payload) + frames(HA_DIGEST_FRAME, hashlib.sha256(payload).digest())
+
+    def _handle_ha_command(self, payload: dict[str, Any]) -> list[bytes]:
+        request_id = payload.get("id")
+        requested_size = payload.get("m")
+        if (isinstance(request_id, bool) or not isinstance(request_id, int)
+                or request_id < 0 or request_id > 0xFFFF):
+            raise WifiError("invalid HA credential request id")
+        if isinstance(requested_size, bool) or not isinstance(requested_size, int):
+            raise WifiError("invalid HA notification size")
+        frame_bytes = max(20, min(requested_size, HA_MAX_FRAME_BYTES))
+        if self.event_characteristic is None or not self.event_characteristic.notifying:
+            raise HaCredentialError("HA event notifications are not subscribed")
+        return self._build_ha_frames(request_id, frame_bytes, get_credential_payload())
+
     def _on_command(self, data: bytes) -> None:
         def worker() -> None:
             try:
                 payload = decode_json(data)
+                if str(payload.get("cmd", "")).strip().lower() == "ha":
+                    self._event_queue.put(self._handle_ha_command(payload))
+                    return
                 response = handle_command(payload)
+            except HaCredentialError as exc:
+                logger.warning("HA credential request unavailable: %s", exc)
+                response = {"event": "error", "code": "HA_CREDENTIALS_UNAVAILABLE",
+                            "error": "Home Assistant credentials unavailable"}
             except WifiError as exc:
                 response = {"event": "error", "error": str(exc)}
-            except Exception as exc:  # noqa: BLE001
-                logger.exception("command failed")
-                response = {"event": "error", "error": str(exc)}
+            except Exception:  # noqa: BLE001
+                logger.exception("command failed without payload details")
+                response = {"event": "error", "error": "command failed"}
             self._event_queue.put(response)
 
-        threading.Thread(target=worker, daemon=True).start()
+        threading.Thread(target=worker, name="gatt-command", daemon=True).start()
 
     def _register_pairing_agent(self) -> None:
         assert self.bus is not None
@@ -490,7 +547,12 @@ class GattProvisioner:
             except queue.Empty:
                 break
             if self.event_characteristic is not None:
-                self.event_characteristic.send_notification(response)
+                if isinstance(response, list):
+                    # A complete transfer batch is emitted without ordinary event interleaving.
+                    for frame in response:
+                        self.event_characteristic.send_raw_notification(frame)
+                else:
+                    self.event_characteristic.send_notification(response)
 
     def run(self) -> None:
         self._loop_mode = setup_dbus_main_loop()

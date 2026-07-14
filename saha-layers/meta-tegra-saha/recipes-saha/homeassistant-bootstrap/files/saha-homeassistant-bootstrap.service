@@ -1,0 +1,17 @@
+[Unit]
+Description=Bootstrap Home Assistant board credentials
+After=saha-docker-compose.service
+Requires=saha-docker-compose.service
+
+[Service]
+Type=oneshot
+RemainAfterExit=yes
+ExecStart=/usr/bin/saha-homeassistant-bootstrap
+Restart=on-failure
+RestartSec=30
+TimeoutStartSec=360
+User=root
+UMask=0077
+
+[Install]
+WantedBy=multi-user.target

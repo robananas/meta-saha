@@ -10,6 +10,7 @@ SRC_URI = " \
     file://saha-bt-wifi-provision-wait.sh \
     file://dbus_mainloop.py \
     file://gatt_server.py \
+    file://ha_credential_manager.py \
     file://wifi_manager.py \
     file://saha-bt-wifi-provision.env \
     file://saha-bt-wifi-provision.service \
@@ -29,6 +30,7 @@ RDEPENDS:${PN} = " \
     python3-ctypes \
     python3-dbus \
     python3-json \
+    python3-netclient \
     python3-threading \
 "
 
@@ -37,6 +39,7 @@ do_install() {
     install -m 0644 ${UNPACKDIR}/saha-bt-wifi-provision.py ${D}${libdir}/saha-bt-wifi-provision/
     install -m 0644 ${UNPACKDIR}/dbus_mainloop.py ${D}${libdir}/saha-bt-wifi-provision/
     install -m 0644 ${UNPACKDIR}/gatt_server.py ${D}${libdir}/saha-bt-wifi-provision/
+    install -m 0644 ${UNPACKDIR}/ha_credential_manager.py ${D}${libdir}/saha-bt-wifi-provision/
     install -m 0644 ${UNPACKDIR}/wifi_manager.py ${D}${libdir}/saha-bt-wifi-provision/
 
     install -d ${D}${bindir}

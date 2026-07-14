@@ -12,6 +12,7 @@ RDEPENDS:${PN} = " \
     curl \
     saha-docker-compose \
     saha-homeassistant-config \
+    saha-homeassistant-bootstrap \
     saha-homeassistant-container-image \
     saha-matter-server-container-image \
     roban-app \
