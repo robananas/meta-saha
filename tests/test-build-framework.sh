@@ -522,6 +522,24 @@ grep -q 'bluez5' "$BLUETOOTH_PACKAGEGROUP" ||
   fail "bluetooth packagegroup must install bluez5"
 grep -q 'tegra-bluetooth' "$BLUETOOTH_PACKAGEGROUP" ||
   fail "bluetooth packagegroup must install tegra-bluetooth"
+grep -q 'saha-ble-identity' "$BLUETOOTH_PACKAGEGROUP" ||
+  fail "bluetooth packagegroup must install persistent BLE identity support"
+BLE_IDENTITY_RECIPE="$ROOT_DIR/saha-layers/meta-tegra-saha/recipes-saha/ble-identity/saha-ble-identity.bb"
+BLE_IDENTITY_FILES="$ROOT_DIR/saha-layers/meta-tegra-saha/recipes-saha/ble-identity/saha-ble-identity"
+[ -f "$BLE_IDENTITY_RECIPE" ] ||
+  fail "BLE identity recipe must exist"
+grep -q 'bluez5-noinst-tools' "$BLE_IDENTITY_RECIPE" ||
+  fail "BLE identity recipe must install btmgmt"
+grep -q 'static-addr' "$BLE_IDENTITY_FILES/saha-ble-identity-init.py" ||
+  fail "BLE identity initializer must apply a static random controller address"
+grep -q 'os.urandom' "$BLE_IDENTITY_FILES/saha-ble-identity-init.py" ||
+  fail "BLE identity initializer must use the kernel CSPRNG"
+grep -q 'Before=bluetooth.service' "$BLE_IDENTITY_FILES/saha-ble-identity.service" ||
+  fail "BLE identity must initialize before bluetoothd"
+grep -q '/var/lib/bluetooth' "$BLE_IDENTITY_FILES/saha-bluetooth-factory-reset.sh" ||
+  fail "Bluetooth factory reset must erase BlueZ bond state"
+grep -q '/var/lib/saha/ble-identity' "$BLE_IDENTITY_FILES/saha-bluetooth-factory-reset.sh" ||
+  fail "Bluetooth factory reset must erase the persistent BLE identity"
 BLUEZ_APPEND="$ROOT_DIR/saha-layers/meta-tegra-saha/recipes-connectivity/bluez/bluez5_%.bbappend"
 [ -f "$BLUEZ_APPEND" ] ||
   fail "bluez5 bbappend must exist"
@@ -530,6 +548,15 @@ grep -q 'Roban-Bluetooth' "$ROOT_DIR/saha-layers/meta-tegra-saha/recipes-connect
 grep -q 'Experimental = true' \
   "$ROOT_DIR/saha-layers/meta-tegra-saha/recipes-connectivity/bluez/bluez5/main.conf" ||
   fail "bluez5 must enable experimental GATT support"
+grep -q 'ControllerMode = le' \
+  "$ROOT_DIR/saha-layers/meta-tegra-saha/recipes-connectivity/bluez/bluez5/main.conf" ||
+  fail "bluez5 must run the controller in LE-only mode"
+grep -q 'Privacy = device' \
+  "$ROOT_DIR/saha-layers/meta-tegra-saha/recipes-connectivity/bluez/bluez5/main.conf" ||
+  fail "bluez5 must enable device privacy"
+grep -q 'Requires=saha-ble-identity.service' \
+  "$ROOT_DIR/saha-layers/meta-tegra-saha/recipes-connectivity/bluez/bluez5/bluetooth.service.d/saha-experimental.conf" ||
+  fail "bluetoothd must require successful BLE identity initialization"
 grep -q 'saha-bt-wifi-provision-wait' \
   "$BT_WIFI_PROVISION" ||
   fail "saha-bt-wifi-provision must install adapter wait helper"

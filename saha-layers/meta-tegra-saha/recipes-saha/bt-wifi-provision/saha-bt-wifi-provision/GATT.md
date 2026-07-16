@@ -6,9 +6,17 @@ This document describes the BLE GATT interface exposed by
 ## Adapter
 
 - Local name: `Roban-Bluetooth` (override with `SAHA_BT_WIFI_LOCAL_NAME`)
-- Transport: BLE (GATT client connects to the Jetson peripheral)
+- Transport: BLE-only (BR/EDR is disabled; a GATT client connects to the Jetson peripheral)
 - Pairing: BlueZ `NoInputNoOutput` / Just Works bonding (no PIN entry)
 - Security: characteristics require an encrypted, paired connection
+
+## Device identity lifecycle
+
+- The controller uses a locally generated Static Random BLE Identity Address.
+- A full image flash creates a new identity on first boot because `/var/lib` is recreated.
+- RPM/dnf package upgrades preserve `/var/lib/saha/ble-identity` and `/var/lib/bluetooth`, so the identity and bonds remain unchanged.
+- Run `saha-bluetooth-factory-reset` as root to erase the identity and all BlueZ bond data, generate a new identity, and restart Bluetooth.
+- The current project has no A/B rootfs OTA or separate persistent DATA partition; those upgrade modes require moving both state directories to persistent storage before they can preserve identity and bonds.
 
 ## Service
 

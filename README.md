@@ -135,13 +135,21 @@ If the WiFi interface name is not `wlan0`, use the name shown by `nmcli dev stat
 
 ### Bluetooth on the device
 
-Saha images include BlueZ and Jetson `tegra-bluetooth` support on devkits with an onboard WiFi/Bluetooth module (for example Orin NX on P3768). The adapter name is `Roban-Bluetooth`, and `bluetooth.service` starts automatically on boot.
+Saha images include BlueZ and Jetson `tegra-bluetooth` support on devkits with an onboard WiFi/Bluetooth module (for example Orin NX on P3768). The adapter name is `Roban-Bluetooth`, and `bluetooth.service` starts automatically on boot. The controller runs in BLE-only mode and receives a persistent Static Random Identity Address before BlueZ starts. Full flashing creates a new identity, while RPM/dnf upgrades retain both the identity and BlueZ bond data under `/var/lib`.
 
 ```bash
 systemctl status bluetooth tegra-bluetooth
 hciconfig -a
 bluetoothctl show
 ```
+
+To erase all BLE bonds and generate a new identity (factory reset of Bluetooth state):
+
+```bash
+sudo saha-bluetooth-factory-reset
+```
+
+This command deletes `/var/lib/bluetooth` and `/var/lib/saha/ble-identity`. The current project does not yet provide A/B rootfs OTA or a separate persistent DATA partition, so only RPM/dnf package upgrades are guaranteed to retain this state.
 
 For Matter Server commissioning, ensure the adapter is powered and discoverable when needed:
 
