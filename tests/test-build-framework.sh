@@ -534,6 +534,12 @@ grep -q 'static-addr' "$BLE_IDENTITY_FILES/saha-ble-identity-init.py" ||
   fail "BLE identity initializer must apply a static random controller address"
 grep -q 'os.urandom' "$BLE_IDENTITY_FILES/saha-ble-identity-init.py" ||
   fail "BLE identity initializer must use the kernel CSPRNG"
+grep -q 'capture_output=True' "$BLE_IDENTITY_FILES/saha-ble-identity-init.py" ||
+  fail "BLE identity initializer must inspect btmgmt protocol output"
+grep -q '\\bfailed\\b' "$BLE_IDENTITY_FILES/saha-ble-identity-init.py" ||
+  fail "BLE identity initializer must reject btmgmt failures even when its exit status is zero"
+grep -q 'btmgmt_output("info")' "$BLE_IDENTITY_FILES/saha-ble-identity-init.py" ||
+  fail "BLE identity initializer must wait for the controller to appear through MGMT"
 grep -q 'Before=bluetooth.service' "$BLE_IDENTITY_FILES/saha-ble-identity.service" ||
   fail "BLE identity must initialize before bluetoothd"
 grep -q '/var/lib/bluetooth' "$BLE_IDENTITY_FILES/saha-bluetooth-factory-reset.sh" ||

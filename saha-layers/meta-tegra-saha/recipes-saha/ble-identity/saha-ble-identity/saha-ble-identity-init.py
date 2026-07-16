@@ -81,17 +81,46 @@ def load_address() -> str | None:
     return address
 
 
+class BtMgmtError(RuntimeError):
+    """Raised when btmgmt reports an MGMT protocol failure."""
+
+
+def btmgmt_output(*arguments: str) -> str:
+    command = [BTMGMT, "--index", "0", *arguments]
+    completed = subprocess.run(
+        command,
+        check=False,
+        stdin=subprocess.DEVNULL,
+        capture_output=True,
+        text=True,
+    )
+    output = "\n".join(part.strip() for part in (completed.stdout, completed.stderr) if part.strip())
+    if completed.returncode != 0 or re.search(r"\bfailed\b", output, re.IGNORECASE):
+        detail = output or f"btmgmt exited with status {completed.returncode}"
+        raise BtMgmtError(f"{' '.join(command)}: {detail}")
+    return output
+
+
 def wait_for_controller(timeout: float = 30.0) -> None:
     deadline = time.monotonic() + timeout
-    while not HCI_DEVICE.exists():
-        if time.monotonic() >= deadline:
-            raise TimeoutError("hci0 did not appear after tegra-bluetooth.service")
+    last_error = "hci0 has not appeared"
+    while time.monotonic() < deadline:
+        if HCI_DEVICE.exists():
+            try:
+                output = btmgmt_output("info")
+                if re.search(r"^hci0:", output, re.MULTILINE):
+                    return
+                last_error = f"MGMT info did not list hci0: {output or '<empty>'}"
+            except BtMgmtError as error:
+                last_error = str(error)
         time.sleep(0.25)
+    raise TimeoutError(f"hci0 did not become available through Bluetooth MGMT: {last_error}")
 
 
 def run_btmgmt(*arguments: str) -> None:
-    command = [BTMGMT, "--index", "0", *arguments]
-    subprocess.run(command, check=True, stdin=subprocess.DEVNULL)
+    output = btmgmt_output(*arguments)
+    if output:
+        print(output)
 
 
 def main() -> int:
@@ -108,7 +137,7 @@ def main() -> int:
             print(f"generated BLE identity {address}")
         else:
             print(f"restored BLE identity {address}")
-    except (OSError, ValueError, TimeoutError, subprocess.CalledProcessError) as error:
+    except (OSError, ValueError, TimeoutError, BtMgmtError) as error:
         print(f"saha-ble-identity-init: {error}", file=sys.stderr)
         return 1
     return 0
