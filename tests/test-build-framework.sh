@@ -522,30 +522,17 @@ grep -q 'bluez5' "$BLUETOOTH_PACKAGEGROUP" ||
   fail "bluetooth packagegroup must install bluez5"
 grep -q 'tegra-bluetooth' "$BLUETOOTH_PACKAGEGROUP" ||
   fail "bluetooth packagegroup must install tegra-bluetooth"
-grep -q 'saha-ble-identity' "$BLUETOOTH_PACKAGEGROUP" ||
-  fail "bluetooth packagegroup must install persistent BLE identity support"
-BLE_IDENTITY_RECIPE="$ROOT_DIR/saha-layers/meta-tegra-saha/recipes-saha/ble-identity/saha-ble-identity.bb"
-BLE_IDENTITY_FILES="$ROOT_DIR/saha-layers/meta-tegra-saha/recipes-saha/ble-identity/saha-ble-identity"
-[ -f "$BLE_IDENTITY_RECIPE" ] ||
-  fail "BLE identity recipe must exist"
-grep -q 'bluez5-noinst-tools' "$BLE_IDENTITY_RECIPE" ||
-  fail "BLE identity recipe must install btmgmt"
-grep -q 'static-addr' "$BLE_IDENTITY_FILES/saha-ble-identity-init.py" ||
-  fail "BLE identity initializer must apply a static random controller address"
-grep -q 'os.urandom' "$BLE_IDENTITY_FILES/saha-ble-identity-init.py" ||
-  fail "BLE identity initializer must use the kernel CSPRNG"
-grep -q 'capture_output=True' "$BLE_IDENTITY_FILES/saha-ble-identity-init.py" ||
-  fail "BLE identity initializer must inspect btmgmt protocol output"
-grep -q '\\bfailed\\b' "$BLE_IDENTITY_FILES/saha-ble-identity-init.py" ||
-  fail "BLE identity initializer must reject btmgmt failures even when its exit status is zero"
-grep -q 'btmgmt_output("info")' "$BLE_IDENTITY_FILES/saha-ble-identity-init.py" ||
-  fail "BLE identity initializer must wait for the controller to appear through MGMT"
-grep -q 'Before=bluetooth.service' "$BLE_IDENTITY_FILES/saha-ble-identity.service" ||
-  fail "BLE identity must initialize before bluetoothd"
-grep -q '/var/lib/bluetooth' "$BLE_IDENTITY_FILES/saha-bluetooth-factory-reset.sh" ||
-  fail "Bluetooth factory reset must erase BlueZ bond state"
-grep -q '/var/lib/saha/ble-identity' "$BLE_IDENTITY_FILES/saha-bluetooth-factory-reset.sh" ||
-  fail "Bluetooth factory reset must erase the persistent BLE identity"
+grep -qxF 'RDEPENDS:${PN}:append:p3768-0000-p3767-0000 = " kernel-module-rtk-btusb"' "$BLUETOOTH_PACKAGEGROUP" ||
+  fail "P3768 Bluetooth packagegroup must install the vendor rtk_btusb module"
+if grep -Eq '(^|[[:space:]"-])kernel-module-btusb([[:space:]"-]|$)' "$BLUETOOTH_PACKAGEGROUP"; then
+  fail "P3768 Bluetooth packagegroup must not install upstream btusb"
+fi
+[ ! -e "$ROOT_DIR/saha-layers/meta-tegra-saha/recipes-saha/ble-identity" ] ||
+  fail "unused BLE identity recipe must be removed"
+if rg -n 'saha-ble-identity|static-addr' "$ROOT_DIR/saha-layers" >/tmp/saha-removed-ble-identity.out; then
+  cat /tmp/saha-removed-ble-identity.out >&2
+  fail "layer metadata must not retain the identity service or static address setup"
+fi
 BLUEZ_APPEND="$ROOT_DIR/saha-layers/meta-tegra-saha/recipes-connectivity/bluez/bluez5_%.bbappend"
 [ -f "$BLUEZ_APPEND" ] ||
   fail "bluez5 bbappend must exist"
@@ -560,9 +547,21 @@ grep -q 'ControllerMode = le' \
 grep -q 'Privacy = device' \
   "$ROOT_DIR/saha-layers/meta-tegra-saha/recipes-connectivity/bluez/bluez5/main.conf" ||
   fail "bluez5 must enable device privacy"
-grep -q 'Requires=saha-ble-identity.service' \
-  "$ROOT_DIR/saha-layers/meta-tegra-saha/recipes-connectivity/bluez/bluez5/bluetooth.service.d/saha-experimental.conf" ||
-  fail "bluetoothd must require successful BLE identity initialization"
+BLUEZ_SERVICE_DROPIN="$ROOT_DIR/saha-layers/meta-tegra-saha/recipes-connectivity/bluez/bluez5/bluetooth.service.d/saha-experimental.conf"
+if grep -Eq '^(Requires|After)=.*ble-identity' "$BLUEZ_SERVICE_DROPIN"; then
+  fail "bluetoothd must not depend on a BLE identity service"
+fi
+grep -q 'Wants=saha-bt-wifi-provision.service' "$BLUEZ_SERVICE_DROPIN" ||
+  fail "bluetoothd must pull in WiFi provisioning"
+grep -q 'Before=saha-bt-wifi-provision.service' "$BLUEZ_SERVICE_DROPIN" ||
+  fail "bluetoothd must start before WiFi provisioning"
+BT_WIFI_PROVISION_SERVICE="$ROOT_DIR/saha-layers/meta-tegra-saha/recipes-saha/bt-wifi-provision/saha-bt-wifi-provision/saha-bt-wifi-provision.service"
+grep -q '^Requires=bluetooth.service$' "$BT_WIFI_PROVISION_SERVICE" ||
+  fail "WiFi provisioning must require bluetooth.service"
+grep -q '^BindsTo=bluetooth.service$' "$BT_WIFI_PROVISION_SERVICE" ||
+  fail "WiFi provisioning must stop when bluetooth.service disappears"
+grep -q '^PartOf=bluetooth.service$' "$BT_WIFI_PROVISION_SERVICE" ||
+  fail "WiFi provisioning must follow Bluetooth lifecycle jobs"
 grep -q 'saha-bt-wifi-provision-wait' \
   "$BT_WIFI_PROVISION" ||
   fail "saha-bt-wifi-provision must install adapter wait helper"

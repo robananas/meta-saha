@@ -12,11 +12,21 @@ This document describes the BLE GATT interface exposed by
 
 ## Device identity lifecycle
 
-- The controller uses a locally generated Static Random BLE Identity Address.
-- A full image flash creates a new identity on first boot because `/var/lib` is recreated.
-- RPM/dnf package upgrades preserve `/var/lib/saha/ble-identity` and `/var/lib/bluetooth`, so the identity and bonds remain unchanged.
-- Run `saha-bluetooth-factory-reset` as root to erase the identity and all BlueZ bond data, generate a new identity, and restart Bluetooth.
-- The current project has no A/B rootfs OTA or separate persistent DATA partition; those upgrade modes require moving both state directories to persistent storage before they can preserve identity and bonds.
+- Production testing on `p3768-0000-p3767-0000` with USB device `0bda:c822` validated NVIDIA's vendor `rtk_btusb` driver and the controller's stable hardware public address. An upstream `btusb` replacement is not required.
+- BlueZ stores bond data in `/var/lib/bluetooth`; RPM/dnf package upgrades preserve it.
+- `Numeric comparison failed` usually means the phone and board have stale or mismatched bonds. Forget the device on the phone and remove that phone's bond on the board before pairing again:
+
+```bash
+bluetoothctl remove <PHONE_MAC>
+```
+
+- If targeted removal is not possible, this destructive reset clears every board-side Bluetooth bond. Stop the services first; every client must pair again:
+
+```bash
+sudo systemctl stop saha-bt-wifi-provision.service bluetooth.service
+sudo rm -rf /var/lib/bluetooth
+sudo systemctl start bluetooth.service
+```
 
 ## Service
 

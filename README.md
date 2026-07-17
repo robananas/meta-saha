@@ -135,7 +135,7 @@ If the WiFi interface name is not `wlan0`, use the name shown by `nmcli dev stat
 
 ### Bluetooth on the device
 
-Saha images include BlueZ and Jetson `tegra-bluetooth` support on devkits with an onboard WiFi/Bluetooth module (for example Orin NX on P3768). The adapter name is `Roban-Bluetooth`, and `bluetooth.service` starts automatically on boot. The controller runs in BLE-only mode and receives a persistent Static Random Identity Address before BlueZ starts. Full flashing creates a new identity, while RPM/dnf upgrades retain both the identity and BlueZ bond data under `/var/lib`.
+Saha images include BlueZ and Jetson `tegra-bluetooth` support on devkits with an onboard WiFi/Bluetooth module. Production testing on `p3768-0000-p3767-0000` with USB device `0bda:c822` validated NVIDIA's vendor `rtk_btusb` driver and the controller's stable hardware public address. Replacing it with the upstream `btusb` driver is not required. The adapter name is `Roban-Bluetooth`, and `bluetooth.service` starts automatically on boot in BLE-only mode.
 
 ```bash
 systemctl status bluetooth tegra-bluetooth
@@ -143,13 +143,19 @@ hciconfig -a
 bluetoothctl show
 ```
 
-To erase all BLE bonds and generate a new identity (factory reset of Bluetooth state):
+If pairing reports `Numeric comparison failed`, the phone and board usually have stale or mismatched bond records. Forget the device on the phone and remove that phone's bond on the board, then pair again:
 
 ```bash
-sudo saha-bluetooth-factory-reset
+bluetoothctl remove <PHONE_MAC>
 ```
 
-This command deletes `/var/lib/bluetooth` and `/var/lib/saha/ble-identity`. The current project does not yet provide A/B rootfs OTA or a separate persistent DATA partition, so only RPM/dnf package upgrades are guaranteed to retain this state.
+If targeted removal is not possible, the following destructive reset clears every board-side Bluetooth bond. Stop the GATT and Bluetooth services before deleting the state; all clients must pair again afterward.
+
+```bash
+sudo systemctl stop saha-bt-wifi-provision.service bluetooth.service
+sudo rm -rf /var/lib/bluetooth
+sudo systemctl start bluetooth.service
+```
 
 For Matter Server commissioning, ensure the adapter is powered and discoverable when needed:
 
