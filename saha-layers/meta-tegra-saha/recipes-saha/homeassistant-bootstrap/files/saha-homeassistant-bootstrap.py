@@ -28,6 +28,10 @@ LOG = logging.getLogger("saha-homeassistant-bootstrap")
 class BootstrapError(RuntimeError):
     """Raised for recoverable bootstrap failures without secret details."""
 
+    def __init__(self, message: str, *, status_code: int | None = None) -> None:
+        super().__init__(message)
+        self.status_code = status_code
+
 
 def request(
     path: str,
@@ -53,7 +57,9 @@ def request(
             raw = response.read()
     except urllib.error.HTTPError as exc:
         # OAuth/login error bodies can reflect submitted fields, so never include them.
-        raise BootstrapError(f"{path} failed with HTTP {exc.code}") from exc
+        raise BootstrapError(
+            f"{path} failed with HTTP {exc.code}", status_code=exc.code
+        ) from exc
     except (urllib.error.URLError, TimeoutError, OSError) as exc:
         raise BootstrapError(
             f"{path} request failed: {exc.__class__.__name__}"
@@ -77,7 +83,17 @@ def post_json(
 
 
 def get_onboarding() -> list[dict[str, Any]]:
-    value = request("/api/onboarding")
+    try:
+        value = request("/api/onboarding")
+    except BootstrapError as exc:
+        if exc.status_code == 404:
+            return [
+                {"step": "user", "done": True},
+                {"step": "core_config", "done": True},
+                {"step": "analytics", "done": True},
+                {"step": "integration", "done": True},
+            ]
+        raise
     if not isinstance(value, list):
         raise BootstrapError("onboarding status is not a list")
     return [item for item in value if isinstance(item, dict)]
@@ -237,14 +253,14 @@ def persist_completed_credentials(
     return credentials
 
 
-def recover_token_with_login(pending: dict[str, Any]) -> dict[str, Any]:
+def recover_token_with_login(account: dict[str, Any]) -> dict[str, Any]:
     """Recover OAuth tokens using HA's standard local auth login flow."""
     flow = post_json(
         "/auth/login_flow",
         {
-            "client_id": pending["clientId"],
+            "client_id": account["clientId"],
             "handler": ["homeassistant", None],
-            "redirect_uri": pending["clientId"],
+            "redirect_uri": account["clientId"],
             "type": "authorize",
         },
     )
@@ -255,9 +271,9 @@ def recover_token_with_login(pending: dict[str, Any]) -> dict[str, Any]:
     result = post_json(
         f"/auth/login_flow/{urllib.parse.quote(flow_id, safe='')}",
         {
-            "client_id": pending["clientId"],
-            "username": pending["ownerUsername"],
-            "password": pending["ownerPassword"],
+            "client_id": account["clientId"],
+            "username": account["ownerUsername"],
+            "password": account["ownerPassword"],
         },
     )
     auth_code = result.get("result") if isinstance(result, dict) else None
@@ -270,18 +286,50 @@ def recover_token_with_login(pending: dict[str, Any]) -> dict[str, Any]:
         raise BootstrapError("login flow did not return an authorization code")
     return exchange(
         {"grant_type": "authorization_code", "code": auth_code},
-        pending["clientId"],
+        account["clientId"],
     )
+
+
+def credentials_from_recovery(
+    token: dict[str, Any], credentials: dict[str, Any]
+) -> dict[str, Any]:
+    refresh_token = token.get("refresh_token")
+    expires_in = token.get("expires_in")
+    if (
+        not isinstance(refresh_token, str)
+        or not refresh_token
+        or not isinstance(expires_in, (int, float))
+        or expires_in <= 0
+    ):
+        raise BootstrapError("recovery token response is incomplete")
+    return {
+        **credentials,
+        "accessToken": token["access_token"],
+        "refreshToken": refresh_token,
+        "expiresAt": int(time.time() * 1000 + expires_in * 1000),
+        "updatedAt": time.strftime("%Y-%m-%dT%H:%M:%SZ", time.gmtime()),
+        "credentialGeneration": int(credentials.get("credentialGeneration", 1)) + 1,
+    }
 
 
 def refresh(credentials: dict[str, Any]) -> dict[str, Any]:
-    token = exchange(
-        {
-            "grant_type": "refresh_token",
-            "refresh_token": credentials["refreshToken"],
-        },
-        credentials["clientId"],
-    )
+    try:
+        token = exchange(
+            {
+                "grant_type": "refresh_token",
+                "refresh_token": credentials["refreshToken"],
+            },
+            credentials["clientId"],
+        )
+    except BootstrapError as exc:
+        if exc.status_code != 400:
+            raise
+        LOG.warning("stored Home Assistant refresh credential was rejected; recovering")
+        token = recover_token_with_login(credentials)
+        updated = credentials_from_recovery(token, credentials)
+        atomic_write_json(CREDENTIAL_PATH, updated)
+        return updated
+
     expires_in = token.get("expires_in")
     if not isinstance(expires_in, (int, float)) or expires_in <= 0:
         raise BootstrapError("refresh response expires_in is invalid")

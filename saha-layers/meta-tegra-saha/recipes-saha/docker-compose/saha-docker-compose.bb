@@ -17,7 +17,7 @@ inherit systemd
 SYSTEMD_SERVICE:${PN} = "saha-docker-compose.service"
 SYSTEMD_AUTO_ENABLE:${PN} = "enable"
 
-RDEPENDS:${PN} = "bash docker docker-compose"
+RDEPENDS:${PN} = "bash curl docker docker-compose python3-core"
 
 do_install() {
     install -d ${D}${bindir}

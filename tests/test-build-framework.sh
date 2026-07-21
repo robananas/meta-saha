@@ -267,6 +267,28 @@ grep -q 'matter-server-container.tar' \
 grep -q 'multi-user.target.wants/saha-docker-compose.service' \
   "$ROOT_DIR/saha-layers/meta-tegra-saha/recipes-saha/docker-compose/saha-docker-compose.bb" ||
   fail "docker compose launcher must enable systemd service at install time"
+grep -q 'wait_for_valid_clock' \
+  "$ROOT_DIR/saha-layers/meta-tegra-saha/recipes-saha/docker-compose/saha-docker-compose/saha-docker-compose.sh" ||
+  fail "docker compose launcher must reject an invalid system clock"
+grep -q 'bootstrap_clock_from_https' \
+  "$ROOT_DIR/saha-layers/meta-tegra-saha/recipes-saha/docker-compose/saha-docker-compose/saha-docker-compose.sh" ||
+  fail "docker compose launcher must bootstrap time when UDP NTP is unavailable"
+grep -q 'systemd-timesyncd.service time-sync.target' \
+  "$ROOT_DIR/saha-layers/meta-tegra-saha/recipes-saha/docker-compose/saha-docker-compose/saha-docker-compose.service" ||
+  fail "docker compose service must start after system time synchronization"
+if grep -q 'restart: unless-stopped' \
+  "$ROOT_DIR/saha-layers/meta-tegra-saha/recipes-saha/docker-compose/saha-docker-compose/compose.yaml"; then
+  fail "containers must not bypass the clock gate during Docker daemon startup"
+fi
+grep -q 'status_code != 400' \
+  "$ROOT_DIR/saha-layers/meta-tegra-saha/recipes-saha/homeassistant-bootstrap/files/saha-homeassistant-bootstrap.py" ||
+  fail "Home Assistant bootstrap must recover a rejected refresh credential"
+grep -q 'credentials_from_recovery' \
+  "$ROOT_DIR/saha-layers/meta-tegra-saha/recipes-saha/homeassistant-bootstrap/files/saha-homeassistant-bootstrap.py" ||
+  fail "Home Assistant bootstrap must persist recovered credentials"
+grep -q 'exc.status_code == 404' \
+  "$ROOT_DIR/saha-layers/meta-tegra-saha/recipes-saha/homeassistant-bootstrap/files/saha-homeassistant-bootstrap.py" ||
+  fail "Home Assistant bootstrap must treat completed onboarding 404 as ready"
 
 proxy_dry_run_output="$(
   env \

@@ -12,6 +12,9 @@ SAHA_DOCKER_COMPOSE_FILE="${SAHA_DOCKER_COMPOSE_FILE:-${SAHA_DOCKER_COMPOSE_DIR}
 SAHA_DOCKER_COMPOSE_TZ="${SAHA_DOCKER_COMPOSE_TZ:-Asia/Shanghai}"
 SAHA_DOCKER_COMPOSE_PULL="${SAHA_DOCKER_COMPOSE_PULL:-0}"
 SAHA_DOCKER_COMPOSE_WAIT="${SAHA_DOCKER_COMPOSE_WAIT:-60}"
+SAHA_CLOCK_WAIT="${SAHA_CLOCK_WAIT:-90}"
+SAHA_CLOCK_MIN_YEAR="${SAHA_CLOCK_MIN_YEAR:-2024}"
+SAHA_CLOCK_BOOTSTRAP_URLS="${SAHA_CLOCK_BOOTSTRAP_URLS:-https://ha.api.io.mi.com/ https://www.cloudflare.com/ https://www.google.com/}"
 SAHA_HOMEASSISTANT_IMAGE="${SAHA_HOMEASSISTANT_IMAGE:-ghcr.io/home-assistant/home-assistant:2026.7.1}"
 SAHA_HOMEASSISTANT_IMAGE_TAR="${SAHA_HOMEASSISTANT_IMAGE_TAR:-/usr/share/saha/homeassistant/image.tar}"
 SAHA_MATTER_SERVER_IMAGE="${SAHA_MATTER_SERVER_IMAGE:-ghcr.io/matter-js/python-matter-server:arm64}"
@@ -21,6 +24,62 @@ SAHA_ROBAN_WORKFLOW_IMAGE_TAR="${SAHA_ROBAN_WORKFLOW_IMAGE_TAR:-/usr/share/saha/
 
 log() {
     logger -t saha-docker-compose "$*"
+}
+
+clock_is_valid() {
+    year=$(date -u +%Y 2>/dev/null || printf '0')
+    [ "$year" -ge "$SAHA_CLOCK_MIN_YEAR" ] 2>/dev/null
+}
+
+bootstrap_clock_from_https() {
+    for url in $SAHA_CLOCK_BOOTSTRAP_URLS; do
+        remote_date=$(
+            curl -kfsSI --connect-timeout 10 --max-time 15 "$url" 2>/dev/null |
+                sed -n 's/^[Dd]ate:[[:space:]]*//p' |
+                tail -1 |
+                tr -d '\r'
+        )
+        [ -n "$remote_date" ] || continue
+        remote_epoch=$(
+            python3 -c 'import email.utils, sys; print(int(email.utils.parsedate_to_datetime(sys.argv[1]).timestamp()))' \
+                "$remote_date" 2>/dev/null || true
+        )
+        [ -n "$remote_epoch" ] || continue
+        remote_year=$(date -u -d "@${remote_epoch}" +%Y 2>/dev/null || printf '0')
+        if [ "$remote_year" -lt "$SAHA_CLOCK_MIN_YEAR" ] 2>/dev/null ||
+            [ "$remote_year" -gt 2100 ] 2>/dev/null; then
+            continue
+        fi
+        if date -u -s "@${remote_epoch}" >/dev/null 2>&1; then
+            hwclock --systohc >/dev/null 2>&1 || true
+            log "system clock bootstrapped from HTTPS response"
+            return 0
+        fi
+    done
+    return 1
+}
+
+wait_for_valid_clock() {
+    if clock_is_valid; then
+        return 0
+    fi
+
+    waited=0
+    while [ "$waited" -lt "$SAHA_CLOCK_WAIT" ]; do
+        if clock_is_valid; then
+            return 0
+        fi
+        sleep 2
+        waited=$((waited + 2))
+    done
+
+    log "system clock still invalid after ${SAHA_CLOCK_WAIT}s; trying HTTPS bootstrap"
+    if bootstrap_clock_from_https && clock_is_valid; then
+        return 0
+    fi
+
+    log "refusing to start application stack with invalid system clock"
+    return 1
 }
 
 wait_for_docker() {
@@ -150,6 +209,7 @@ case "${1:-}" in
         ;;
     start)
         wait_for_docker
+        wait_for_valid_clock
         ensure_images
         start_stack
         ;;
@@ -159,6 +219,7 @@ case "${1:-}" in
     restart)
         stop_stack
         wait_for_docker
+        wait_for_valid_clock
         ensure_images
         start_stack
         ;;

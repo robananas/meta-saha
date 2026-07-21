@@ -6,7 +6,7 @@ services:
       - /var/lib/homeassistant:/config
       - /etc/localtime:/etc/localtime:ro
       - /run/dbus:/run/dbus:ro
-    restart: unless-stopped
+    restart: on-failure:5
     privileged: true
     network_mode: host
     environment:
@@ -15,7 +15,7 @@ services:
   matter-server:
     container_name: matter-server
     image: ghcr.io/matter-js/python-matter-server:arm64
-    restart: unless-stopped
+    restart: on-failure:5
     network_mode: host
     security_opt:
       - apparmor:unconfined
@@ -28,7 +28,7 @@ services:
   roban-workflow-api:
     container_name: roban-workflow-api
     image: roban-workflow-api:arm64
-    restart: unless-stopped
+    restart: on-failure:5
     network_mode: host
     environment:
       TZ: ${TZ:-Asia/Shanghai}
