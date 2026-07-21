@@ -1,7 +1,7 @@
 [Unit]
 Description=Bootstrap Home Assistant board credentials
 After=saha-docker-compose.service
-Requires=saha-docker-compose.service
+Wants=saha-docker-compose.service
 
 [Service]
 Type=oneshot

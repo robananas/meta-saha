@@ -257,9 +257,12 @@ grep -q 'secure_protocol.py' "$BT_WIFI_PROVISION" ||
 grep -q 'UMask=0077' \
   "$ROOT_DIR/saha-layers/meta-tegra-saha/recipes-saha/bt-wifi-provision/saha-bt-wifi-provision/saha-bt-wifi-provision.service" ||
   fail "WiFi provisioning service must use a restrictive umask"
-grep -q 'ReadWritePaths=.*\/var\/lib\/saha' \
+grep -q '^StateDirectory=saha$' \
   "$ROOT_DIR/saha-layers/meta-tegra-saha/recipes-saha/bt-wifi-provision/saha-bt-wifi-provision/saha-bt-wifi-provision.service" ||
-  fail "WiFi provisioning sandbox must permit HA credential refresh writes"
+  fail "WiFi provisioning service must create and own /var/lib/saha before namespace setup"
+grep -q '^StateDirectoryMode=0700$' \
+  "$ROOT_DIR/saha-layers/meta-tegra-saha/recipes-saha/bt-wifi-provision/saha-bt-wifi-provision/saha-bt-wifi-provision.service" ||
+  fail "WiFi provisioning state directory must be private"
 grep -q 'session_state.py' "$BT_WIFI_PROVISION" ||
   fail "request tombstone and provisioning owner state must be packaged"
 grep -q 'development-ble-device-ed25519.key' "$BT_WIFI_PROVISION" ||
@@ -295,6 +298,13 @@ grep -q 'systemd-timesyncd.service time-sync.target' \
 if grep -q 'restart: unless-stopped' \
   "$ROOT_DIR/saha-layers/meta-tegra-saha/recipes-saha/docker-compose/saha-docker-compose/compose.yaml"; then
   fail "containers must not bypass the clock gate during Docker daemon startup"
+fi
+grep -q '^Wants=saha-docker-compose.service$' \
+  "$ROOT_DIR/saha-layers/meta-tegra-saha/recipes-saha/homeassistant-bootstrap/files/saha-homeassistant-bootstrap.service" ||
+  fail "Home Assistant bootstrap must survive an initial compose clock-gate failure"
+if grep -q '^Requires=saha-docker-compose.service$' \
+  "$ROOT_DIR/saha-layers/meta-tegra-saha/recipes-saha/homeassistant-bootstrap/files/saha-homeassistant-bootstrap.service"; then
+  fail "Home Assistant bootstrap must not be skipped permanently when compose retries"
 fi
 grep -q 'status_code != 400' \
   "$ROOT_DIR/saha-layers/meta-tegra-saha/recipes-saha/homeassistant-bootstrap/files/saha-homeassistant-bootstrap.py" ||
@@ -576,6 +586,9 @@ BLUEZ_APPEND="$ROOT_DIR/saha-layers/meta-tegra-saha/recipes-connectivity/bluez/b
   fail "bluez5 bbappend must exist"
 grep -q 'Roban-Bluetooth' "$ROOT_DIR/saha-layers/meta-tegra-saha/recipes-connectivity/bluez/bluez5/main.conf" ||
   fail "bluez5 must set the Roban-Bluetooth adapter name"
+grep -Eq '^ReverseServiceDiscovery[[:space:]]*=[[:space:]]*false$' \
+  "$ROOT_DIR/saha-layers/meta-tegra-saha/recipes-connectivity/bluez/bluez5/main.conf" ||
+  fail "BlueZ peripheral must disable reverse GATT discovery to avoid Android pairing prompts"
 grep -q 'Experimental = true' \
   "$ROOT_DIR/saha-layers/meta-tegra-saha/recipes-connectivity/bluez/bluez5/main.conf" ||
   fail "bluez5 must enable experimental GATT support"
