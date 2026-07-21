@@ -143,7 +143,7 @@ hciconfig -a
 bluetoothctl show
 ```
 
-Provision the production device Ed25519 private key as a root-owned mode `0600` file outside the image and provide the trusted App Ed25519 public-key JSON keyring. Paths default to `/etc/roban/ble-device-ed25519.key` and `/etc/roban/ble-app-keyring.json`; CI/manufacturing must inject their contents. No production private key is committed or installed by the recipe.
+For the current bring-up phase, the recipe bundles a shared development device Ed25519 private key and trusted App public-key keyring, installed as `/etc/roban/ble-device-ed25519.key` (`0600`) and `/etc/roban/ble-app-keyring.json`. These credentials are intentionally committed only to make the end-to-end flow reproducible and are not production-safe. Replace them with per-device manufacturing/CI injection before production.
 
 For Matter Server commissioning, ensure the adapter is powered and discoverable when needed:
 

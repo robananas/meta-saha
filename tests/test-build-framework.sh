@@ -262,6 +262,12 @@ grep -q 'ReadWritePaths=.*\/var\/lib\/saha' \
   fail "WiFi provisioning sandbox must permit HA credential refresh writes"
 grep -q 'session_state.py' "$BT_WIFI_PROVISION" ||
   fail "request tombstone and provisioning owner state must be packaged"
+grep -q 'development-ble-device-ed25519.key' "$BT_WIFI_PROVISION" ||
+  fail "development image must bundle the BLE device identity"
+grep -q 'development-ble-app-keyring.json' "$BT_WIFI_PROVISION" ||
+  fail "development image must bundle the trusted App keyring"
+grep -q 'install -m 0600.*development-ble-device-ed25519.key' "$BT_WIFI_PROVISION" ||
+  fail "bundled BLE device private key must install with mode 0600"
 grep -q 'saha-homeassistant-container-image' \
   "$ROOT_DIR/saha-layers/meta-tegra-saha/recipes-saha/packagegroups/packagegroup-saha-docker-images.bb" ||
   fail "docker images packagegroup must include the Home Assistant image recipe"

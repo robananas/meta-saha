@@ -6,3 +6,4 @@ downloads
 sstate-cache
 __pycache__/
 *.pyc
+.local-secrets/

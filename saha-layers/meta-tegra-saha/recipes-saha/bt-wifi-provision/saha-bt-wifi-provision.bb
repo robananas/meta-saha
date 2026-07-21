@@ -19,6 +19,8 @@ SRC_URI = " \
     file://test_session_state.py \
     file://test_wifi_manager.py \
     file://saha-bt-wifi-provision.env \
+    file://development-ble-device-ed25519.key \
+    file://development-ble-app-keyring.json \
     file://saha-bt-wifi-provision.service \
     file://GATT.md \
 "
@@ -63,6 +65,14 @@ do_install() {
     install -d ${D}${sysconfdir}/default
     install -m 0644 ${UNPACKDIR}/saha-bt-wifi-provision.env ${D}${sysconfdir}/default/saha-bt-wifi-provision
 
+    # Development-only shared identity for bringing up the end-to-end BLE v2 flow.
+    # Replace with manufacturing/CI injection before production deployment.
+    install -d -m 0700 ${D}${sysconfdir}/roban
+    install -m 0600 ${UNPACKDIR}/development-ble-device-ed25519.key \
+        ${D}${sysconfdir}/roban/ble-device-ed25519.key
+    install -m 0644 ${UNPACKDIR}/development-ble-app-keyring.json \
+        ${D}${sysconfdir}/roban/ble-app-keyring.json
+
     install -d ${D}${systemd_system_unitdir}
     install -m 0644 ${UNPACKDIR}/saha-bt-wifi-provision.service ${D}${systemd_system_unitdir}
 
@@ -78,5 +88,7 @@ FILES:${PN} += " \
     ${libdir}/saha-bt-wifi-provision \
     ${datadir}/doc/${PN}/GATT.md \
     ${sysconfdir}/default/saha-bt-wifi-provision \
+    ${sysconfdir}/roban/ble-device-ed25519.key \
+    ${sysconfdir}/roban/ble-app-keyring.json \
     ${sysconfdir}/systemd/system/multi-user.target.wants/saha-bt-wifi-provision.service \
 "
