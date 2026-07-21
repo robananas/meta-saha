@@ -265,6 +265,9 @@ grep -q '^StateDirectoryMode=0700$' \
   fail "WiFi provisioning state directory must be private"
 grep -q 'session_state.py' "$BT_WIFI_PROVISION" ||
   fail "request tombstone and provisioning owner state must be packaged"
+grep -q 'HA_CREDENTIALS_UNAVAILABLE' \
+  "$ROOT_DIR/saha-layers/meta-tegra-saha/recipes-saha/bt-wifi-provision/saha-bt-wifi-provision/gatt_server.py" ||
+  fail "BLE provisioning must classify temporarily unavailable HA credentials for App retry"
 grep -q 'development-ble-device-ed25519.key' "$BT_WIFI_PROVISION" ||
   fail "development image must bundle the BLE device identity"
 grep -q 'development-ble-app-keyring.json' "$BT_WIFI_PROVISION" ||

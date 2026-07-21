@@ -352,7 +352,20 @@ class GattProvisioner:
             response["request_id"] = request_id
             response["terminal"] = True
             self._terminal(session, request_id, MSG_RESPONSE, response)
-        except (HaCredentialError, WifiError, ValueError) as exc:
+        except HaCredentialError as exc:
+            self._terminal(
+                session,
+                request_id,
+                MSG_ERROR,
+                {
+                    "event": "error",
+                    "request_id": request_id,
+                    "terminal": True,
+                    "code": "HA_CREDENTIALS_UNAVAILABLE",
+                    "error": str(exc),
+                },
+            )
+        except (WifiError, ValueError) as exc:
             self._terminal(session, request_id, MSG_ERROR, {"event": "error", "request_id": request_id, "terminal": True, "error": str(exc)})
         except Exception:
             logger.exception("secure command failed")
