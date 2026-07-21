@@ -12,6 +12,12 @@ PartOf=bluetooth.service
 Type=simple
 EnvironmentFile=-/etc/default/saha-bt-wifi-provision
 Environment=PYTHONUNBUFFERED=1
+UMask=0077
+NoNewPrivileges=yes
+PrivateTmp=yes
+ProtectHome=yes
+ProtectSystem=strict
+ReadWritePaths=/run /var/lib/NetworkManager /var/lib/saha
 ExecStartPre=/usr/bin/saha-bt-wifi-provision-wait
 ExecStart=/usr/bin/saha-bt-wifi-provision
 Restart=on-failure

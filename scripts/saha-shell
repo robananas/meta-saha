@@ -48,4 +48,8 @@ saha_prepare_docker_env "$ROOT_DIR"
 saha_apply_build_tuning_defaults
 
 saha_build_builder_image "$ROOT_DIR"
-saha_run_docker "$ROOT_DIR" "$TARGET" "$INTERACTIVE" kas shell "$KAS_CONFIG" "${COMMAND_ARGS[@]}"
+if [ ${#COMMAND_ARGS[@]} -eq 0 ]; then
+  saha_run_docker "$ROOT_DIR" "$TARGET" "$INTERACTIVE" kas shell "$KAS_CONFIG"
+else
+  saha_run_docker "$ROOT_DIR" "$TARGET" "$INTERACTIVE" kas shell "$KAS_CONFIG" "${COMMAND_ARGS[@]}"
+fi

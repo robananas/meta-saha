@@ -10,8 +10,14 @@ SRC_URI = " \
     file://saha-bt-wifi-provision-wait.sh \
     file://dbus_mainloop.py \
     file://gatt_server.py \
+    file://secure_protocol.py \
+    file://session_state.py \
+    file://device_identity.py \
     file://ha_credential_manager.py \
     file://wifi_manager.py \
+    file://test_secure_protocol.py \
+    file://test_session_state.py \
+    file://test_wifi_manager.py \
     file://saha-bt-wifi-provision.env \
     file://saha-bt-wifi-provision.service \
     file://GATT.md \
@@ -28,6 +34,7 @@ RDEPENDS:${PN} = " \
     networkmanager-nmcli \
     python3-core \
     python3-ctypes \
+    python3-cryptography \
     python3-dbus \
     python3-json \
     python3-netclient \
@@ -39,8 +46,14 @@ do_install() {
     install -m 0644 ${UNPACKDIR}/saha-bt-wifi-provision.py ${D}${libdir}/saha-bt-wifi-provision/
     install -m 0644 ${UNPACKDIR}/dbus_mainloop.py ${D}${libdir}/saha-bt-wifi-provision/
     install -m 0644 ${UNPACKDIR}/gatt_server.py ${D}${libdir}/saha-bt-wifi-provision/
+    install -m 0644 ${UNPACKDIR}/secure_protocol.py ${D}${libdir}/saha-bt-wifi-provision/
+    install -m 0644 ${UNPACKDIR}/session_state.py ${D}${libdir}/saha-bt-wifi-provision/
+    install -m 0644 ${UNPACKDIR}/device_identity.py ${D}${libdir}/saha-bt-wifi-provision/
     install -m 0644 ${UNPACKDIR}/ha_credential_manager.py ${D}${libdir}/saha-bt-wifi-provision/
     install -m 0644 ${UNPACKDIR}/wifi_manager.py ${D}${libdir}/saha-bt-wifi-provision/
+    install -m 0644 ${UNPACKDIR}/test_secure_protocol.py ${D}${libdir}/saha-bt-wifi-provision/
+    install -m 0644 ${UNPACKDIR}/test_session_state.py ${D}${libdir}/saha-bt-wifi-provision/
+    install -m 0644 ${UNPACKDIR}/test_wifi_manager.py ${D}${libdir}/saha-bt-wifi-provision/
 
     install -d ${D}${bindir}
     install -m 0755 ${UNPACKDIR}/saha-bt-wifi-provision.sh ${D}${bindir}/saha-bt-wifi-provision

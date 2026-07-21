@@ -240,18 +240,28 @@ grep -q 'python3-subprocess' \
 grep -q 'setup_dbus_main_loop' \
   "$ROOT_DIR/saha-layers/meta-tegra-saha/recipes-saha/bt-wifi-provision/saha-bt-wifi-provision/gatt_server.py" ||
   fail "gatt server must install a dbus main loop before exporting objects"
-grep -q 'RegisterAgent' \
+if grep -Eq 'RegisterAgent|NoInputNoOutput|encrypt-(read|write)' \
+  "$ROOT_DIR/saha-layers/meta-tegra-saha/recipes-saha/bt-wifi-provision/saha-bt-wifi-provision/gatt_server.py"; then
+  fail "Secure Protocol v2 must not depend on BlueZ pairing or encrypted flags"
+fi
+grep -Fq '"Pairable", dbus.Boolean(False)' \
   "$ROOT_DIR/saha-layers/meta-tegra-saha/recipes-saha/bt-wifi-provision/saha-bt-wifi-provision/gatt_server.py" ||
-  fail "gatt server must register a BlueZ pairing agent"
-grep -q 'NoInputNoOutput' \
-  "$ROOT_DIR/saha-layers/meta-tegra-saha/recipes-saha/bt-wifi-provision/saha-bt-wifi-provision/gatt_server.py" ||
-  fail "gatt server must use Just Works pairing capability"
+  fail "Secure Protocol v2 must disable BlueZ pairing"
 grep -Fq '"Discoverable", dbus.Boolean(False)' \
   "$ROOT_DIR/saha-layers/meta-tegra-saha/recipes-saha/bt-wifi-provision/saha-bt-wifi-provision/gatt_server.py" ||
   fail "gatt server must keep classic Bluetooth non-discoverable"
-grep -q 'encrypt-write' \
-  "$ROOT_DIR/saha-layers/meta-tegra-saha/recipes-saha/bt-wifi-provision/saha-bt-wifi-provision/gatt_server.py" ||
-  fail "WiFi provisioning writes must require an encrypted connection"
+grep -q 'python3-cryptography' "$BT_WIFI_PROVISION" ||
+  fail "Secure Protocol v2 must install python3-cryptography"
+grep -q 'secure_protocol.py' "$BT_WIFI_PROVISION" ||
+  fail "Secure Protocol v2 implementation must be packaged"
+grep -q 'UMask=0077' \
+  "$ROOT_DIR/saha-layers/meta-tegra-saha/recipes-saha/bt-wifi-provision/saha-bt-wifi-provision/saha-bt-wifi-provision.service" ||
+  fail "WiFi provisioning service must use a restrictive umask"
+grep -q 'ReadWritePaths=.*\/var\/lib\/saha' \
+  "$ROOT_DIR/saha-layers/meta-tegra-saha/recipes-saha/bt-wifi-provision/saha-bt-wifi-provision/saha-bt-wifi-provision.service" ||
+  fail "WiFi provisioning sandbox must permit HA credential refresh writes"
+grep -q 'session_state.py' "$BT_WIFI_PROVISION" ||
+  fail "request tombstone and provisioning owner state must be packaged"
 grep -q 'saha-homeassistant-container-image' \
   "$ROOT_DIR/saha-layers/meta-tegra-saha/recipes-saha/packagegroups/packagegroup-saha-docker-images.bb" ||
   fail "docker images packagegroup must include the Home Assistant image recipe"

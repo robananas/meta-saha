@@ -1,4 +1,6 @@
-# Roban BLE GATT compatibility test
+# Roban BLE GATT compatibility test (development only, insecure)
+
+This root-level tool is not packaged or enabled by any production recipe. Its local name and UUID namespace intentionally differ from the production Secure Protocol v2 service, and it must never run on a production device.
 
 - Advertisement name: `Roban-Bluetooth`
 - Advertised service UUID: `a0a0ff10-0000-1000-8000-00805f9b34fb`

@@ -25,15 +25,16 @@ GATT_CHARACTERISTIC = "org.bluez.GattCharacteristic1"
 ADVERTISING_MANAGER = "org.bluez.LEAdvertisingManager1"
 ADVERTISEMENT = "org.bluez.LEAdvertisement1"
 
+# DEVELOPMENT ONLY: these UUIDs intentionally do not overlap production Roban GATT.
 ECHO_SERVICE_UUID = "7b7e0001-f3a0-4b6f-8a1e-4c70d2e2a001"
-ECHO_UUID = "7b7e0002-f3a0-4b6f-8a1e-4c70d2e2a001"
+ECHO_UUID = "7b7e0002-f3a0-4b6f-8a1e-4c70d2e2a2ff"
 
-LEGACY_SERVICE_UUID = "a0a0ff10-0000-1000-8000-00805f9b34fb"
-LEGACY_STATUS_UUID = "a0a0ff11-0000-1000-8000-00805f9b34fb"
-LEGACY_COMMAND_UUID = "a0a0ff12-0000-1000-8000-00805f9b34fb"
-LEGACY_EVENT_UUID = "a0a0ff13-0000-1000-8000-00805f9b34fb"
+LEGACY_SERVICE_UUID = "7b7e0010-f3a0-4b6f-8a1e-4c70d2e2a001"
+LEGACY_STATUS_UUID = "7b7e0011-f3a0-4b6f-8a1e-4c70d2e2a001"
+LEGACY_COMMAND_UUID = "7b7e0012-f3a0-4b6f-8a1e-4c70d2e2a001"
+LEGACY_EVENT_UUID = "7b7e0013-f3a0-4b6f-8a1e-4c70d2e2a001"
 
-LOCAL_NAME = "Roban-Bluetooth"
+LOCAL_NAME = "Roban-DEV-INSECURE"
 
 APP_PATH = "/org/roban/gatt_test"
 ECHO_SERVICE_PATH = f"{APP_PATH}/service0"
@@ -300,16 +301,13 @@ class LegacyCharacteristic(dbus.service.Object):
 
         write_type = str(options.get("type", "request"))
         device = str(options.get("device", "unknown"))
-        text = payload.decode("utf-8", errors="replace")
         LOG.info(
-            "legacy rx: uuid=%s len=%d type=%s mtu=%d device=%s hex=%s utf8=%r",
+            "legacy rx: uuid=%s len=%d type=%s mtu=%d device=%s",
             self.uuid,
             len(payload),
             write_type,
             mtu,
             device,
-            payload.hex(" "),
-            text,
         )
 
     @dbus.service.method(GATT_CHARACTERISTIC, in_signature="", out_signature="")

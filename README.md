@@ -135,7 +135,7 @@ If the WiFi interface name is not `wlan0`, use the name shown by `nmcli dev stat
 
 ### Bluetooth on the device
 
-Saha images include BlueZ and Jetson `tegra-bluetooth` support on devkits with an onboard WiFi/Bluetooth module. Production testing on `p3768-0000-p3767-0000` with USB device `0bda:c822` validated NVIDIA's vendor `rtk_btusb` driver and the controller's stable hardware public address. Replacing it with the upstream `btusb` driver is not required. The adapter name is `Roban-Bluetooth`, and `bluetooth.service` starts automatically on boot in BLE-only mode.
+Saha images include BlueZ and Jetson `tegra-bluetooth` support on devkits with an onboard WiFi/Bluetooth module. Production testing on `p3768-0000-p3767-0000` with USB device `0bda:c822` validated NVIDIA's vendor `rtk_btusb` driver and the controller's stable hardware public address. Replacing it with the upstream `btusb` driver is not required. The adapter name is `Roban-Bluetooth`, and `bluetooth.service` starts automatically on boot in BLE-only mode. Roban provisioning does not use BlueZ pairing or bonding; Secure Protocol v2 performs Ed25519 identity authentication and encrypts all business data.
 
 ```bash
 systemctl status bluetooth tegra-bluetooth
@@ -143,19 +143,7 @@ hciconfig -a
 bluetoothctl show
 ```
 
-If pairing reports `Numeric comparison failed`, the phone and board usually have stale or mismatched bond records. Forget the device on the phone and remove that phone's bond on the board, then pair again:
-
-```bash
-bluetoothctl remove <PHONE_MAC>
-```
-
-If targeted removal is not possible, the following destructive reset clears every board-side Bluetooth bond. Stop the GATT and Bluetooth services before deleting the state; all clients must pair again afterward.
-
-```bash
-sudo systemctl stop saha-bt-wifi-provision.service bluetooth.service
-sudo rm -rf /var/lib/bluetooth
-sudo systemctl start bluetooth.service
-```
+Provision the production device Ed25519 private key as a root-owned mode `0600` file outside the image and provide the trusted App Ed25519 public-key JSON keyring. Paths default to `/etc/roban/ble-device-ed25519.key` and `/etc/roban/ble-app-keyring.json`; CI/manufacturing must inject their contents. No production private key is committed or installed by the recipe.
 
 For Matter Server commissioning, ensure the adapter is powered and discoverable when needed:
 
@@ -167,10 +155,10 @@ bluetoothctl power on
 
 `saha-bt-wifi-provision` is included in the default image via `packagegroup-saha-bluetooth`. It exposes a BLE GATT peripheral named `Roban-Bluetooth`. A phone app can:
 
-1. Connect over BLE and subscribe to the WiFi Event characteristic
-2. Read current WiFi status (SSID, IP, gateway, signal)
-3. Trigger a WiFi scan
-4. Send SSID/password to connect and receive the assigned LAN IP in the response
+1. Connect over BLE without pairing/bonding and subscribe to WiFi Event
+2. Fragment and exchange signed ClientHello/ServerHello, then encrypted Finished
+3. Send encrypted requests with nonzero request IDs
+4. Reassemble and authenticate encrypted terminal responses for status, scan, connect, or HA credentials
 
 GATT UUIDs and JSON payloads are documented on the device at `/usr/share/doc/saha-bt-wifi-provision/GATT.md`.
 

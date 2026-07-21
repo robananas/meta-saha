@@ -1,163 +1,81 @@
-# Roban Bluetooth WiFi Provisioning GATT API
+# Roban BLE Secure Protocol v2
 
-This document describes the BLE GATT interface exposed by
-`saha-bt-wifi-provision` for Android and other central devices.
+This is the normative device-side GATT and wire contract. Version 2 is a hard cutover: there is no legacy plaintext mode and no BlueZ pairing/bonding. The adapter is `Pairable=false`. App and device authentication uses global Ed25519 identities; every business request and response is protected by ChaCha20-Poly1305.
 
-## Adapter
+## GATT
 
-- Local name: `Roban-Bluetooth` (override with `SAHA_BT_WIFI_LOCAL_NAME`)
-- Transport: BLE-only (BR/EDR is disabled; a GATT client connects to the Jetson peripheral)
-- Pairing: BlueZ `NoInputNoOutput` / Just Works bonding (no PIN entry)
-- Security: characteristics require an encrypted, paired connection
+Service `a0a0ff10-0000-1000-8000-00805f9b34fb`:
 
-## Device identity lifecycle
+- Status `a0a0ff11-0000-1000-8000-00805f9b34fb`, read: before authentication returns only ASCII `Roban BLE Secure Protocol v2; all business data requires authenticated AEAD`. It never exposes Wi-Fi state.
+- Command `a0a0ff12-0000-1000-8000-00805f9b34fb`, write/write-without-response: transport fragments from the central.
+- Event `a0a0ff13-0000-1000-8000-00805f9b34fb`, notify: transport fragments from the device. Subscribe before ClientHello.
 
-- Production testing on `p3768-0000-p3767-0000` with USB device `0bda:c822` validated NVIDIA's vendor `rtk_btusb` driver and the controller's stable hardware public address. An upstream `btusb` replacement is not required.
-- BlueZ stores bond data in `/var/lib/bluetooth`; RPM/dnf package upgrades preserve it.
-- `Numeric comparison failed` usually means the phone and board have stale or mismatched bonds. Forget the device on the phone and remove that phone's bond on the board before pairing again:
+`WriteValue` uses BlueZ `options.device` as the client identity/session key and preserves `options.mtu` for response sizing. A disconnect clears that device's handshake, keys, reassembly, sequences, and active request IDs.
 
-```bash
-bluetoothctl remove <PHONE_MAC>
-```
+## Transport fragment
 
-- If targeted removal is not possible, this destructive reset clears every board-side Bluetooth bond. Stop the services first; every client must pair again:
+All integers are unsigned big-endian. The 10-byte outer header is:
 
-```bash
-sudo systemctl stop saha-bt-wifi-provision.service bluetooth.service
-sudo rm -rf /var/lib/bluetooth
-sudo systemctl start bluetooth.service
-```
+| Offset | Bytes | Field |
+| --- | ---: | --- |
+| 0 | 2 | magic ASCII `R2` |
+| 2 | 1 | version `0x02` |
+| 3 | 1 | kind: 1 ClientHello, 2 ServerHello, 3 encrypted record |
+| 4 | 2 | message id |
+| 6 | 1 | zero-based fragment index |
+| 7 | 1 | fragment count, 1..255 |
+| 8 | 2 | total complete-message bytes, 1..16384 |
+| 10 | remaining | non-empty fragment body |
 
-## Service
+The body budget is `ATT_MTU - 3 - 10`; therefore MTU 23 carries 10 body bytes. A complete handshake message or complete AEAD ciphertext is fragmented. Reassembly permits out-of-order and byte-identical duplicate fragments, rejects conflicting duplicates/metadata, and has limits of 8 incomplete messages, 16 KiB/message, 255 fragments, 509 body bytes/fragment, and 10 seconds. **Fragments do not have independent authentication tags.** Kind 3 is reassembled first and then authenticated once.
 
-| Field | Value |
-| --- | --- |
-| Name | Roban WiFi Provision |
-| UUID | `a0a0ff10-0000-1000-8000-00805f9b34fb` |
+Canonical transport AAD excludes index and is exactly `magic[2] || version[u8] || kind[u8] || message_id[u16] || count[u8] || total[u16]` (9 bytes). This binds the complete ciphertext to stable transport metadata while allowing reordered fragments.
 
-## Characteristics
+## Fixed handshake messages
 
-### 1. WiFi Status (`a0a0ff11-0000-1000-8000-00805f9b34fb`)
+### ClientHello, kind 1, exactly 162 bytes
 
-- Properties: `read`
-- Payload: UTF-8 JSON
+`version[u8]=2 || flags[u8]=0 || app_key_id[32] || client_ephemeral_X25519[32] || client_nonce[32] || signature[64]`.
 
-```json
-{
-  "connected": true,
-  "ssid": "MyWiFi",
-  "interface": "wlan0",
-  "ip": "192.168.1.42",
-  "addresses": ["192.168.1.42"],
-  "gateway": "192.168.1.1",
-  "dns": ["192.168.1.1"],
-  "signal": -48,
-  "security": "WPA2"
-}
-```
+`app_key_id` is the raw trusted App Ed25519 public key. Signature input is ASCII `R2-ClientHello` followed by the first 98 ClientHello bytes (`version` through `client_nonce`).
 
-### 2. WiFi Command (`a0a0ff12-0000-1000-8000-00805f9b34fb`)
+### ServerHello, kind 2, exactly 170 bytes
 
-- Properties: `write`, `write-without-response`
-- Payload: UTF-8 JSON command object
-- Responses are delivered on the WiFi Event characteristic
+`version[u8]=2 || flags[u8]=0 || session_id[u64] || device_key_id[32] || server_ephemeral_X25519[32] || server_nonce[32] || signature[64]`.
 
-Commands:
+`device_key_id` is the raw device Ed25519 public key. Signature input is ASCII `R2-ServerHello` followed by the complete 162-byte ClientHello and then ServerHello fields `session_id || device_key_id || server_ephemeral || server_nonce`.
 
-```json
-{"cmd":"status"}
-```
+Both peers compute X25519 shared secret, then HKDF-SHA256 with `salt = client_nonce || server_nonce`, `info = ASCII "Roban BLE Secure Protocol v2"`, output 64 bytes. First 32 bytes are client-to-device key; last 32 are device-to-client key.
 
-```json
-{"cmd":"scan","limit":20}
-```
+## Encrypted record
 
-```json
-{"cmd":"connect","ssid":"MyWiFi","password":"secret"}
-```
+The complete kind-3 body is `ChaCha20-Poly1305(ciphertext || 16-byte tag)`. Nonce is 12 bytes: first 7 bytes of big-endian session id, direction u8, sequence u32. Each direction starts at sequence 0 and accepts exactly the next value; no gaps/replay/wrap.
 
-Open networks:
+After decrypting, plaintext is:
 
-```json
-{"cmd":"connect","ssid":"GuestWiFi"}
-```
+| Offset | Bytes | Field |
+| --- | ---: | --- |
+| 0 | 8 | session id u64 |
+| 8 | 1 | direction: 0 App-to-device, 1 device-to-App |
+| 9 | 4 | sequence u32 |
+| 13 | 2 | message type u16 |
+| 15 | 4 | request id u32 |
+| 19 | remaining | payload |
 
-### 3. WiFi Event (`a0a0ff13-0000-1000-8000-00805f9b34fb`)
+Message types: `1 Finished`, `16 Request`, `17 Response`, `18 Error`, `19 Progress` (reserved). The App's first encrypted record must be type 1, request id 0, payload ASCII `finished-v2`. The device replies with encrypted type 1 JSON `{"ok":true}`. No business command is accepted earlier.
 
-- Properties: `notify`
-- Subscribe with `StartNotify` before sending commands
+Business request payloads are compact UTF-8 JSON (`status`, `scan`, `connect`, and existing `ha`). Every request uses nonzero request id. The device admits exactly one authenticated provisioning owner. Per-device handshake/reassembly contexts remain isolated, but another device receives encrypted `BUSY` after Finished and its context is closed. Ownership is released on BlueZ disconnect, explicit successful close, or 300 seconds of owner inactivity.
 
-#### Status event
+Device-to-App encrypted transport message ids are derived from the random session id and transmit sequence, while the App seeds its outgoing message-id counter from the random ClientHello nonce. This reduces cross-session fragment-key collisions on BlueZ's shared notification stream; the id remains authenticated by AAD.
 
-Same fields as the WiFi Status characteristic plus `"event":"status"`.
+A bounded per-session tombstone cache retains 32 completed requests for 300 seconds. It binds request id to SHA-256 of the exact request payload and the unique terminal response. Repeating an active id with the same payload returns non-terminal `IN_PROGRESS` (and never executes twice); repeating a completed id with the same payload replays the cached terminal; any same-id/different-payload request returns terminal `REQUEST_ID_CONFLICT`. Exactly one original terminal type 17 or 18 response is generated for an accepted request. If the bounded notification queue cannot accept a terminal, the device closes and clears the session rather than silently losing the terminal or leaking a worker slot. All responses use one encrypted record and the common transport fragmenter.
 
-#### Scan event
+`connect` accepts optional integer `deadline_seconds`, clamped to 5..120. It emits encrypted non-terminal type-19 progress stages `associating` before invoking nmcli and `obtainingIp` after nmcli succeeds while waiting for IPv4. It does not claim an `authenticating` stage because nmcli does not expose that transition reliably. Success requires the requested SSID to be active and IPv4 assigned before the monotonic deadline. Wi-Fi `signal` and `signal_percent` are NetworkManager percentages (0..100), not dBm.
 
-```json
-{
-  "event": "scan",
-  "networks": [
-    {"ssid": "MyWiFi", "signal": -42, "security": "WPA2", "frequency_mhz": 2437}
-  ]
-}
-```
+A successful `ha` request first sends credentials as encrypted non-terminal type 19 with `awaiting_ack:true`; the request stays active and has no terminal yet. After safely persisting credentials, the App sends `{"cmd":"close","ack_request_id":N}` using the same request id `N`. The device then emits the request's sole terminal type-17 `close` response, queues every transport fragment, and only afterward clears keys/session and releases ownership. Missing or mismatched ACK returns non-terminal `INVALID_ACK` and never produces a false HA success terminal. Disconnect/idle/close destroys the channel keys; disconnect while waiting for HA ACK also abandons that active request and releases its bounded worker slot.
 
-#### Connect event
+## Identity provisioning
 
-```json
-{
-  "event": "connect",
-  "state": "connected",
-  "ssid": "MyWiFi",
-  "ip": "192.168.1.42",
-  "gateway": "192.168.1.1",
-  "dns": ["192.168.1.1"],
-  "signal": -45,
-  "security": "WPA2",
-  "error": ""
-}
-```
+Production device private keys are never present in source, recipes, packages, default images, or logs. CI/manufacturing injects a root-owned mode 0600 Ed25519 private-key file and sets `ROBAN_DEVICE_IDENTITY_FILE`. PEM PKCS8 or 32-byte raw hex/base64 is accepted. The 32-byte raw Ed25519 public key carried in ClientHello is also its key id, so no wire-layout change is required for rotation. App keys may be a legacy JSON object of `key-id: public-key`, or a versioned manifest `{"version":3,"minimum_accepted_version":2,"keys":{"<raw-key-id>":"<public-key>"}}`, supplied through `ROBAN_APP_KEYRING_FILE` or `ROBAN_APP_KEYRING_JSON`. Deployment atomically replaces the manifest to overlap old/new keys, then removes retired keys; manifests whose `version` is below `minimum_accepted_version` are rejected.
 
-Failure example:
-
-```json
-{
-  "event": "connect",
-  "state": "failed",
-  "ssid": "MyWiFi",
-  "error": "Secrets were required, but not provided.",
-  "connected": false,
-  "ip": ""
-}
-```
-
-#### Error event
-
-```json
-{"event":"error","error":"unsupported cmd: foo"}
-```
-
-## Recommended Android flow
-
-1. Scan for BLE peripheral `Roban-Bluetooth`
-2. Pair/bond using Just Works when Android prompts (no PIN)
-3. Connect GATT and discover service `a0a0ff10-...`
-4. Enable notifications on `a0a0ff13-...`
-5. Read `a0a0ff11-...` or write `{"cmd":"status"}` to check current WiFi
-6. Write `{"cmd":"scan"}` and wait for scan event
-7. Write `{"cmd":"connect",...}` and wait for connect event with IP details
-
-## Notes
-
-- WiFi operations use host `nmcli` / NetworkManager
-- USB gadget networking (`l4tbr0`) is unchanged; only WiFi is managed
-- Large scan results are capped at 30 networks
-- JSON payloads should fit within the negotiated ATT MTU; keep commands compact
-
-## Home Assistant credential transfer (v1)
-
-A bonded, encrypted client writes `{"cmd":"ha","id":N,"m":M}` to the encrypted Command characteristic. `id` is unsigned 16-bit and `m` is clamped to 20..180. Responses only use encrypted Event notifications and are never JSON events.
-
-Each binary notification starts with a 14-byte big-endian header: `RH` magic (2), version (1), kind (1: 0=data, 1=digest), request id u16, chunk index u16, chunk count u16, total JSON payload bytes u32. Remaining bytes are the chunk body. Data frames precede digest frames without ordinary-event interleaving. Kind 1 contains exactly the 32-byte SHA-256 digest, split when needed. Payload is UTF-8 JSON, at most 16 KiB; indices are zero-based and duplicates must be byte-identical.
-
-If notifications are not subscribed or credentials cannot be loaded/refreshed, firmware sends a secret-free ordinary error with code `HA_CREDENTIALS_UNAVAILABLE`. Older firmware may return unsupported or no response; clients must preserve normal BLE/WiFi operation.
+Tests alone may set both `ROBAN_ALLOW_DEV_KEYS=1` and `ROBAN_DEV_IDENTITY_FILE`; this path is explicitly non-production and is not enabled by the recipe defaults. The implementation uses `python3-cryptography`.
