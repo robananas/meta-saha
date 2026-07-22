@@ -21,6 +21,13 @@ SAHA_MATTER_SERVER_IMAGE="${SAHA_MATTER_SERVER_IMAGE:-ghcr.io/matter-js/python-m
 SAHA_MATTER_SERVER_IMAGE_TAR="${SAHA_MATTER_SERVER_IMAGE_TAR:-/usr/share/saha/matter-server/image.tar}"
 SAHA_ROBAN_WORKFLOW_IMAGE="${SAHA_ROBAN_WORKFLOW_IMAGE:-roban-workflow-api:arm64}"
 SAHA_ROBAN_WORKFLOW_IMAGE_TAR="${SAHA_ROBAN_WORKFLOW_IMAGE_TAR:-/usr/share/saha/roban-workflow-api/image.tar}"
+SAHA_LIVEKIT_SERVER_IMAGE="${SAHA_LIVEKIT_SERVER_IMAGE:-livekit/livekit-server:v1.13.4}"
+SAHA_LIVEKIT_SERVER_IMAGE_TAR="${SAHA_LIVEKIT_SERVER_IMAGE_TAR:-/usr/share/saha/livekit-server/image.tar}"
+SAHA_LIVEKIT_AGENT_IMAGE="${SAHA_LIVEKIT_AGENT_IMAGE:-livekit-agent:arm64}"
+SAHA_LIVEKIT_AGENT_IMAGE_TAR="${SAHA_LIVEKIT_AGENT_IMAGE_TAR:-/usr/share/saha/livekit-agent/image.tar}"
+SAHA_LIVEKIT_API_KEY="${SAHA_LIVEKIT_API_KEY:-roban-local}"
+SAHA_LIVEKIT_API_SECRET="${SAHA_LIVEKIT_API_SECRET:-}"
+SAHA_LIVEKIT_CREDENTIALS_FILE="${SAHA_LIVEKIT_CREDENTIALS_FILE:-/var/lib/saha/livekit/credentials.env}"
 
 log() {
     logger -t saha-docker-compose "$*"
@@ -152,6 +159,8 @@ ensure_images() {
     load_tarball "$SAHA_HOMEASSISTANT_IMAGE" "$SAHA_HOMEASSISTANT_IMAGE_TAR"
     load_tarball "$SAHA_MATTER_SERVER_IMAGE" "$SAHA_MATTER_SERVER_IMAGE_TAR"
     load_tarball "$SAHA_ROBAN_WORKFLOW_IMAGE" "$SAHA_ROBAN_WORKFLOW_IMAGE_TAR"
+    load_tarball "$SAHA_LIVEKIT_SERVER_IMAGE" "$SAHA_LIVEKIT_SERVER_IMAGE_TAR"
+    load_tarball "$SAHA_LIVEKIT_AGENT_IMAGE" "$SAHA_LIVEKIT_AGENT_IMAGE_TAR"
 
     tag_if_present "ghcr.io/matter-js/python-matter-server:stable" "$SAHA_MATTER_SERVER_IMAGE"
 
@@ -170,6 +179,29 @@ ensure_images() {
         log "pulling ${SAHA_ROBAN_WORKFLOW_IMAGE}"
         docker pull "$SAHA_ROBAN_WORKFLOW_IMAGE"
     fi
+
+    if ! image_loaded "$SAHA_LIVEKIT_SERVER_IMAGE" && [ "$SAHA_DOCKER_COMPOSE_PULL" = "1" ]; then
+        log "pulling ${SAHA_LIVEKIT_SERVER_IMAGE}"
+        docker pull "$SAHA_LIVEKIT_SERVER_IMAGE"
+    fi
+}
+
+ensure_livekit_credentials() {
+    credentials_dir=$(dirname "$SAHA_LIVEKIT_CREDENTIALS_FILE")
+    mkdir -p "$credentials_dir"
+    chmod 0700 "$credentials_dir"
+    if [ -s "$SAHA_LIVEKIT_CREDENTIALS_FILE" ]; then
+        return 0
+    fi
+    if [ -z "$SAHA_LIVEKIT_API_SECRET" ]; then
+        SAHA_LIVEKIT_API_SECRET=$(python3 -c 'import secrets; print(secrets.token_urlsafe(48))')
+    fi
+    umask 077
+    {
+        printf 'LIVEKIT_API_KEY=%s\n' "$SAHA_LIVEKIT_API_KEY"
+        printf 'LIVEKIT_API_SECRET=%s\n' "$SAHA_LIVEKIT_API_SECRET"
+        printf 'LIVEKIT_KEYS=%s: %s\n' "$SAHA_LIVEKIT_API_KEY" "$SAHA_LIVEKIT_API_SECRET"
+    } >"$SAHA_LIVEKIT_CREDENTIALS_FILE"
 }
 
 seed_homeassistant_config() {
@@ -193,7 +225,12 @@ seed_homeassistant_config() {
 start_stack() {
     mkdir -p /var/lib/homeassistant /var/lib/matter-server
     seed_homeassistant_config
+    ensure_livekit_credentials
     export TZ="$SAHA_DOCKER_COMPOSE_TZ"
+    export SAHA_LIVEKIT_SERVER_IMAGE SAHA_LIVEKIT_AGENT_IMAGE
+    export SAHA_LIVEKIT_AGENT_NAME="${SAHA_LIVEKIT_AGENT_NAME:-roban-agent}"
+    export OPENAI_API_KEY="${OPENAI_API_KEY:-}"
+    export SAHA_LIVEKIT_CREDENTIALS_FILE
     cd "$SAHA_DOCKER_COMPOSE_DIR"
     docker compose -f "$SAHA_DOCKER_COMPOSE_FILE" up -d
 }

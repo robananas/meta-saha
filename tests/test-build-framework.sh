@@ -176,6 +176,24 @@ grep -q 'roban-workflow-api:arm64' \
 grep -q 'roban-workflow-api.tar' \
   "$ROOT_DIR/saha-layers/meta-tegra-saha/recipes-saha/roban-app/roban-app/fetch-image.sh" ||
   fail "roban-app fetch script must support local tarball cache"
+grep -q 'saha-livekit-server-container-image' \
+  "$ROOT_DIR/saha-layers/meta-tegra-saha/recipes-saha/packagegroups/packagegroup-saha-docker-images.bb" ||
+  fail "docker images packagegroup must preload LiveKit Server"
+grep -q 'saha-livekit-agent-image' \
+  "$ROOT_DIR/saha-layers/meta-tegra-saha/recipes-saha/packagegroups/packagegroup-saha-docker-images.bb" ||
+  fail "docker images packagegroup must preload local LiveKit Agent"
+grep -q 'livekit/livekit-server:v1.13.4' \
+  "$ROOT_DIR/saha-layers/meta-tegra-saha/recipes-saha/docker-compose/saha-docker-compose/compose.yaml" ||
+  fail "compose stack must include pinned LiveKit Server"
+grep -q 'livekit-agent:arm64' \
+  "$ROOT_DIR/saha-layers/meta-tegra-saha/recipes-saha/docker-compose/saha-docker-compose/compose.yaml" ||
+  fail "compose stack must include local ARM64 LiveKit Agent"
+grep -q 'ensure_livekit_credentials' \
+  "$ROOT_DIR/saha-layers/meta-tegra-saha/recipes-saha/docker-compose/saha-docker-compose/saha-docker-compose.sh" ||
+  fail "compose launcher must generate persistent LiveKit credentials"
+grep -q 'livekit-agent.tar' \
+  "$ROOT_DIR/saha-layers/meta-tegra-saha/recipes-saha/livekit-agent/files/fetch-image.sh" ||
+  fail "LiveKit Agent recipe must support local tarball cache"
 HA_CONFIG_RECIPE="$ROOT_DIR/saha-layers/meta-tegra-saha/recipes-saha/homeassistant-config/saha-homeassistant-config.bb"
 [ -f "$HA_CONFIG_RECIPE" ] ||
   fail "saha-homeassistant-config recipe must exist"

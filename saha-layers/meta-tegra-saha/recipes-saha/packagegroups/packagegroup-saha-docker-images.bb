@@ -15,5 +15,7 @@ RDEPENDS:${PN} = " \
     saha-homeassistant-bootstrap \
     saha-homeassistant-container-image \
     saha-matter-server-container-image \
+    saha-livekit-server-container-image \
+    saha-livekit-agent-image \
     roban-app \
 "

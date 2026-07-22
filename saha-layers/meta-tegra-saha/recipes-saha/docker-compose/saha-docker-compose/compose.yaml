@@ -32,3 +32,31 @@ services:
     network_mode: host
     environment:
       TZ: ${TZ:-Asia/Shanghai}
+
+  livekit-server:
+    container_name: livekit-server
+    image: ${SAHA_LIVEKIT_SERVER_IMAGE:-livekit/livekit-server:v1.13.4}
+    restart: on-failure:5
+    network_mode: host
+    env_file:
+      - ${SAHA_LIVEKIT_CREDENTIALS_FILE:-/var/lib/saha/livekit/credentials.env}
+    command:
+      - --bind
+      - 0.0.0.0
+      - --udp-port
+      - "7882"
+
+  livekit-agent:
+    container_name: livekit-agent
+    image: ${SAHA_LIVEKIT_AGENT_IMAGE:-livekit-agent:arm64}
+    restart: on-failure:5
+    network_mode: host
+    depends_on:
+      - livekit-server
+    env_file:
+      - ${SAHA_LIVEKIT_CREDENTIALS_FILE:-/var/lib/saha/livekit/credentials.env}
+    environment:
+      LIVEKIT_URL: ws://127.0.0.1:7880
+      LIVEKIT_AGENT_NAME: ${SAHA_LIVEKIT_AGENT_NAME:-roban-agent}
+      OPENAI_API_KEY: ${OPENAI_API_KEY:-}
+      ROBAN_TOKEN_PORT: "7883"
