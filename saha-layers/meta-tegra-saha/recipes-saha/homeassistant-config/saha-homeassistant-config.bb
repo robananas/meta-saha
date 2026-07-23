@@ -28,6 +28,8 @@ SRC_URI = " \
     file://scripts.yaml \
     file://secrets.yaml \
     file://packages/tv_power.yaml \
+    file://custom-components/saha_matter/__init__.py \
+    file://custom-components/saha_matter/manifest.json \
     file://smartir-codes/climate/1084.json \
     file://smartir-codes/media_player/1380.json \
     file://install-custom-components.sh \
@@ -58,6 +60,11 @@ do_install() {
         ${UNPACKDIR}/git \
         ${config_dir}/custom_components \
         ${UNPACKDIR}/smartir-codes
+    install -d ${config_dir}/custom_components/saha_matter
+    install -m 0644 ${UNPACKDIR}/custom-components/saha_matter/__init__.py \
+        ${config_dir}/custom_components/saha_matter/__init__.py
+    install -m 0644 ${UNPACKDIR}/custom-components/saha_matter/manifest.json \
+        ${config_dir}/custom_components/saha_matter/manifest.json
 }
 
 FILES:${PN} = " \

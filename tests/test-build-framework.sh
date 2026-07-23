@@ -221,6 +221,14 @@ grep -q 'hitachi_ac_rm4' \
 grep -q 'meeting_room_tv_02' \
   "$ROOT_DIR/saha-layers/meta-tegra-saha/recipes-saha/homeassistant-config/saha-homeassistant-config/configuration.yaml" ||
   fail "default homeassistant config must include SmartIR media_player device"
+grep -q 'saha_matter:' \
+  "$ROOT_DIR/saha-layers/meta-tegra-saha/recipes-saha/homeassistant-config/saha-homeassistant-config/configuration.yaml" ||
+  fail "default homeassistant config must bootstrap Matter"
+grep -q 'ws://127.0.0.1:5580/ws' \
+  "$ROOT_DIR/saha-layers/meta-tegra-saha/recipes-saha/homeassistant-config/saha-homeassistant-config/configuration.yaml" ||
+  fail "Matter bootstrap must use the board-local Matter Server"
+grep -q 'custom-components/saha_matter/__init__.py' "$HA_CONFIG_RECIPE" ||
+  fail "homeassistant config recipe must install the Matter bootstrap integration"
 grep -q '1084.json' "$HA_CONFIG_RECIPE" ||
   fail "homeassistant config recipe must bundle SmartIR climate code 1084"
 grep -q '1380.json' "$HA_CONFIG_RECIPE" ||

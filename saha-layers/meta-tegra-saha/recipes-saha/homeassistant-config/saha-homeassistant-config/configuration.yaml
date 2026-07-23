@@ -2,13 +2,21 @@
 # Custom components: SmartIR, Xiaomi Home, HACS (under custom_components/).
 # Integrations: Matter (local matter-server), Broadlink (auto-discovery).
 
-default_config:
-
+# Keep the HA frontend and device discovery, but omit optional default_config
+# features such as Energy, History, Logbook, Media Source, Map, and To-do.
 homeassistant:
   packages: !include_dir_named packages
 
 frontend:
   themes: !include_dir_merge_named themes
+
+# Discovery required by local integrations, Xiaomi gateways, Matter, and Bluetooth.
+bluetooth:
+dhcp:
+ssdp:
+usb:
+webhook:
+zeroconf:
 
 automation: !include automations.yaml
 script: !include scripts.yaml
@@ -46,6 +54,7 @@ lovelace:
       icon: mdi:view-dashboard
       show_in_sidebar: true
 
-# Connect to the python-matter-server container started by saha-docker-compose.
-matter:
+# Configure HA's Matter integration against the board-local Matter Server on
+# first boot. The bootstrap is idempotent and leaves existing entries unchanged.
+saha_matter:
   url: "ws://127.0.0.1:5580/ws"

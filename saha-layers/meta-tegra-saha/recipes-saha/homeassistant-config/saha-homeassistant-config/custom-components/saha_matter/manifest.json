@@ -1,0 +1,8 @@
+{
+  "domain": "saha_matter",
+  "name": "Saha Matter Bootstrap",
+  "codeowners": [],
+  "documentation": "https://www.home-assistant.io/integrations/matter",
+  "integration_type": "system",
+  "version": "1.0.0"
+}
