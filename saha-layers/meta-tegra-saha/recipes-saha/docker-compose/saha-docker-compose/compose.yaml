@@ -6,6 +6,7 @@ services:
       - /var/lib/homeassistant:/config
       - /etc/localtime:/etc/localtime:ro
       - /run/dbus:/run/dbus:ro
+      - /run/saha:/run/saha:ro
     restart: on-failure:5
     privileged: true
     network_mode: host
@@ -24,6 +25,15 @@ services:
       - /run/dbus:/run/dbus:ro
     environment:
       TZ: ${TZ:-Asia/Shanghai}
+    command:
+      - --storage-path
+      - /data
+      - --paa-root-cert-dir
+      - /data/credentials
+      - --primary-interface
+      - wlan0
+      - --bluetooth-adapter
+      - "0"
 
   roban-workflow-api:
     container_name: roban-workflow-api

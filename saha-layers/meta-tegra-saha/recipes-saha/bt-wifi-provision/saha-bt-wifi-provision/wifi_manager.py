@@ -4,6 +4,8 @@
 from __future__ import annotations
 
 import json
+import os
+from pathlib import Path
 import subprocess
 import threading
 import time
@@ -15,6 +17,9 @@ class WifiError(Exception):
 
 
 _NMCLI_LOCK = threading.RLock()
+MATTER_WIFI_CREDENTIALS_PATH = Path(
+    os.environ.get("SAHA_MATTER_WIFI_CREDENTIALS", "/run/saha/matter-wifi.json")
+)
 
 
 def _split_terse(line: str) -> list[str]:
@@ -196,6 +201,52 @@ def scan_wifi(limit: int = 20) -> dict[str, Any]:
     return {"networks": networks}
 
 
+def sync_matter_wifi_credentials() -> bool:
+    """Write the active NetworkManager WiFi credentials for HA Matter bootstrap.
+
+    The file stays on the board and is mounted read-only into Home Assistant.
+    It is never returned through the BLE provisioning protocol.
+    """
+    active = _active_connection()
+    if not active.get("uuid"):
+        MATTER_WIFI_CREDENTIALS_PATH.unlink(missing_ok=True)
+        return False
+
+    output = _run_nmcli(
+        [
+            "--show-secrets",
+            "-g",
+            "802-11-wireless.ssid,802-11-wireless-security.key-mgmt,802-11-wireless-security.psk",
+            "connection",
+            "show",
+            active["uuid"],
+        ]
+    )
+    values = output.splitlines()
+    ssid = values[0] if values else ""
+    key_mgmt = values[1] if len(values) > 1 else ""
+    password = values[2] if len(values) > 2 else ""
+    if not ssid:
+        MATTER_WIFI_CREDENTIALS_PATH.unlink(missing_ok=True)
+        return False
+    if key_mgmt not in {"", "none", "wpa-psk", "sae", "wpa-psk sae"}:
+        MATTER_WIFI_CREDENTIALS_PATH.unlink(missing_ok=True)
+        raise WifiError(f"Matter devices do not support WiFi security mode: {key_mgmt}")
+    if key_mgmt not in {"", "none"} and not password:
+        MATTER_WIFI_CREDENTIALS_PATH.unlink(missing_ok=True)
+        raise WifiError("active WiFi password is not stored by NetworkManager")
+
+    MATTER_WIFI_CREDENTIALS_PATH.parent.mkdir(mode=0o700, parents=True, exist_ok=True)
+    temporary = MATTER_WIFI_CREDENTIALS_PATH.with_suffix(".tmp")
+    temporary.write_text(
+        json.dumps({"ssid": ssid, "password": password}, ensure_ascii=False),
+        encoding="utf-8",
+    )
+    temporary.chmod(0o600)
+    temporary.replace(MATTER_WIFI_CREDENTIALS_PATH)
+    return True
+
+
 def connect_wifi(
     ssid: str,
     password: str | None = None,
@@ -226,6 +277,7 @@ def connect_wifi(
     while time.monotonic() < deadline:
         status = get_wifi_status()
         if status.get("connected") and status.get("ssid") == ssid and status.get("ip"):
+            sync_matter_wifi_credentials()
             return {"state": "connected", "ssid": ssid, "error": "", **status}
         time.sleep(min(1.0, max(0.0, deadline - time.monotonic())))
     return {

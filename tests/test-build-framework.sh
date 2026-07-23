@@ -170,6 +170,12 @@ grep -q '/opt/roban/compose/compose.yaml' \
 grep -q 'ghcr.io/matter-js/python-matter-server:arm64' \
   "$ROOT_DIR/saha-layers/meta-tegra-saha/recipes-saha/docker-compose/saha-docker-compose/compose.yaml" ||
   fail "compose stack must use the arm64 Matter Server image"
+grep -q -- '--bluetooth-adapter' \
+  "$ROOT_DIR/saha-layers/meta-tegra-saha/recipes-saha/docker-compose/saha-docker-compose/compose.yaml" ||
+  fail "Matter Server must enable board Bluetooth commissioning"
+grep -q -- '--primary-interface' \
+  "$ROOT_DIR/saha-layers/meta-tegra-saha/recipes-saha/docker-compose/saha-docker-compose/compose.yaml" ||
+  fail "Matter Server must bind link-local Matter traffic to the board WiFi interface"
 grep -q 'roban-workflow-api:arm64' \
   "$ROOT_DIR/saha-layers/meta-tegra-saha/recipes-saha/docker-compose/saha-docker-compose/compose.yaml" ||
   fail "compose stack must include roban-workflow-api"

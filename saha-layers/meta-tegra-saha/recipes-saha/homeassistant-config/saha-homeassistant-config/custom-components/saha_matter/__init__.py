@@ -2,7 +2,9 @@
 
 from __future__ import annotations
 
+import json
 import logging
+from pathlib import Path
 
 import voluptuous as vol
 
@@ -13,6 +15,7 @@ from homeassistant.helpers.typing import ConfigType
 
 DOMAIN = "saha_matter"
 DEFAULT_MATTER_SERVER_URL = "ws://127.0.0.1:5580/ws"
+MATTER_WIFI_CREDENTIALS_PATH = Path("/run/saha/matter-wifi.json")
 CONFIG_SCHEMA = vol.Schema(
     {
         DOMAIN: vol.Schema(
@@ -53,5 +56,32 @@ async def async_setup(hass: HomeAssistant, config: ConfigType) -> bool:
         else:
             _LOGGER.warning("Matter bootstrap did not create an entry: %s", result)
 
-    hass.bus.async_listen_once("homeassistant_started", ensure_matter_entry)
+    async def sync_wifi_credentials(_: object) -> None:
+        if not MATTER_WIFI_CREDENTIALS_PATH.is_file():
+            _LOGGER.warning("Board Matter WiFi credentials are not available")
+            return
+        try:
+            credentials = await hass.async_add_executor_job(
+                lambda: json.loads(MATTER_WIFI_CREDENTIALS_PATH.read_text(encoding="utf-8"))
+            )
+            ssid = credentials.get("ssid")
+            password = credentials.get("password", "")
+            if not isinstance(ssid, str) or not ssid:
+                raise ValueError("WiFi SSID is missing")
+
+            matter_entries = hass.config_entries.async_loaded_entries("matter")
+            if not matter_entries:
+                _LOGGER.warning("Matter entry is not loaded; WiFi credentials not synchronized")
+                return
+            matter_client = matter_entries[0].runtime_data.adapter.matter_client
+            await matter_client.set_wifi_credentials(ssid=ssid, credentials=password)
+            _LOGGER.info("Matter WiFi credentials synchronized for SSID %s", ssid)
+        except Exception:  # noqa: BLE001
+            _LOGGER.exception("Unable to synchronize board WiFi credentials to Matter Server")
+
+    async def initialize(_: object) -> None:
+        await ensure_matter_entry(_)
+        await sync_wifi_credentials(_)
+
+    hass.bus.async_listen_once("homeassistant_started", initialize)
     return True
