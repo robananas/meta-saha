@@ -71,21 +71,24 @@ wait_for_valid_clock() {
         return 0
     fi
 
-    waited=0
-    while [ "$waited" -lt "$SAHA_CLOCK_WAIT" ]; do
-        if clock_is_valid; then
-            return 0
-        fi
-        sleep 2
-        waited=$((waited + 2))
-    done
-
-    log "system clock still invalid after ${SAHA_CLOCK_WAIT}s; trying HTTPS bootstrap"
+    log "system clock is invalid; trying immediate HTTPS bootstrap"
     if bootstrap_clock_from_https && clock_is_valid; then
         return 0
     fi
 
-    log "refusing to start application stack with invalid system clock"
+    waited=0
+    while [ "$waited" -lt "$SAHA_CLOCK_WAIT" ]; do
+        sleep 2
+        waited=$((waited + 2))
+        if clock_is_valid; then
+            return 0
+        fi
+        if [ $((waited % 10)) -eq 0 ] && bootstrap_clock_from_https && clock_is_valid; then
+            return 0
+        fi
+    done
+
+    log "refusing to start application stack with invalid system clock after ${SAHA_CLOCK_WAIT}s"
     return 1
 }
 

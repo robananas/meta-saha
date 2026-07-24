@@ -330,6 +330,12 @@ grep -q 'bootstrap_clock_from_https' \
 grep -q 'systemd-timesyncd.service time-sync.target' \
   "$ROOT_DIR/saha-layers/meta-tegra-saha/recipes-saha/docker-compose/saha-docker-compose/saha-docker-compose.service" ||
   fail "docker compose service must start after system time synchronization"
+grep -q 'system clock is invalid; trying immediate HTTPS bootstrap' \
+  "$ROOT_DIR/saha-layers/meta-tegra-saha/recipes-saha/docker-compose/saha-docker-compose/saha-docker-compose.sh" ||
+  fail "docker compose launcher must attempt HTTPS time bootstrap without an NTP delay"
+grep -q 'disable_conflicting_networkd_wait_online' \
+  "$ROOT_DIR/saha-layers/meta-tegra-saha/recipes-saha/images/saha-image-common.inc" ||
+  fail "Saha images must disable systemd-networkd wait-online when NetworkManager owns networking"
 if grep -q 'restart: unless-stopped' \
   "$ROOT_DIR/saha-layers/meta-tegra-saha/recipes-saha/docker-compose/saha-docker-compose/compose.yaml"; then
   fail "containers must not bypass the clock gate during Docker daemon startup"
