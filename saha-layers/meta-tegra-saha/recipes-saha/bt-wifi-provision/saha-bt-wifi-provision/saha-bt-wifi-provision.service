@@ -1,8 +1,8 @@
 [Unit]
 Description=Saha Bluetooth WiFi provisioning GATT service
 Documentation=file:///usr/share/doc/saha-bt-wifi-provision/GATT.md
-After=bluetooth.service tegra-bluetooth.service NetworkManager.service
-Wants=tegra-bluetooth.service NetworkManager.service
+After=bluetooth.service tegra-bluetooth.service NetworkManager.service NetworkManager-wait-online.service
+Wants=tegra-bluetooth.service NetworkManager.service NetworkManager-wait-online.service
 Requires=bluetooth.service
 # Stop immediately if BlueZ disappears and follow every BlueZ stop/restart job.
 BindsTo=bluetooth.service

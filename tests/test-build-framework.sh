@@ -654,6 +654,10 @@ grep -q '^BindsTo=bluetooth.service$' "$BT_WIFI_PROVISION_SERVICE" ||
   fail "WiFi provisioning must stop when bluetooth.service disappears"
 grep -q '^PartOf=bluetooth.service$' "$BT_WIFI_PROVISION_SERVICE" ||
   fail "WiFi provisioning must follow Bluetooth lifecycle jobs"
+grep -q '^After=.*NetworkManager-wait-online.service' "$BT_WIFI_PROVISION_SERVICE" ||
+  fail "WiFi provisioning must wait for NetworkManager connectivity before exporting Matter credentials"
+grep -q '^Wants=.*NetworkManager-wait-online.service' "$BT_WIFI_PROVISION_SERVICE" ||
+  fail "WiFi provisioning must pull in NetworkManager online readiness"
 grep -q 'saha-bt-wifi-provision-wait' \
   "$BT_WIFI_PROVISION" ||
   fail "saha-bt-wifi-provision must install adapter wait helper"
