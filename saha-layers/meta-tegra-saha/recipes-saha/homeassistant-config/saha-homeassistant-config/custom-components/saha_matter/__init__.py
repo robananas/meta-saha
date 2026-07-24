@@ -76,25 +76,30 @@ async def async_setup(hass: HomeAssistant, config: ConfigType) -> bool:
                 return False
             matter_client = matter_entries[0].runtime_data.adapter.matter_client
             await matter_client.set_wifi_credentials(ssid=ssid, credentials=password)
-            _LOGGER.info("Matter WiFi credentials synchronized for SSID %s", ssid)
+            _LOGGER.debug("Matter WiFi credentials synchronized for SSID %s", ssid)
             return True
         except Exception:  # noqa: BLE001
             _LOGGER.exception("Unable to synchronize board WiFi credentials to Matter Server")
             return False
 
-    async def sync_wifi_credentials_with_retry() -> None:
-        for attempt in range(1, 13):
+    async def keep_wifi_credentials_synchronized() -> None:
+        failures = 0
+        while True:
             if await sync_wifi_credentials():
-                return
-            if attempt < 12:
-                await asyncio.sleep(5)
-        _LOGGER.error("Matter WiFi credentials could not be synchronized after 60 seconds")
+                failures = 0
+            else:
+                failures += 1
+                if failures == 12:
+                    _LOGGER.error(
+                        "Matter WiFi credentials have not synchronized for 60 seconds; continuing to retry"
+                    )
+            await asyncio.sleep(5)
 
     async def initialize(_: object) -> None:
         await ensure_matter_entry(_)
         hass.async_create_task(
-            sync_wifi_credentials_with_retry(),
-            "sync Matter WiFi credentials",
+            keep_wifi_credentials_synchronized(),
+            "keep Matter WiFi credentials synchronized",
         )
 
     hass.bus.async_listen_once("homeassistant_started", initialize)

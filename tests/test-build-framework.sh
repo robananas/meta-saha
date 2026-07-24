@@ -235,6 +235,12 @@ grep -q 'ws://127.0.0.1:5580/ws' \
   fail "Matter bootstrap must use the board-local Matter Server"
 grep -q 'custom-components/saha_matter/__init__.py' "$HA_CONFIG_RECIPE" ||
   fail "homeassistant config recipe must install the Matter bootstrap integration"
+grep -q 'keep_wifi_credentials_synchronized' \
+  "$ROOT_DIR/saha-layers/meta-tegra-saha/recipes-saha/homeassistant-config/saha-homeassistant-config/custom-components/saha_matter/__init__.py" ||
+  fail "Matter bootstrap must restore WiFi credentials after Matter Server restarts"
+grep -q 'keep_matter_wifi_credentials_synchronized' \
+  "$ROOT_DIR/saha-layers/meta-tegra-saha/recipes-saha/bt-wifi-provision/saha-bt-wifi-provision/saha-bt-wifi-provision.py" ||
+  fail "WiFi provisioning must continuously publish active Matter credentials"
 grep -q '1084.json' "$HA_CONFIG_RECIPE" ||
   fail "homeassistant config recipe must bundle SmartIR climate code 1084"
 grep -q '1380.json' "$HA_CONFIG_RECIPE" ||
