@@ -1,5 +1,9 @@
 # Development Rules
 
+## Build Environment
+
+- The actual `meta-saha` build workspace is `zyk@10.30.32.19:/home/zyk/Desktop/meta-saha`.
+
 ## Temporary Changes on a Test Board
 
 When testing a change directly on a Saha/Roban board, keep the deployed temporary change and the corresponding `meta-saha` source change identical.
