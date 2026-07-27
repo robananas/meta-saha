@@ -7,6 +7,7 @@ import json
 import logging
 import os
 import secrets
+import socket
 import time
 from pathlib import Path
 
@@ -23,6 +24,7 @@ DEFAULT_MATTER_SERVER_URL = "ws://127.0.0.1:5580/ws"
 MATTER_WIFI_CREDENTIALS_PATH = Path("/run/saha/matter-wifi.json")
 ADVERTISEMENT_CONTROL_PATH = Path("/run/saha/ble-advertisement-control.json")
 ADVERTISEMENT_STATUS_PATH = Path("/run/saha/ble-advertisement-status.json")
+BOARD_STATUS_SOCKET = "/run/saha/board-status/events.sock"
 COMMISSION_COMMAND = "saha_matter/commission"
 ADVERTISEMENT_LEASE_SECONDS = 90
 ADVERTISEMENT_TRANSITION_TIMEOUT = 5.0
@@ -35,6 +37,17 @@ CONFIG_SCHEMA = vol.Schema(
     extra=vol.ALLOW_EXTRA,
 )
 _LOGGER = logging.getLogger(__name__)
+
+
+def emit_board_status(state: str, *, level: str = "info", error_code: str | None = None) -> None:
+    payload = {"component": "ha_matter", "state": state, "level": level, "errorCode": error_code}
+    client = socket.socket(socket.AF_UNIX, socket.SOCK_DGRAM)
+    try:
+        client.sendto(json.dumps(payload, separators=(",", ":")).encode("utf-8"), BOARD_STATUS_SOCKET)
+    except OSError:
+        pass
+    finally:
+        client.close()
 
 
 async def async_setup(hass: HomeAssistant, config: ConfigType) -> bool:
@@ -124,7 +137,9 @@ async def async_setup(hass: HomeAssistant, config: ConfigType) -> bool:
 
     async def ensure_matter_entry(_: object) -> None:
         if hass.config_entries.async_entries("matter"):
+            emit_board_status("connected")
             return
+        emit_board_status("configuring")
         if hass.config_entries.flow.async_progress_by_handler("matter"):
             return
 
@@ -137,14 +152,17 @@ async def async_setup(hass: HomeAssistant, config: ConfigType) -> bool:
                     result["flow_id"], {CONF_URL: server_url}
                 )
         except Exception:  # noqa: BLE001
+            emit_board_status("error", level="error", error_code="CONFIGURATION_FAILED")
             _LOGGER.exception(
                 "Unable to bootstrap Matter integration with %s", server_url
             )
             return
 
         if result.get("type") == "create_entry":
+            emit_board_status("connected")
             _LOGGER.info("Matter integration configured with %s", server_url)
         else:
+            emit_board_status("error", level="error", error_code="ENTRY_NOT_CREATED")
             _LOGGER.warning("Matter bootstrap did not create an entry: %s", result)
 
     async def sync_wifi_credentials() -> bool:
@@ -162,10 +180,12 @@ async def async_setup(hass: HomeAssistant, config: ConfigType) -> bool:
 
             matter_entries = hass.config_entries.async_loaded_entries("matter")
             if not matter_entries:
+                emit_board_status("waiting_server", level="warning", error_code="ENTRY_NOT_LOADED")
                 _LOGGER.warning("Matter entry is not loaded; WiFi credentials not synchronized")
                 return False
             matter_client = matter_entries[0].runtime_data.adapter.matter_client
             await matter_client.set_wifi_credentials(ssid=ssid, credentials=password)
+            emit_board_status("connected")
             _LOGGER.debug("Matter WiFi credentials synchronized for SSID %s", ssid)
             return True
         except Exception:  # noqa: BLE001

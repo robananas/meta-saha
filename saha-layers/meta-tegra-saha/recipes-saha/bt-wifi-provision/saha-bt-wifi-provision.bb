@@ -9,6 +9,7 @@ SRC_URI = " \
     file://saha-bt-wifi-provision.sh \
     file://saha-bt-wifi-provision-wait.sh \
     file://dbus_mainloop.py \
+    file://board_status.py \
     file://gatt_server.py \
     file://secure_protocol.py \
     file://session_state.py \
@@ -47,6 +48,7 @@ do_install() {
     install -d ${D}${libdir}/saha-bt-wifi-provision
     install -m 0644 ${UNPACKDIR}/saha-bt-wifi-provision.py ${D}${libdir}/saha-bt-wifi-provision/
     install -m 0644 ${UNPACKDIR}/dbus_mainloop.py ${D}${libdir}/saha-bt-wifi-provision/
+    install -m 0644 ${UNPACKDIR}/board_status.py ${D}${libdir}/saha-bt-wifi-provision/
     install -m 0644 ${UNPACKDIR}/gatt_server.py ${D}${libdir}/saha-bt-wifi-provision/
     install -m 0644 ${UNPACKDIR}/secure_protocol.py ${D}${libdir}/saha-bt-wifi-provision/
     install -m 0644 ${UNPACKDIR}/session_state.py ${D}${libdir}/saha-bt-wifi-provision/

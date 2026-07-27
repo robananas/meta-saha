@@ -33,6 +33,16 @@ log() {
     logger -t saha-docker-compose "$*"
 }
 
+status_emit() {
+    state=$1
+    level=${2:-}
+    error_code=${3:-}
+    set -- emit docker "$state"
+    [ -z "$level" ] || set -- "$@" --level "$level"
+    [ -z "$error_code" ] || set -- "$@" --error-code "$error_code"
+    python3 /usr/bin/saha-board-status "$@" >/dev/null 2>&1 || true
+}
+
 clock_is_valid() {
     year=$(date -u +%Y 2>/dev/null || printf '0')
     [ "$year" -ge "$SAHA_CLOCK_MIN_YEAR" ] 2>/dev/null
@@ -267,10 +277,20 @@ case "${1:-}" in
         wait_for_docker
         ;;
     start)
+        status_emit waiting_for_network
         wait_for_docker
         wait_for_valid_clock
-        ensure_images
-        start_stack
+        status_emit loading_images
+        if ! ensure_images; then
+            status_emit image_load_failed error IMAGE_LOAD_FAILED
+            exit 1
+        fi
+        status_emit creating_containers
+        if ! start_stack; then
+            status_emit compose_failed error COMPOSE_FAILED
+            exit 1
+        fi
+        status_emit ready
         ;;
     stop)
         stop_stack

@@ -209,6 +209,25 @@ grep -q '_skip_dcl_ota' \
 grep -q 'roban-workflow-api:arm64' \
   "$ROOT_DIR/saha-layers/meta-tegra-saha/recipes-saha/docker-compose/saha-docker-compose/compose.yaml" ||
   fail "compose stack must include roban-workflow-api"
+BOARD_STATUS_RECIPE="$ROOT_DIR/saha-layers/meta-tegra-saha/recipes-saha/board-status/saha-board-status.bb"
+BOARD_STATUS_SERVICE="$ROOT_DIR/saha-layers/meta-tegra-saha/recipes-saha/board-status/saha-board-status/saha-board-status.service"
+BOARD_STATUS_IMPL="$ROOT_DIR/saha-layers/meta-tegra-saha/recipes-saha/board-status/saha-board-status/saha-board-status.py"
+[ -f "$BOARD_STATUS_RECIPE" ] || fail "saha-board-status recipe must exist"
+grep -q 'inherit systemd' "$BOARD_STATUS_RECIPE" || fail "board status recipe must integrate with systemd"
+grep -q 'SYSTEMD_AUTO_ENABLE:${PN} = "enable"' "$BOARD_STATUS_RECIPE" || fail "board status service must auto-enable"
+grep -q 'saha-board-status' \
+  "$ROOT_DIR/saha-layers/meta-tegra-saha/recipes-saha/packagegroups/packagegroup-saha-base.bb" ||
+  fail "base packagegroup must install board status aggregator"
+grep -Fq 'RuntimeDirectory=saha/board-status' "$BOARD_STATUS_SERVICE" ||
+  fail "board status service must own its runtime directory"
+grep -Fq 'RuntimeDirectoryPreserve=yes' "$BOARD_STATUS_SERVICE" ||
+  fail "board status service restarts must preserve the API bind-mount directory"
+grep -q '/proc/sys/kernel/random/boot_id' "$BOARD_STATUS_IMPL" ||
+  fail "board status must scope history to the kernel boot id"
+grep -q 'MAX_EVENTS' "$BOARD_STATUS_IMPL" || fail "board status event history must be bounded"
+grep -q '/run/saha/board-status:/run/saha/board-status:ro' \
+  "$ROOT_DIR/saha-layers/meta-tegra-saha/recipes-saha/docker-compose/saha-docker-compose/compose.yaml" ||
+  fail "workflow API must mount board status read-only"
 grep -q 'roban-workflow-api.tar' \
   "$ROOT_DIR/saha-layers/meta-tegra-saha/recipes-saha/roban-app/roban-app/fetch-image.sh" ||
   fail "roban-app fetch script must support local tarball cache"
@@ -331,6 +350,9 @@ grep -q '^StateDirectory=saha$' \
 grep -q '^StateDirectoryMode=0700$' \
   "$ROOT_DIR/saha-layers/meta-tegra-saha/recipes-saha/bt-wifi-provision/saha-bt-wifi-provision/saha-bt-wifi-provision.service" ||
   fail "WiFi provisioning state directory must be private"
+grep -q '^RuntimeDirectoryPreserve=yes$' \
+  "$ROOT_DIR/saha-layers/meta-tegra-saha/recipes-saha/bt-wifi-provision/saha-bt-wifi-provision/saha-bt-wifi-provision.service" ||
+  fail "WiFi provisioning restarts must preserve the shared /run/saha status directory"
 grep -q 'session_state.py' "$BT_WIFI_PROVISION" ||
   fail "request tombstone and provisioning owner state must be packaged"
 grep -q 'HA_CREDENTIALS_UNAVAILABLE' \

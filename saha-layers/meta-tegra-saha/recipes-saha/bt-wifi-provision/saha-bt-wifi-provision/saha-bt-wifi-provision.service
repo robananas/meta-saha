@@ -21,6 +21,7 @@ StateDirectory=saha
 StateDirectoryMode=0700
 RuntimeDirectory=saha
 RuntimeDirectoryMode=0700
+RuntimeDirectoryPreserve=yes
 ReadWritePaths=/run/saha /var/lib/NetworkManager
 ExecStartPre=/usr/bin/saha-bt-wifi-provision-wait
 ExecStart=/usr/bin/saha-bt-wifi-provision

@@ -1,0 +1,21 @@
+[Unit]
+Description=Saha board boot and service status aggregator
+After=local-fs.target
+Before=saha-bt-wifi-provision.service saha-docker-compose.service
+
+[Service]
+Type=simple
+Environment=PYTHONUNBUFFERED=1
+RuntimeDirectory=saha/board-status
+RuntimeDirectoryMode=0755
+RuntimeDirectoryPreserve=yes
+ExecStart=/usr/bin/python3 /usr/bin/saha-board-status daemon
+Restart=on-failure
+RestartSec=2
+NoNewPrivileges=yes
+ProtectHome=yes
+ProtectSystem=strict
+ReadWritePaths=/run/saha/board-status
+
+[Install]
+WantedBy=multi-user.target

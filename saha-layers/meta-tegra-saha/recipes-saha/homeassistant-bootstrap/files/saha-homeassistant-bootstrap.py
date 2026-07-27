@@ -7,6 +7,7 @@ import json
 import logging
 import os
 import secrets
+import socket
 import tempfile
 import time
 import urllib.error
@@ -23,6 +24,18 @@ PENDING_PATH = STATE_DIR / "bootstrap-pending.json"
 WAIT_SECONDS = 300
 REFRESH_SKEW_MS = 5 * 60 * 1000
 LOG = logging.getLogger("saha-homeassistant-bootstrap")
+BOARD_STATUS_SOCKET = "/run/saha/board-status/events.sock"
+
+
+def emit_board_status(state: str, *, level: str = "info", error_code: str | None = None) -> None:
+    payload = {"component": "home_assistant", "state": state, "level": level, "errorCode": error_code}
+    client = socket.socket(socket.AF_UNIX, socket.SOCK_DGRAM)
+    try:
+        client.sendto(json.dumps(payload, separators=(",", ":")).encode("utf-8"), BOARD_STATUS_SOCKET)
+    except OSError:
+        pass
+    finally:
+        client.close()
 
 
 class BootstrapError(RuntimeError):
@@ -416,8 +429,10 @@ def bootstrap_new_user(
 
 def main() -> None:
     logging.basicConfig(level=logging.INFO, format="%(levelname)s %(message)s")
+    emit_board_status("container_starting")
     ensure_state_dir()
     steps = wait_ready()
+    emit_board_status("http_ready")
 
     if CREDENTIAL_PATH.exists():
         credentials = validate_credentials(
@@ -430,6 +445,7 @@ def main() -> None:
             credentials = refresh(credentials)
             LOG.info("refreshed Home Assistant access credential")
         complete_remaining(credentials, steps)
+        emit_board_status("initialized")
         LOG.info("Home Assistant bootstrap state is ready")
         return
 
@@ -443,6 +459,7 @@ def main() -> None:
         credentials = persist_completed_credentials(token, pending)
         LOG.info("recovered and persisted Home Assistant owner credentials")
         complete_remaining(credentials, get_onboarding())
+        emit_board_status("initialized")
         return
 
     if pending is None:
@@ -451,11 +468,13 @@ def main() -> None:
     credentials = bootstrap_new_user(pending)
     LOG.info("created and persisted Home Assistant owner credentials")
     complete_remaining(credentials, get_onboarding())
+    emit_board_status("initialized")
 
 
 if __name__ == "__main__":
     try:
         main()
     except BootstrapError as exc:
+        emit_board_status("bootstrap_failed", level="error", error_code="BOOTSTRAP_FAILED")
         LOG.error("bootstrap failed: %s", exc)
         raise SystemExit(1) from None

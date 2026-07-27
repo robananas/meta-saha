@@ -11,6 +11,7 @@ RDEPENDS:${PN} = " \
     strace \
     can-utils \
     tegra-tools-tegrastats \
+    saha-board-status \
     dosfstools \
     ripgrep \
     coreutils \

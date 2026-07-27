@@ -11,6 +11,8 @@ import threading
 import time
 from typing import Any, Callable
 
+from board_status import emit_board_status
+
 
 class WifiError(Exception):
     """Raised when nmcli fails."""
@@ -264,22 +266,28 @@ def connect_wifi(
     args = ["dev", "wifi", "connect", ssid, "ifname", device]
     if password:
         args.extend(["password", password])
+    emit_board_status("wifi", "credentials_received")
     if progress:
         progress("associating")
+    emit_board_status("wifi", "associating")
     try:
         _run_nmcli(args, timeout=max(1, int(deadline - time.monotonic())))
     except WifiError as exc:
+        emit_board_status("wifi", "association_failed", level="error", error_code="ASSOCIATION_FAILED")
         return {"state": "failed", "ssid": ssid, "error": str(exc), **get_wifi_status()}
 
     status: dict[str, Any] = {}
     if progress:
         progress("obtainingIp")
+    emit_board_status("wifi", "obtaining_ip")
     while time.monotonic() < deadline:
         status = get_wifi_status()
         if status.get("connected") and status.get("ssid") == ssid and status.get("ip"):
             sync_matter_wifi_credentials()
+            emit_board_status("wifi", "connected", detail={"interface": status.get("interface"), "ip": status.get("ip")})
             return {"state": "connected", "ssid": ssid, "error": "", **status}
         time.sleep(min(1.0, max(0.0, deadline - time.monotonic())))
+    emit_board_status("wifi", "dhcp_timeout", level="error", error_code="DHCP_TIMEOUT")
     return {
         "state": "failed",
         "ssid": ssid,

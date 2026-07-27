@@ -20,6 +20,7 @@ import dbus.service
 from dbus_mainloop import iterate_main_loop, setup_dbus_main_loop
 from device_identity import load_app_keyring, load_device_identity
 from ha_credential_manager import HaCredentialError, get_credential_payload
+from board_status import emit_board_status
 from session_state import ProvisioningOwner, RequestTracker
 from secure_protocol import (
     AEAD_TAG_BYTES,
@@ -273,6 +274,7 @@ class GattProvisioner:
                     self._work_slots.release()
                 session.awaiting_ha_ack.clear()
                 logger.info("cleared secure session for disconnected device %s", device)
+                emit_board_status("ble", "disconnected")
 
     def _properties_changed(self, interface: str, changed: dict[str, Any], invalidated: list[str], path: str | None = None) -> None:
         if interface == DEVICE_IFACE and changed.get("Connected") is False and path:
@@ -391,6 +393,7 @@ class GattProvisioner:
             if metadata.kind == KIND_CLIENT_HELLO:
                 server_hello, channel = self._handshake.accept(message)
                 session.channel, session.authenticated = channel, False
+                emit_board_status("ble", "authenticating")
                 try:
                     self._events.put_nowait(
                         EventBatch(
@@ -423,6 +426,7 @@ class GattProvisioner:
                         )
                         return
                 session.authenticated = True
+                emit_board_status("ble", "ready")
                 self._queue_plain(session, MSG_FINISHED, 0, {"ok": True})
                 return
             if record.message_type != MSG_REQUEST or record.request_id == 0:
@@ -538,10 +542,12 @@ class GattProvisioner:
 
     def _advertisement_registered(self) -> None:
         self._ad_registered = True
+        emit_board_status("bluetooth", "advertising")
         self._write_advertisement_status()
 
     def _advertisement_error(self, error: Any) -> None:
         logger.error("advertisement registration failed: %s", error)
+        emit_board_status("bluetooth", "error", level="error", error_code="ADVERTISEMENT_FAILED")
         self._ad_registered = False
         self._write_advertisement_status()
 
@@ -588,11 +594,13 @@ class GattProvisioner:
                     self._advertisement_lease_token = token
                     self._advertisement_lease_deadline = time.monotonic() + seconds
                     self._set_advertising(False)
+                    emit_board_status("bluetooth", "paused", detail={"reason": "matter_commissioning"})
                     logger.info("paused BLE advertising for Matter commissioning lease")
                 elif action == "resume" and token == self._advertisement_lease_token:
                     self._advertisement_lease_token = None
                     self._advertisement_lease_deadline = 0.0
                     self._set_advertising(True)
+                    emit_board_status("bluetooth", "advertising", detail={"recovered_from": "matter_commissioning"})
                     logger.info("resumed BLE advertising after Matter commissioning")
             except (OSError, ValueError, TypeError, json.JSONDecodeError):
                 logger.exception("invalid BLE advertisement control request")

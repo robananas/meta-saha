@@ -62,8 +62,11 @@ services:
     image: roban-workflow-api:arm64
     restart: on-failure:5
     network_mode: host
+    volumes:
+      - /run/saha/board-status:/run/saha/board-status:ro
     environment:
       TZ: ${TZ:-Asia/Shanghai}
+      BOARD_STATUS_DIR: /run/saha/board-status
 
   livekit-server:
     container_name: livekit-server
