@@ -12,4 +12,6 @@ RDEPENDS:${PN} = " \
     can-utils \
     tegra-tools-tegrastats \
     dosfstools \
+    ripgrep \
+    coreutils \
 "
