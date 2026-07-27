@@ -2,6 +2,9 @@ services:
   homeassistant:
     container_name: homeassistant
     image: ghcr.io/home-assistant/home-assistant:2026.7.1
+    depends_on:
+      matter-server:
+        condition: service_healthy
     volumes:
       - /var/lib/homeassistant:/config
       - /etc/localtime:/etc/localtime:ro
@@ -23,8 +26,27 @@ services:
     volumes:
       - /var/lib/matter-server:/data
       - /run/dbus:/run/dbus:ro
+      - /opt/roban/compose/saha-matter-server-offline.py:/opt/saha-matter-server-offline.py:ro
     environment:
       TZ: ${TZ:-Asia/Shanghai}
+    extra_hosts:
+      - on.dcl.csa-iot.org=127.0.0.1
+      - on.test-net.dcl.csa-iot.org=127.0.0.1
+      - api.github.com=127.0.0.1
+      - raw.githubusercontent.com=127.0.0.1
+    entrypoint:
+      - python3
+      - /opt/saha-matter-server-offline.py
+    healthcheck:
+      test:
+        - CMD
+        - python3
+        - -c
+        - "import socket; socket.create_connection(('127.0.0.1', 5580), 2).close()"
+      interval: 2s
+      timeout: 3s
+      retries: 30
+      start_period: 2s
     command:
       - --storage-path
       - /data

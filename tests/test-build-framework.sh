@@ -176,6 +176,36 @@ grep -q -- '--bluetooth-adapter' \
 grep -q -- '--primary-interface' \
   "$ROOT_DIR/saha-layers/meta-tegra-saha/recipes-saha/docker-compose/saha-docker-compose/compose.yaml" ||
   fail "Matter Server must bind link-local Matter traffic to the board WiFi interface"
+grep -q 'saha-matter-server-offline.py' \
+  "$ROOT_DIR/saha-layers/meta-tegra-saha/recipes-saha/docker-compose/saha-docker-compose/compose.yaml" ||
+  fail "Matter Server must use the offline-only launcher"
+grep -q 'raw.githubusercontent.com=127.0.0.1' \
+  "$ROOT_DIR/saha-layers/meta-tegra-saha/recipes-saha/docker-compose/saha-docker-compose/compose.yaml" ||
+  fail "Matter Server must block GitHub access in offline mode"
+grep -q 'on.dcl.csa-iot.org=127.0.0.1' \
+  "$ROOT_DIR/saha-layers/meta-tegra-saha/recipes-saha/docker-compose/saha-docker-compose/compose.yaml" ||
+  fail "Matter Server must block DCL access in offline mode"
+grep -q 'condition: service_healthy' \
+  "$ROOT_DIR/saha-layers/meta-tegra-saha/recipes-saha/docker-compose/saha-docker-compose/compose.yaml" ||
+  fail "Home Assistant must wait for Matter Server readiness"
+grep -q 'seed_matter_certificates' \
+  "$ROOT_DIR/saha-layers/meta-tegra-saha/recipes-saha/docker-compose/saha-docker-compose/saha-docker-compose.sh" ||
+  fail "Matter Server must seed its offline PAA trust store"
+if grep -q 'docker pull ghcr.io/matter-js/python-matter-server' \
+  "$ROOT_DIR/saha-layers/meta-tegra-saha/recipes-saha/docker-compose/saha-docker-compose/saha-docker-compose.sh"; then
+  fail "Matter Server must never pull its runtime image from the public registry"
+fi
+[ -n "$(find "$ROOT_DIR/saha-layers/meta-tegra-saha/recipes-saha/docker-compose/saha-docker-compose/matter-paa" -name '*.pem' -print -quit)" ] ||
+  fail "Matter Server must bundle offline PAA certificates"
+grep -q '_skip_certificate_fetch' \
+  "$ROOT_DIR/saha-layers/meta-tegra-saha/recipes-saha/docker-compose/saha-docker-compose/saha-matter-server-offline.py" ||
+  fail "Matter offline launcher must disable online PAA updates"
+grep -q '_skip_vendor_fetch' \
+  "$ROOT_DIR/saha-layers/meta-tegra-saha/recipes-saha/docker-compose/saha-docker-compose/saha-matter-server-offline.py" ||
+  fail "Matter offline launcher must disable vendor DCL updates"
+grep -q '_skip_dcl_ota' \
+  "$ROOT_DIR/saha-layers/meta-tegra-saha/recipes-saha/docker-compose/saha-docker-compose/saha-matter-server-offline.py" ||
+  fail "Matter offline launcher must disable OTA DCL lookups"
 grep -q 'roban-workflow-api:arm64' \
   "$ROOT_DIR/saha-layers/meta-tegra-saha/recipes-saha/docker-compose/saha-docker-compose/compose.yaml" ||
   fail "compose stack must include roban-workflow-api"

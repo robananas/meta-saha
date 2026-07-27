@@ -172,10 +172,9 @@ ensure_images() {
         docker pull "$SAHA_HOMEASSISTANT_IMAGE"
     fi
 
-    if ! image_loaded "$SAHA_MATTER_SERVER_IMAGE" && [ "$SAHA_DOCKER_COMPOSE_PULL" = "1" ]; then
-        log "pulling ghcr.io/matter-js/python-matter-server:stable"
-        docker pull ghcr.io/matter-js/python-matter-server:stable
-        docker tag ghcr.io/matter-js/python-matter-server:stable "$SAHA_MATTER_SERVER_IMAGE"
+    if ! image_loaded "$SAHA_MATTER_SERVER_IMAGE"; then
+        log "offline Matter Server image is unavailable: ${SAHA_MATTER_SERVER_IMAGE}"
+        return 1
     fi
 
     if ! image_loaded "$SAHA_ROBAN_WORKFLOW_IMAGE" && [ "$SAHA_DOCKER_COMPOSE_PULL" = "1" ]; then
@@ -207,6 +206,25 @@ ensure_livekit_credentials() {
     } >"$SAHA_LIVEKIT_CREDENTIALS_FILE"
 }
 
+seed_matter_certificates() {
+    template="${SAHA_MATTER_PAA_TEMPLATE:-/usr/share/saha/matter-server/paa-root-certs}"
+    credentials_dir="/var/lib/matter-server/credentials"
+
+    if [ ! -d "$template" ]; then
+        log "offline Matter PAA certificate template missing: ${template}"
+        return 1
+    fi
+
+    mkdir -p "$credentials_dir"
+    for certificate in "$template"/*; do
+        [ -f "$certificate" ] || continue
+        cp "$certificate" "$credentials_dir/$(basename "$certificate")"
+    done
+    printf 'offline\n' >"${credentials_dir}/.version"
+    chmod 0644 "$credentials_dir"/* "${credentials_dir}/.version"
+    log "seeded offline Matter PAA certificate trust store"
+}
+
 seed_homeassistant_config() {
     template="${SAHA_HOMEASSISTANT_CONFIG_TEMPLATE:-/usr/share/saha/homeassistant/config-default}"
     config_dir="/var/lib/homeassistant"
@@ -227,6 +245,7 @@ seed_homeassistant_config() {
 
 start_stack() {
     mkdir -p /var/lib/homeassistant /var/lib/matter-server
+    seed_matter_certificates
     seed_homeassistant_config
     ensure_livekit_credentials
     export TZ="$SAHA_DOCKER_COMPOSE_TZ"

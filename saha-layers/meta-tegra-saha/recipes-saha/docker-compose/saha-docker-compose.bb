@@ -10,6 +10,8 @@ SRC_URI = " \
     file://saha-docker-compose.env \
     file://saha-docker-compose.service \
     file://saha-docker-compose.sh \
+    file://saha-matter-server-offline.py \
+    file://matter-paa/ \
 "
 
 inherit systemd
@@ -28,6 +30,12 @@ do_install() {
 
     install -d ${D}/opt/roban/compose
     install -m 0644 ${UNPACKDIR}/compose.yaml ${D}/opt/roban/compose/compose.yaml
+    install -m 0755 ${UNPACKDIR}/saha-matter-server-offline.py \
+        ${D}/opt/roban/compose/saha-matter-server-offline.py
+
+    install -d ${D}${datadir}/saha/matter-server/paa-root-certs
+    install -m 0644 ${UNPACKDIR}/matter-paa/* \
+        ${D}${datadir}/saha/matter-server/paa-root-certs/
 
     install -d ${D}${systemd_system_unitdir}
     install -m 0644 ${UNPACKDIR}/saha-docker-compose.service ${D}${systemd_system_unitdir}
@@ -39,6 +47,8 @@ do_install() {
 
 FILES:${PN} += " \
     /opt/roban/compose/compose.yaml \
+    /opt/roban/compose/saha-matter-server-offline.py \
+    ${datadir}/saha/matter-server/paa-root-certs \
     ${sysconfdir}/default/saha-docker-compose \
     ${sysconfdir}/systemd/system/multi-user.target.wants/saha-docker-compose.service \
 "
