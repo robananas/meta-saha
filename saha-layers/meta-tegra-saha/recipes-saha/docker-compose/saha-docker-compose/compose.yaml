@@ -9,7 +9,7 @@ services:
       - /var/lib/homeassistant:/config
       - /etc/localtime:/etc/localtime:ro
       - /run/dbus:/run/dbus:ro
-      - /run/saha:/run/saha:ro
+      - /run/saha:/run/saha
     restart: on-failure:5
     privileged: true
     network_mode: host

@@ -12,6 +12,8 @@ Service `a0a0ff10-0000-1000-8000-00805f9b34fb`:
 
 `WriteValue` uses BlueZ `options.device` as the client identity/session key and preserves `options.mtu` for response sizing. A disconnect clears that device's handshake, keys, reassembly, sequences, and active request IDs.
 
+The GATT application and its advertisement have separate lifecycles because Matter commissioning uses the same controller as a BLE central. `/run/saha/ble-advertisement-control.json` accepts atomic `pause` and token-matched `resume` requests; pause requests carry a 5..120 second lease. The service publishes `/run/saha/ble-advertisement-status.json`. Lease expiry always restores advertising, so a crashed Home Assistant process or disconnected App cannot leave provisioning undiscoverable. Pausing unregisters only `LEAdvertisement1`; the GATT application and Bluetooth service stay registered.
+
 ## Transport fragment
 
 All integers are unsigned big-endian. The 10-byte outer header is:

@@ -69,6 +69,10 @@ MAX_PENDING_WORK = 16
 ERROR_BUSY = "BUSY"
 ERROR_IN_PROGRESS = "IN_PROGRESS"
 ERROR_REQUEST_ID_CONFLICT = "REQUEST_ID_CONFLICT"
+ADVERTISEMENT_CONTROL_PATH = "/run/saha/ble-advertisement-control.json"
+ADVERTISEMENT_STATUS_PATH = "/run/saha/ble-advertisement-status.json"
+MIN_ADVERTISEMENT_LEASE_SECONDS = 5.0
+MAX_ADVERTISEMENT_LEASE_SECONDS = 120.0
 logger = logging.getLogger("saha-bt-wifi-provision")
 
 
@@ -229,6 +233,11 @@ class GattProvisioner:
         self._work_slots = threading.BoundedSemaphore(MAX_PENDING_WORK)
         self._running, self._gatt_registered, self._ad_registered, self._registration_failed = True, False, False, False
         self._loop_mode = "null"
+        self._advertisement: Advertisement | None = None
+        self._ad_manager: Any | None = None
+        self._advertisement_lease_token: str | None = None
+        self._advertisement_lease_deadline = 0.0
+        self._advertisement_control_mtime_ns = -1
         self._handshake = ServerHandshake(load_device_identity(), load_app_keyring())
 
     @staticmethod
@@ -515,6 +524,84 @@ class GattProvisioner:
             self._registration_failed, self._running = True, False
         return handler
 
+    def _write_advertisement_status(self) -> None:
+        status = {
+            "advertising": self._ad_registered,
+            "lease_token": self._advertisement_lease_token,
+            "lease_expires_monotonic": self._advertisement_lease_deadline or None,
+        }
+        temporary = ADVERTISEMENT_STATUS_PATH + ".tmp"
+        with open(temporary, "w", encoding="utf-8") as stream:
+            json.dump(status, stream, separators=(",", ":"))
+            stream.write("\n")
+        os.replace(temporary, ADVERTISEMENT_STATUS_PATH)
+
+    def _advertisement_registered(self) -> None:
+        self._ad_registered = True
+        self._write_advertisement_status()
+
+    def _advertisement_error(self, error: Any) -> None:
+        logger.error("advertisement registration failed: %s", error)
+        self._ad_registered = False
+        self._write_advertisement_status()
+
+    def _set_advertising(self, enabled: bool) -> None:
+        if self._ad_manager is None or self._advertisement is None:
+            raise RuntimeError("advertisement manager is not initialized")
+        if enabled == self._ad_registered:
+            return
+        if enabled:
+            self._ad_manager.RegisterAdvertisement(
+                self._advertisement.get_path(),
+                {},
+                reply_handler=self._advertisement_registered,
+                error_handler=self._advertisement_error,
+            )
+        else:
+            try:
+                self._ad_manager.UnregisterAdvertisement(self._advertisement.get_path())
+            except dbus.exceptions.DBusException as exc:
+                if "DoesNotExist" not in str(exc):
+                    raise
+            self._ad_registered = False
+            self._write_advertisement_status()
+
+    def _process_advertisement_control(self) -> None:
+        try:
+            stat = os.stat(ADVERTISEMENT_CONTROL_PATH)
+        except FileNotFoundError:
+            stat = None
+        if stat is not None and stat.st_mtime_ns != self._advertisement_control_mtime_ns:
+            self._advertisement_control_mtime_ns = stat.st_mtime_ns
+            try:
+                with open(ADVERTISEMENT_CONTROL_PATH, encoding="utf-8") as stream:
+                    command = json.load(stream)
+                action = command.get("action")
+                token = command.get("token")
+                if not isinstance(token, str) or not token:
+                    raise ValueError("advertisement lease token is required")
+                if action == "pause":
+                    seconds = float(command.get("lease_seconds", 90))
+                    seconds = min(MAX_ADVERTISEMENT_LEASE_SECONDS, max(MIN_ADVERTISEMENT_LEASE_SECONDS, seconds))
+                    # The lease is fail-safe: if HA or its WebSocket disappears, Roban advertising
+                    # resumes without relying on a matching cleanup request from that process.
+                    self._advertisement_lease_token = token
+                    self._advertisement_lease_deadline = time.monotonic() + seconds
+                    self._set_advertising(False)
+                    logger.info("paused BLE advertising for Matter commissioning lease")
+                elif action == "resume" and token == self._advertisement_lease_token:
+                    self._advertisement_lease_token = None
+                    self._advertisement_lease_deadline = 0.0
+                    self._set_advertising(True)
+                    logger.info("resumed BLE advertising after Matter commissioning")
+            except (OSError, ValueError, TypeError, json.JSONDecodeError):
+                logger.exception("invalid BLE advertisement control request")
+        if self._advertisement_lease_token and time.monotonic() >= self._advertisement_lease_deadline:
+            self._advertisement_lease_token = None
+            self._advertisement_lease_deadline = 0.0
+            self._set_advertising(True)
+            logger.warning("BLE advertisement pause lease expired; advertising restored")
+
     def _register(self) -> None:
         assert self.bus is not None and self.adapter_path is not None
         app, service = Application(self.bus), Service(self.bus, 0, SERVICE_UUID)
@@ -525,9 +612,14 @@ class GattProvisioner:
         self.event_characteristic = event
         manager = dbus.Interface(self.bus.get_object(BLUEZ_SERVICE_NAME, self.adapter_path), GATT_MANAGER_IFACE)
         manager.RegisterApplication(app.get_path(), {}, reply_handler=lambda: setattr(self, "_gatt_registered", True), error_handler=self._register_error("GATT"))
-        ad = Advertisement(self.bus, self.local_name)
-        ad_manager = dbus.Interface(self.bus.get_object(BLUEZ_SERVICE_NAME, self.adapter_path), LE_ADVERTISING_MANAGER_IFACE)
-        ad_manager.RegisterAdvertisement(ad.get_path(), {}, reply_handler=lambda: setattr(self, "_ad_registered", True), error_handler=self._register_error("advertisement"))
+        self._advertisement = Advertisement(self.bus, self.local_name)
+        self._ad_manager = dbus.Interface(self.bus.get_object(BLUEZ_SERVICE_NAME, self.adapter_path), LE_ADVERTISING_MANAGER_IFACE)
+        self._ad_manager.RegisterAdvertisement(
+            self._advertisement.get_path(),
+            {},
+            reply_handler=self._advertisement_registered,
+            error_handler=self._advertisement_error,
+        )
 
     def run(self) -> None:
         self._loop_mode = setup_dbus_main_loop(); self.bus = dbus.SystemBus(); self.adapter_path = self._wait_for_adapter()
@@ -539,6 +631,7 @@ class GattProvisioner:
             while self._running:
                 if self._registration_failed:
                     raise RuntimeError("GATT registration failed")
+                self._process_advertisement_control()
                 try:
                     batch = self._events.get_nowait()
                     if self.event_characteristic:
