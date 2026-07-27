@@ -18,6 +18,8 @@ CREDENTIAL_PATH = Path("/var/lib/saha/homeassistant/app-credentials.json")
 TOKEN_URL = "http://127.0.0.1:8123/auth/token"
 MAX_PAYLOAD_BYTES = 16 * 1024
 REFRESH_SKEW_MS = 5 * 60 * 1000
+CREDENTIAL_WAIT_SECONDS = 30.0
+CREDENTIAL_POLL_SECONDS = 0.5
 _LOCK = threading.RLock()
 
 
@@ -120,14 +122,22 @@ def _refresh(value: dict[str, Any]) -> dict[str, Any]:
     return updated
 
 
-def get_credential_payload() -> bytes:
-    with _LOCK:
+def _read_credentials_when_ready() -> dict[str, Any]:
+    deadline = time.monotonic() + CREDENTIAL_WAIT_SECONDS
+    while True:
         try:
-            value = _validate(
-                json.loads(CREDENTIAL_PATH.read_text(encoding="utf-8"))
-            )
+            return _validate(json.loads(CREDENTIAL_PATH.read_text(encoding="utf-8")))
+        except FileNotFoundError as exc:
+            if time.monotonic() >= deadline:
+                raise HaCredentialError("HA credentials unavailable") from exc
+            time.sleep(CREDENTIAL_POLL_SECONDS)
         except (OSError, UnicodeError, ValueError) as exc:
             raise HaCredentialError("HA credentials unavailable") from exc
+
+
+def get_credential_payload() -> bytes:
+    with _LOCK:
+        value = _read_credentials_when_ready()
         os.chmod(CREDENTIAL_PATH, 0o600)
 
         if value["expiresAt"] <= int(time.time() * 1000) + REFRESH_SKEW_MS:
