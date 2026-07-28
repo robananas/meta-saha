@@ -1,0 +1,7 @@
+header:
+  version: 17
+
+local_conf_header:
+  saha-nvidia-gpu-containers: |
+    CORE_IMAGE_BASE_INSTALL:append:pn-saha-image-robot = " packagegroup-saha-nvidia-containers"
+    CORE_IMAGE_BASE_INSTALL:append:pn-saha-image-robot-docker = " packagegroup-saha-nvidia-containers"

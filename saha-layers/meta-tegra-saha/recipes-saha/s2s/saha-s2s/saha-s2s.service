@@ -1,0 +1,23 @@
+[Unit]
+Description=Independent Roban S2S Realtime service
+Documentation=https://docs.docker.com/compose/
+After=docker.service network-online.target saha-nvidia-container-runtime.service
+Wants=network-online.target
+Requires=docker.service saha-nvidia-container-runtime.service
+Conflicts=shutdown.target
+
+[Service]
+Type=oneshot
+RemainAfterExit=yes
+EnvironmentFile=-/etc/default/saha-s2s
+ExecStartPre=/usr/bin/saha-s2s wait-docker
+ExecStart=/usr/bin/saha-s2s start
+ExecStop=/usr/bin/saha-s2s stop
+ExecReload=/usr/bin/saha-s2s restart
+TimeoutStartSec=300
+TimeoutStopSec=90
+Restart=on-failure
+RestartSec=30
+
+[Install]
+WantedBy=multi-user.target

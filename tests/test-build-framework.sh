@@ -161,6 +161,80 @@ grep -q 'saha-docker-compose' \
 grep -q 'roban-app' \
   "$ROOT_DIR/saha-layers/meta-tegra-saha/recipes-saha/packagegroups/packagegroup-saha-docker-images.bb" ||
   fail "docker images packagegroup must install roban-app image recipe"
+NVIDIA_CONTAINER_INCLUDE="$ROOT_DIR/kas/include/nvidia-gpu-containers.yml"
+NVIDIA_CONTAINER_PACKAGEGROUP="$ROOT_DIR/saha-layers/meta-tegra-saha/recipes-saha/packagegroups/packagegroup-saha-nvidia-containers.bb"
+NVIDIA_CONTAINER_RECIPE="$ROOT_DIR/saha-layers/meta-tegra-saha/recipes-saha/nvidia-container-runtime/saha-nvidia-container-runtime.bb"
+NVIDIA_CONTAINER_SERVICE="$ROOT_DIR/saha-layers/meta-tegra-saha/recipes-saha/nvidia-container-runtime/saha-nvidia-container-runtime/saha-nvidia-container-runtime.service"
+[ -f "$NVIDIA_CONTAINER_INCLUDE" ] || fail "optional NVIDIA GPU container kas include must exist"
+grep -q 'packagegroup-saha-nvidia-containers' "$NVIDIA_CONTAINER_INCLUDE" ||
+  fail "NVIDIA GPU container include must install its packagegroup"
+! grep -R -q 'nvidia-gpu-containers.yml' "$ROOT_DIR/kas/targets" "$ROOT_DIR/kas/include/base.yml" "$ROOT_DIR/kas/include/image-profile-"*.yml ||
+  fail "NVIDIA GPU container support must remain opt-in"
+grep -q 'nvidia-container-toolkit' "$NVIDIA_CONTAINER_PACKAGEGROUP" ||
+  fail "NVIDIA GPU container packagegroup must install the OE4T toolkit"
+grep -q 'saha-nvidia-container-runtime' "$NVIDIA_CONTAINER_PACKAGEGROUP" ||
+  fail "NVIDIA GPU container packagegroup must install Docker registration"
+grep -q 'inherit systemd' "$NVIDIA_CONTAINER_RECIPE" ||
+  fail "NVIDIA Docker runtime registration must integrate with systemd"
+grep -q 'Before=docker.service' "$NVIDIA_CONTAINER_SERVICE" ||
+  fail "NVIDIA runtime must be registered before Docker starts"
+grep -q 'Requires=nvidia-container-setup.service' "$NVIDIA_CONTAINER_SERVICE" ||
+  fail "NVIDIA Docker registration must wait for the OE4T runtime configuration"
+grep -q 'nvidia-ctk runtime configure --runtime=docker' "$NVIDIA_CONTAINER_SERVICE" ||
+  fail "NVIDIA runtime service must register the runtime with Docker"
+! grep -q -- '--set-as-default' "$NVIDIA_CONTAINER_SERVICE" ||
+  fail "NVIDIA runtime must not become Docker's global default"
+S2S_INCLUDE="$ROOT_DIR/kas/include/s2s.yml"
+S2S_PACKAGEGROUP="$ROOT_DIR/saha-layers/meta-tegra-saha/recipes-saha/packagegroups/packagegroup-saha-s2s.bb"
+S2S_IMAGE_RECIPE="$ROOT_DIR/saha-layers/meta-tegra-saha/recipes-saha/s2s-container/saha-s2s-container-image.bb"
+S2S_FETCH="$ROOT_DIR/saha-layers/meta-tegra-saha/recipes-saha/s2s-container/files/fetch-image.sh"
+S2S_RECIPE="$ROOT_DIR/saha-layers/meta-tegra-saha/recipes-saha/s2s/saha-s2s.bb"
+S2S_COMPOSE="$ROOT_DIR/saha-layers/meta-tegra-saha/recipes-saha/s2s/saha-s2s/compose.yaml"
+S2S_ENV="$ROOT_DIR/saha-layers/meta-tegra-saha/recipes-saha/s2s/saha-s2s/saha-s2s.env"
+S2S_LAUNCHER="$ROOT_DIR/saha-layers/meta-tegra-saha/recipes-saha/s2s/saha-s2s/saha-s2s.sh"
+S2S_SERVICE="$ROOT_DIR/saha-layers/meta-tegra-saha/recipes-saha/s2s/saha-s2s/saha-s2s.service"
+for s2s_file in "$S2S_INCLUDE" "$S2S_PACKAGEGROUP" "$S2S_IMAGE_RECIPE" "$S2S_FETCH" "$S2S_RECIPE" "$S2S_COMPOSE" "$S2S_ENV" "$S2S_LAUNCHER" "$S2S_SERVICE"; do
+  [ -f "$s2s_file" ] || fail "optional S2S integration file missing: $s2s_file"
+done
+! grep -R -q 'kas/include/s2s.yml' "$ROOT_DIR/kas/targets" "$ROOT_DIR/kas/include/base.yml" "$ROOT_DIR/kas/include/image-profile-"*.yml ||
+  fail "S2S support must remain opt-in"
+grep -q 'packagegroup-saha-s2s' "$S2S_INCLUDE" || fail "S2S include must install its packagegroup"
+grep -q 'packagegroup-saha-nvidia-containers' "$S2S_PACKAGEGROUP" || fail "S2S packagegroup must opt into GPU support"
+grep -q 'saha-s2s-container-image' "$S2S_PACKAGEGROUP" || fail "S2S packagegroup must preload its image"
+grep -q 'saha-s2s' "$S2S_PACKAGEGROUP" || fail "S2S packagegroup must install its runtime"
+grep -q 'S2S_IMAGE ?= "roban-s2s:arm64"' "$S2S_IMAGE_RECIPE" || fail "S2S image tag must match the backend contract"
+grep -q 'do_fetch_image\[network\] = "0"' "$S2S_IMAGE_RECIPE" || fail "S2S image recipe must remain local-only"
+grep -q 'do_fetch_image\[nostamp\] = "1"' "$S2S_IMAGE_RECIPE" || fail "S2S image recipe must revalidate its mutable archive"
+grep -q 'validate_archive' "$S2S_FETCH" || fail "S2S image archive must be validated"
+grep -q 'config.get("architecture")' "$S2S_FETCH" || fail "S2S image archive must reject wrong architectures"
+grep -q 'roban-s2s.tar' "$S2S_FETCH" || fail "S2S preload must use its independent local archive"
+! grep -Eq 'docker (pull|build)' "$S2S_FETCH" || fail "S2S preload must not build or download the unavailable image"
+grep -q '/usr/share/saha/s2s/image.tar' "$S2S_ENV" || fail "S2S runtime must use its independent archive path"
+grep -q 'SAHA_S2S_PROJECT=saha-s2s' "$S2S_ENV" || fail "S2S must use its own Compose project"
+grep -q 'SAHA_S2S_PORT=8765' "$S2S_ENV" || fail "S2S port must match backend and App defaults"
+grep -q 'ROBAN_S2S_ICE_SERVERS=\[\]' "$S2S_ENV" || fail "S2S must default to host ICE candidates"
+grep -q 'HF_ENDPOINT=https://hf-mirror.com' "$S2S_ENV" || fail "S2S must default to the post-flash China Hugging Face mirror"
+grep -q 'PIP_INDEX_URL=https://pypi.tuna.tsinghua.edu.cn/simple' "$S2S_ENV" || fail "S2S must default to the post-flash China Python mirror"
+grep -q 'network_mode: host' "$S2S_COMPOSE" || fail "aiortc WebRTC must expose dynamic ICE UDP sockets"
+grep -q 'runtime: nvidia' "$S2S_COMPOSE" || fail "only the S2S container must explicitly request NVIDIA runtime"
+grep -q 'restart: "no"' "$S2S_COMPOSE" || fail "Docker must not bypass systemd S2S lifecycle policy"
+grep -q '/var/lib/saha/s2s/models:/models:ro' "$S2S_COMPOSE" || fail "S2S models must mount read-only"
+grep -q '/var/cache/saha/s2s:/var/cache/roban-s2s' "$S2S_COMPOSE" || fail "S2S cache must use its independent mount"
+grep -q '/ready' "$S2S_COMPOSE" || fail "S2S healthcheck must enforce model readiness"
+grep -q '/health' "$ROOT_DIR/README-S2S.md" || fail "S2S integration must document liveness separately from readiness"
+grep -q -- '--project-name "$SAHA_S2S_PROJECT"' "$S2S_LAUNCHER" || fail "S2S launcher must isolate the Compose project"
+grep -q -- '--pull never' "$S2S_LAUNCHER" || fail "S2S runtime must stay offline"
+grep -q 'manifest.sha256' "$S2S_LAUNCHER" || fail "S2S launcher must verify provisioned models"
+grep -q 'Restart=on-failure' "$S2S_SERVICE" || fail "systemd must retry failed S2S starts"
+grep -q 'Requires=docker.service saha-nvidia-container-runtime.service' "$S2S_SERVICE" || fail "S2S must wait for Docker and NVIDIA registration"
+if rg -n 'saha-s2s|roban-s2s' \
+  "$ROOT_DIR/saha-layers/meta-tegra-saha/recipes-saha/docker-compose" \
+  "$ROOT_DIR/saha-layers/meta-tegra-saha/recipes-saha/livekit-agent" \
+  "$ROOT_DIR/saha-layers/meta-tegra-saha/recipes-saha/livekit-server-container" >/tmp/saha-s2s-livekit-coupling.out; then
+  cat /tmp/saha-s2s-livekit-coupling.out >&2
+  fail "S2S must not modify or couple to existing LiveKit recipes"
+fi
+grep -q 'measure the archive, generated rootfs, and Docker unpacked size' "$ROOT_DIR/README-S2S.md" || fail "S2S rootfs adjustment must be explicitly deferred until measured"
 grep -q 'docker compose' \
   "$ROOT_DIR/saha-layers/meta-tegra-saha/recipes-saha/docker-compose/saha-docker-compose/saha-docker-compose.sh" ||
   fail "docker compose launcher must start the stack with docker compose"

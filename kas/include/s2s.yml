@@ -1,0 +1,10 @@
+header:
+  version: 17
+
+local_conf_header:
+  saha-s2s: |
+    CORE_IMAGE_BASE_INSTALL:append:pn-saha-image-robot = " packagegroup-saha-s2s"
+    CORE_IMAGE_BASE_INSTALL:append:pn-saha-image-robot-docker = " packagegroup-saha-s2s"
+    # The archive is intentionally local-only and models are post-flash assets.
+    # Yocto sizes the installed archive through normal rootfs accounting; add a
+    # measured IMAGE_ROOTFS_EXTRA_SPACE value here after the Phase 5 image exists.

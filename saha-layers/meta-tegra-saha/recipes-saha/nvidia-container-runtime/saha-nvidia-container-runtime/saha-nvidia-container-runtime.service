@@ -1,0 +1,13 @@
+[Unit]
+Description=Register NVIDIA container runtime with Docker
+Requires=nvidia-container-setup.service
+After=nvidia-container-setup.service
+Before=docker.service
+
+[Service]
+Type=oneshot
+RemainAfterExit=yes
+ExecStart=/usr/bin/nvidia-ctk runtime configure --runtime=docker
+
+[Install]
+WantedBy=multi-user.target
