@@ -24,6 +24,7 @@ INSANE_SKIP:${PN} += "already-stripped ldflags dev-so"
 addtask fetch_image after do_unpack before do_patch
 do_fetch_image[depends] += "ca-certificates-native:do_populate_sysroot skopeo-native:do_populate_sysroot"
 do_fetch_image[network] = "1"
+do_fetch_image[nostamp] = "1"
 do_fetch_image[prefuncs] = "extend_recipe_sysroot"
 
 do_fetch_image() {

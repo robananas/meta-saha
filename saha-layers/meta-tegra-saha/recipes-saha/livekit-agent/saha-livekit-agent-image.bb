@@ -18,6 +18,7 @@ INSANE_SKIP:${PN} += "already-stripped ldflags dev-so"
 
 addtask fetch_image after do_unpack before do_patch
 do_fetch_image[network] = "1"
+do_fetch_image[nostamp] = "1"
 
 do_fetch_image() {
     LIVEKIT_AGENT_IMAGE="${LIVEKIT_AGENT_IMAGE}" \

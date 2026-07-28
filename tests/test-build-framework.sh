@@ -250,6 +250,26 @@ grep -q '/run/saha/board-status:/run/saha/board-status:ro' \
 grep -q 'roban-workflow-api.tar' \
   "$ROOT_DIR/saha-layers/meta-tegra-saha/recipes-saha/roban-app/roban-app/fetch-image.sh" ||
   fail "roban-app fetch script must support local tarball cache"
+for fetch_script in \
+  "$ROOT_DIR/saha-layers/meta-tegra-saha/recipes-saha/homeassistant-container/saha-homeassistant-container-image/fetch-image.sh" \
+  "$ROOT_DIR/saha-layers/meta-tegra-saha/recipes-saha/matter-server-container/saha-matter-server-container-image/fetch-image.sh" \
+  "$ROOT_DIR/saha-layers/meta-tegra-saha/recipes-saha/livekit-server-container/files/fetch-image.sh" \
+  "$ROOT_DIR/saha-layers/meta-tegra-saha/recipes-saha/livekit-agent/files/fetch-image.sh" \
+  "$ROOT_DIR/saha-layers/meta-tegra-saha/recipes-saha/roban-app/roban-app/fetch-image.sh"; do
+  grep -q 'validate_archive' "$fetch_script" ||
+    fail "container fetch script must validate cached archives: $fetch_script"
+  grep -q 'config.get("architecture")' "$fetch_script" ||
+    fail "container fetch script must reject wrong-platform archives: $fetch_script"
+done
+for image_recipe in \
+  "$ROOT_DIR/saha-layers/meta-tegra-saha/recipes-saha/homeassistant-container/saha-homeassistant-container-image.bb" \
+  "$ROOT_DIR/saha-layers/meta-tegra-saha/recipes-saha/matter-server-container/saha-matter-server-container-image.bb" \
+  "$ROOT_DIR/saha-layers/meta-tegra-saha/recipes-saha/livekit-server-container/saha-livekit-server-container-image.bb" \
+  "$ROOT_DIR/saha-layers/meta-tegra-saha/recipes-saha/livekit-agent/saha-livekit-agent-image.bb" \
+  "$ROOT_DIR/saha-layers/meta-tegra-saha/recipes-saha/roban-app/roban-app.bb"; do
+  grep -q 'do_fetch_image\[nostamp\] = "1"' "$image_recipe" ||
+    fail "container image recipe must revalidate mutable local tar caches: $image_recipe"
+done
 grep -q 'saha-livekit-server-container-image' \
   "$ROOT_DIR/saha-layers/meta-tegra-saha/recipes-saha/packagegroups/packagegroup-saha-docker-images.bb" ||
   fail "docker images packagegroup must preload LiveKit Server"
