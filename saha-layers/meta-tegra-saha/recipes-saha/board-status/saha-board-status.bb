@@ -13,7 +13,7 @@ inherit systemd
 SYSTEMD_SERVICE:${PN} = "saha-board-status.service"
 SYSTEMD_AUTO_ENABLE:${PN} = "enable"
 
-RDEPENDS:${PN} = "python3-core python3-json python3-subprocess python3-threading curl networkmanager-nmcli"
+RDEPENDS:${PN} = "python3-core python3-datetime python3-io python3-json curl networkmanager-nmcli"
 
 do_install() {
     install -d ${D}${bindir}

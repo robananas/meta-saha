@@ -215,6 +215,12 @@ BOARD_STATUS_IMPL="$ROOT_DIR/saha-layers/meta-tegra-saha/recipes-saha/board-stat
 [ -f "$BOARD_STATUS_RECIPE" ] || fail "saha-board-status recipe must exist"
 grep -q 'inherit systemd' "$BOARD_STATUS_RECIPE" || fail "board status recipe must integrate with systemd"
 grep -q 'SYSTEMD_AUTO_ENABLE:${PN} = "enable"' "$BOARD_STATUS_RECIPE" || fail "board status service must auto-enable"
+grep -q 'python3-datetime' "$BOARD_STATUS_RECIPE" ||
+  fail "board status recipe must install Python datetime support"
+grep -q 'python3-io' "$BOARD_STATUS_RECIPE" ||
+  fail "board status recipe must install Python socket and tempfile support"
+grep -q 'python3-subprocess' "$BOARD_STATUS_RECIPE" &&
+  fail "board status must not depend on python3-subprocess on wrynose; subprocess is in python3-core"
 grep -q 'saha-board-status' \
   "$ROOT_DIR/saha-layers/meta-tegra-saha/recipes-saha/packagegroups/packagegroup-saha-base.bb" ||
   fail "base packagegroup must install board status aggregator"
