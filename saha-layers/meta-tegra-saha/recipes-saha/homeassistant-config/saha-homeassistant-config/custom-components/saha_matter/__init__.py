@@ -107,7 +107,16 @@ async def async_setup(hass: HomeAssistant, config: ConfigType) -> bool:
         async with commission_lock:
             token = secrets.token_urlsafe(24)
             paused = False
+            started_at = time.monotonic()
             try:
+                if not await sync_wifi_credentials():
+                    connection.send_error(
+                        msg["id"],
+                        "matter_wifi_not_ready",
+                        "Matter WiFi credentials are not synchronized",
+                    )
+                    return
+                matter_client = matter_entries[0].runtime_data.adapter.matter_client
                 if not msg["network_only"]:
                     # A/B HCI traces showed the local peripheral advertisement can abort the
                     # first Matter central connection; only the advertisement is paused here,
@@ -115,12 +124,14 @@ async def async_setup(hass: HomeAssistant, config: ConfigType) -> bool:
                     await write_advertisement_control("pause", token)
                     await wait_for_advertising(False)
                     paused = True
-                matter_client = matter_entries[0].runtime_data.adapter.matter_client
+                _LOGGER.info("Matter commissioning prerequisites ready in %.2fs", time.monotonic() - started_at)
                 node = await matter_client.commission_with_code(
                     code=msg["code"],
                     network_only=msg["network_only"],
                 )
-                connection.send_result(msg["id"], {"node_id": node.node_id})
+                elapsed = time.monotonic() - started_at
+                _LOGGER.info("Matter commissioning completed in %.2fs for node %s", elapsed, node.node_id)
+                connection.send_result(msg["id"], {"node_id": node.node_id, "elapsed_seconds": round(elapsed, 2)})
             except Exception as err:  # noqa: BLE001
                 _LOGGER.exception("Unable to commission Matter device with BLE coordination")
                 connection.send_error(msg["id"], "commission_failed", str(err))

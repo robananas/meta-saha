@@ -20,11 +20,11 @@ async def _skip_vendor_fetch(self: Any) -> None:
     )
 
 
-async def _skip_dcl_ota(*args: Any, **kwargs: Any) -> None:
+async def _skip_dcl_ota(*args: Any, **kwargs: Any) -> tuple[None, None]:
     logging.getLogger("matter_server.server.ota.dcl").info(
         "Offline mode: DCL OTA lookup disabled"
     )
-    return None
+    return None, None
 
 
 async def _reject_external_ota(self: Any, update_desc: dict[str, Any]) -> None:

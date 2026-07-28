@@ -203,9 +203,22 @@ grep -q '_skip_certificate_fetch' \
 grep -q '_skip_vendor_fetch' \
   "$ROOT_DIR/saha-layers/meta-tegra-saha/recipes-saha/docker-compose/saha-docker-compose/saha-matter-server-offline.py" ||
   fail "Matter offline launcher must disable vendor DCL updates"
-grep -q '_skip_dcl_ota' \
-  "$ROOT_DIR/saha-layers/meta-tegra-saha/recipes-saha/docker-compose/saha-docker-compose/saha-matter-server-offline.py" ||
+MATTER_OFFLINE_LAUNCHER="$ROOT_DIR/saha-layers/meta-tegra-saha/recipes-saha/docker-compose/saha-docker-compose/saha-matter-server-offline.py"
+grep -q '_skip_dcl_ota' "$MATTER_OFFLINE_LAUNCHER" ||
   fail "Matter offline launcher must disable OTA DCL lookups"
+python3 - "$MATTER_OFFLINE_LAUNCHER" <<'PY' ||
+import asyncio
+import importlib.util
+import sys
+
+path = sys.argv[1]
+spec = importlib.util.spec_from_file_location("saha_matter_server_offline", path)
+module = importlib.util.module_from_spec(spec)
+assert spec.loader is not None
+spec.loader.exec_module(module)
+assert asyncio.run(module._skip_dcl_ota()) == (None, None)
+PY
+  fail "Matter offline OTA lookup must return the expected two-item result"
 grep -q 'roban-workflow-api:arm64' \
   "$ROOT_DIR/saha-layers/meta-tegra-saha/recipes-saha/docker-compose/saha-docker-compose/compose.yaml" ||
   fail "compose stack must include roban-workflow-api"
