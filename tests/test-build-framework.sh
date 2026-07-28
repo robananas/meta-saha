@@ -165,11 +165,9 @@ NVIDIA_CONTAINER_INCLUDE="$ROOT_DIR/kas/include/nvidia-gpu-containers.yml"
 NVIDIA_CONTAINER_PACKAGEGROUP="$ROOT_DIR/saha-layers/meta-tegra-saha/recipes-saha/packagegroups/packagegroup-saha-nvidia-containers.bb"
 NVIDIA_CONTAINER_RECIPE="$ROOT_DIR/saha-layers/meta-tegra-saha/recipes-saha/nvidia-container-runtime/saha-nvidia-container-runtime.bb"
 NVIDIA_CONTAINER_SERVICE="$ROOT_DIR/saha-layers/meta-tegra-saha/recipes-saha/nvidia-container-runtime/saha-nvidia-container-runtime/saha-nvidia-container-runtime.service"
-[ -f "$NVIDIA_CONTAINER_INCLUDE" ] || fail "optional NVIDIA GPU container kas include must exist"
+[ -f "$NVIDIA_CONTAINER_INCLUDE" ] || fail "NVIDIA GPU container kas include must exist"
 grep -q 'packagegroup-saha-nvidia-containers' "$NVIDIA_CONTAINER_INCLUDE" ||
   fail "NVIDIA GPU container include must install its packagegroup"
-! grep -R -q 'nvidia-gpu-containers.yml' "$ROOT_DIR/kas/targets" "$ROOT_DIR/kas/include/base.yml" "$ROOT_DIR/kas/include/image-profile-"*.yml ||
-  fail "NVIDIA GPU container support must remain opt-in"
 grep -q 'nvidia-container-toolkit' "$NVIDIA_CONTAINER_PACKAGEGROUP" ||
   fail "NVIDIA GPU container packagegroup must install the OE4T toolkit"
 grep -q 'saha-nvidia-container-runtime' "$NVIDIA_CONTAINER_PACKAGEGROUP" ||
@@ -194,11 +192,12 @@ S2S_ENV="$ROOT_DIR/saha-layers/meta-tegra-saha/recipes-saha/s2s/saha-s2s/saha-s2
 S2S_LAUNCHER="$ROOT_DIR/saha-layers/meta-tegra-saha/recipes-saha/s2s/saha-s2s/saha-s2s.sh"
 S2S_SERVICE="$ROOT_DIR/saha-layers/meta-tegra-saha/recipes-saha/s2s/saha-s2s/saha-s2s.service"
 for s2s_file in "$S2S_INCLUDE" "$S2S_PACKAGEGROUP" "$S2S_IMAGE_RECIPE" "$S2S_FETCH" "$S2S_RECIPE" "$S2S_COMPOSE" "$S2S_ENV" "$S2S_LAUNCHER" "$S2S_SERVICE"; do
-  [ -f "$s2s_file" ] || fail "optional S2S integration file missing: $s2s_file"
+  [ -f "$s2s_file" ] || fail "S2S integration file missing: $s2s_file"
 done
-! grep -R -q 'kas/include/s2s.yml' "$ROOT_DIR/kas/targets" "$ROOT_DIR/kas/include/base.yml" "$ROOT_DIR/kas/include/image-profile-"*.yml ||
-  fail "S2S support must remain opt-in"
 grep -q 'packagegroup-saha-s2s' "$S2S_INCLUDE" || fail "S2S include must install its packagegroup"
+grep -q 'packagegroup-saha-s2s' \
+  "$ROOT_DIR/saha-layers/meta-tegra-saha/recipes-saha/packagegroups/packagegroup-saha-docker-images.bb" ||
+  fail "all Docker image profiles must include S2S by default"
 grep -q 'packagegroup-saha-nvidia-containers' "$S2S_PACKAGEGROUP" || fail "S2S packagegroup must opt into GPU support"
 grep -q 'saha-s2s-container-image' "$S2S_PACKAGEGROUP" || fail "S2S packagegroup must preload its image"
 grep -q 'saha-s2s' "$S2S_PACKAGEGROUP" || fail "S2S packagegroup must install its runtime"

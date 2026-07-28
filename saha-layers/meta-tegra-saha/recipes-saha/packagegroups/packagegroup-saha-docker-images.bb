@@ -18,4 +18,5 @@ RDEPENDS:${PN} = " \
     saha-livekit-server-container-image \
     saha-livekit-agent-image \
     roban-app \
+    packagegroup-saha-s2s \
 "

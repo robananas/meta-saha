@@ -1,6 +1,6 @@
-# Optional Roban S2S image integration
+# Roban S2S image integration
 
-Add `kas/include/s2s.yml` to a kas configuration only for an S2S/GPU image. The include installs the NVIDIA container runtime registration, the independent `saha-s2s` Compose project, and the local-only `roban-s2s:arm64` archive preload. Default images and the existing LiveKit Compose project are unchanged.
+S2S is included by default in every Docker-capable image through `packagegroup-saha-docker-images`, so both the default full `robot` profile and `robot-docker` install the NVIDIA container runtime registration, the independent `saha-s2s` Compose project, and the local-only `roban-s2s:arm64` archive preload. The existing LiveKit Compose project remains unchanged. `kas/include/s2s.yml` remains available for custom image configurations that do not use the standard Docker packagegroup.
 
 Before parsing/building `saha-s2s-container-image`, place a Docker archive tagged `roban-s2s:arm64` at `DL_DIR/roban-s2s.tar`. The recipe validates that the archive contains exactly one ARM64 image with that tag and never pulls from a registry. Models are not part of the image or rootfs. Provision benchmark-selected models after flashing under `/var/lib/saha/s2s/models`, record revisions in `/etc/default/saha-s2s`, and create `manifest.sha256` with paths relative to the model root. Startup verifies the manifest when present.
 
