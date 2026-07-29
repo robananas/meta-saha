@@ -12,5 +12,5 @@ local_conf_header:
     IMAGE_ROOTFS_SIZE:pn-saha-image-robot = "12582912"
     IMAGE_ROOTFS_SIZE:pn-saha-image-robot-docker = "12582912"
     DATAFILE:p3768-0000-p3767-0000 = "saha-data.ext4"
-    IMAGE_TEGRAFLASH_DATA:p3768-0000-p3767-0000 = "${DEPLOY_DIR_IMAGE}/saha-data-image-${MACHINE}.ext4"
+    IMAGE_TEGRAFLASH_DATA:p3768-0000-p3767-0000 = "${DEPLOY_DIR_IMAGE}/saha-data-image-${MACHINE}.rootfs.ext4"
     do_image_tegraflash_tar[depends] += "saha-data-image:do_image_complete"

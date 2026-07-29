@@ -156,6 +156,13 @@ data = next(p for p in parts if p.get('name') == 'DATA')
 assert app.get('id') == '1'
 assert app.findtext('size').strip() == '17179869184'
 assert app.findtext('allocation_attribute').strip() != '0x808'
+assert data.get('id') == '16'
+explicit_ids = [p.get('id') for p in parts if p.get('id')]
+assert len(explicit_ids) == len(set(explicit_ids))
+recovery = next(p for p in parts if p.get('name') == 'RECNAME')
+recovery_dtb = next(p for p in parts if p.get('name') == 'RECDTB-NAME')
+assert recovery.findtext('size').strip() == 'RECSIZE'
+assert recovery_dtb.findtext('size').strip() == '524288'
 assert data.findtext('filesystem_type').strip() == 'ext4'
 assert data.findtext('allocation_attribute').strip() == '0x808'
 assert sum(p.findtext('allocation_attribute', '').strip() == '0x808' for p in parts) == 1
@@ -163,15 +170,35 @@ assert parts[-1].get('name') == 'secondary_gpt'
 print('ok')
 PY
 )" = ok ] || fail "APP/DATA partition contract invalid"
+grep -Eq '^[[:space:]]*<filename> RECFILE </filename>[[:space:]]*$' "$DATA_LAYOUT" || fail "recovery filename placeholder must stay on its own line so tegraflash sed preserves the partition size"
+grep -Eq '^[[:space:]]*<filename> RECDTB-FILE </filename>[[:space:]]*$' "$DATA_LAYOUT" || fail "recovery DTB filename placeholder must stay on its own line so tegraflash sed preserves the partition size"
+STORAGE_LAYOUT_APPEND="$ROOT_DIR/saha-layers/meta-tegra-saha/recipes-bsp/tegra-binaries/tegra-storage-layout-base_%.bbappend"
+grep -q 'SAHA_STORAGE_LAYOUT_DIR := "${THISDIR}/${PN}"' "$STORAGE_LAYOUT_APPEND" || fail "storage layout layer path must be captured before task execution changes THISDIR"
+grep -q 'PARTITION_LAYOUT_EXTERNAL:p3768-0000-p3767-0000 = "flash_l4t_t234_nvme.xml"' "$STORAGE_LAYOUT_APPEND" || fail "base and downstream storage layout recipes must agree on the staged external XML name"
+grep -q 'PARTITION_FILE_EXTERNAL:p3768-0000-p3767-0000 = "${SAHA_STORAGE_LAYOUT_DIR}/saha_flash_l4t_t234_nvme.xml"' "$STORAGE_LAYOUT_APPEND" || fail "storage layout recipe must read the project XML directly because the vendor recipe has no unpack task"
+grep -q 'do_install\[file-checksums\]' "$STORAGE_LAYOUT_APPEND" || fail "custom storage layout must participate in the install task signature"
 grep -q 'DATAFILE:p3768-0000-p3767-0000' "$ROOT_DIR/kas/include/docker-images.yml" || fail "tegraflash must package DATA image"
+grep -q 'saha-data-image-${MACHINE}.rootfs.ext4' "$ROOT_DIR/kas/include/docker-images.yml" || fail "tegraflash DATA source must match the core-image deployment symlink"
 grep -q 'do_image_tegraflash_tar\[depends\] += "saha-data-image:do_image_complete"' "$ROOT_DIR/kas/include/docker-images.yml" || fail "tegraflash must depend on DATA image"
 grep -q 'packagegroup-saha-container-preloads' "$DATA_IMAGE" || fail "DATA image must contain all preload recipes"
-grep -q 'PARTLABEL=DATA /data ext4 defaults,noatime' "$ROOT_DIR/saha-layers/meta-tegra-saha/recipes-saha/saha-data-layout/saha-data-layout/fstab" || fail "fstab must mount DATA by label"
+BASE_FILES_APPEND="$ROOT_DIR/saha-layers/meta-tegra-saha/recipes-core/base-files/base-files_%.bbappend"
+BASE_FILES_FSTAB="$ROOT_DIR/saha-layers/meta-tegra-saha/recipes-core/base-files/base-files/fstab"
+grep -q 'PARTLABEL=DATA /data ext4 defaults,noatime,x-systemd.growfs' "$BASE_FILES_FSTAB" || fail "fstab must mount and expand DATA by label"
+! grep -q 'cat ${UNPACKDIR}/fstab' "$BASE_FILES_APPEND" || fail "base-files append must override fstab rather than duplicate its DATA entry"
+! grep -q 'sysconfdir}/fstab' "$DATA_RECIPE" || fail "DATA layout package must not conflict with base-files ownership of /etc/fstab"
+! grep -Eq 'data\.mount|saha-data-prepare' "$DATA_RECIPE" || fail "DATA layout must use the fstab-generated mount and systemd growfs"
 grep -q '"data-root": "/data/docker"' "$ROOT_DIR/saha-layers/meta-tegra-saha/recipes-saha/saha-data-layout/saha-data-layout/daemon.json" || fail "Docker data-root must use DATA"
 grep -q 'RequiresMountsFor=/data/docker' "$ROOT_DIR/saha-layers/meta-tegra-saha/recipes-saha/saha-data-layout/saha-data-layout/docker.conf" || fail "Docker must fail without DATA"
+grep -q 'version = 3' "$ROOT_DIR/saha-layers/meta-tegra-saha/recipes-saha/saha-data-layout/saha-data-layout/config.toml" || fail "containerd config must use the installed v3 schema"
+grep -q 'root = "/data/containerd"' "$ROOT_DIR/saha-layers/meta-tegra-saha/recipes-saha/saha-data-layout/saha-data-layout/config.toml" || fail "containerd persistent root must use DATA"
+grep -q 'RequiresMountsFor=/data/containerd' "$ROOT_DIR/saha-layers/meta-tegra-saha/recipes-saha/saha-data-layout/saha-data-layout/containerd.conf" || fail "containerd must fail without DATA"
+grep -q '/data/containerd' "$ROOT_DIR/saha-layers/meta-tegra-saha/recipes-saha/saha-data-layout/saha-data-layout/saha-data-layout.sh" || fail "DATA layout must create the containerd root"
 grep -q 'SystemMaxUse=256M' "$ROOT_DIR/saha-layers/meta-tegra-saha/recipes-saha/saha-data-layout/saha-data-layout/journald-data.conf" || fail "persistent journal must be bounded"
+! grep -Eq '\$\{localstatedir\}[^ ]*/journal|FILES:.*localstatedir.*journal' "$DATA_RECIPE" || fail "DATA layout must let systemd create the journal mount point at runtime"
+! grep -q '/var/volatile/log/journal' "$DATA_RECIPE" || fail "DATA layout must not populate the volatile root"
 ! grep -q '/data/workflow-api' "$ROOT_DIR/saha-layers/meta-tegra-saha/recipes-saha/docker-compose/saha-docker-compose/compose.yaml" || fail "workflow API must not invent an application DATA volume"
 ! grep -Eq 'saha-(homeassistant|matter-server|livekit-server|livekit-agent|s2s)-container-image|roban-app' "$ROOT_DIR/saha-layers/meta-tegra-saha/recipes-saha/packagegroups/packagegroup-saha-docker-images.bb" || fail "APP packagegroup must not contain preload archives"
+grep -q 'max_used_kib=12582912' "$ROOT_DIR/saha-layers/meta-tegra-saha/recipes-saha/images/saha-image-common.inc" || fail "APP free-space check must avoid unsupported shell arithmetic expansion"
 grep -q 'saha-data-layout' "$ROOT_DIR/saha-layers/meta-tegra-saha/recipes-saha/packagegroups/packagegroup-saha-base.bb" || fail "all images must install DATA failure protection"
 [ -f "$DATA_RECIPE" ] || fail "DATA runtime layout recipe must exist"
 grep -q 'packagegroup-saha-docker-images' \

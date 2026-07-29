@@ -1,0 +1,1 @@
+PARTLABEL=DATA /data ext4 defaults,noatime,x-systemd.growfs 0 2

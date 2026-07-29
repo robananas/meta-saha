@@ -16,7 +16,7 @@ disable_conflicting_networkd_wait_online() {
 }
 saha_enforce_app_free_space() {
     used_kib=$(du -sk ${IMAGE_ROOTFS} | cut -f1)
-    max_used_kib=$((12 * 1024 * 1024))
+    max_used_kib=12582912
     if [ "$used_kib" -gt "$max_used_kib" ]; then
         bbfatal "APP rootfs uses ${used_kib} KiB; fixed 16 GiB APP must retain at least 4 GiB/25%. Increase APP to 20 GiB or move content to DATA."
     fi
