@@ -12,6 +12,7 @@ RDEPENDS:${PN} = " \
     can-utils \
     tegra-tools-tegrastats \
     saha-board-status \
+    saha-data-layout \
     dosfstools \
     ripgrep \
     coreutils \

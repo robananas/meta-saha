@@ -1,9 +1,10 @@
 [Unit]
 Description=Saha Docker Compose application stack
 Documentation=https://docs.docker.com/compose/
-After=docker.service network-online.target systemd-timesyncd.service time-sync.target
+After=saha-data-layout.service docker.service network-online.target systemd-timesyncd.service time-sync.target
 Wants=network-online.target systemd-timesyncd.service time-sync.target
-Requires=docker.service
+Requires=saha-data-layout.service data.mount docker.service
+RequiresMountsFor=/data/preload
 
 [Service]
 Type=oneshot

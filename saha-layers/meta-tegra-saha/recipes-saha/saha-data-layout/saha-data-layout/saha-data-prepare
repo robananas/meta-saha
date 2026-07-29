@@ -1,0 +1,11 @@
+#!/bin/sh
+set -eu
+dev=/dev/disk/by-partlabel/DATA
+for _ in $(seq 1 30); do [ -b "$dev" ] && break; sleep 1; done
+if [ ! -b "$dev" ]; then
+    /usr/bin/saha-board-status emit data mount_failed --level error --error-code DATA_MISSING >/dev/null 2>&1 || true
+    exit 1
+fi
+e2fsck -p "$dev" || rc=$?
+case ${rc:-0} in 0|1) ;; *) /usr/bin/saha-board-status emit data fsck_failed --level error --error-code DATA_FSCK_FAILED >/dev/null 2>&1 || true; exit "${rc}" ;; esac
+resize2fs "$dev"

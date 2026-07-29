@@ -1,0 +1,7 @@
+FILESEXTRAPATHS:prepend := "${THISDIR}/${PN}:"
+
+PARTITION_LAYOUT_EXTERNAL:p3768-0000-p3767-0000 = "saha_flash_l4t_t234_nvme.xml"
+PARTITION_FILE_EXTERNAL:p3768-0000-p3767-0000 = "${UNPACKDIR}/saha_flash_l4t_t234_nvme.xml"
+ROOTFSPART_SIZE:p3768-0000-p3767-0000 = "17179869184"
+
+SRC_URI:append:p3768-0000-p3767-0000 = " file://saha_flash_l4t_t234_nvme.xml"

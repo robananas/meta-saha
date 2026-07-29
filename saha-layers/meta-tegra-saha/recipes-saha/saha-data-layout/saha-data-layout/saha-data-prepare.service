@@ -1,0 +1,12 @@
+[Unit]
+Description=Validate and expand Saha DATA filesystem
+DefaultDependencies=no
+After=systemd-udev-settle.service
+Wants=systemd-udev-settle.service
+Before=data.mount local-fs.target
+
+[Service]
+Type=oneshot
+ExecStart=/usr/libexec/saha-data-prepare
+TimeoutStartSec=300
+RemainAfterExit=yes

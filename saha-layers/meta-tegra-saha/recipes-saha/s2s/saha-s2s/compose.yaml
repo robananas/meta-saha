@@ -28,8 +28,8 @@ services:
       ROBAN_S2S_ICE_SERVERS: ${ROBAN_S2S_ICE_SERVERS:-[]}
       ROBAN_S2S_MAX_SESSIONS: "1"
     volumes:
-      - /var/lib/saha/s2s/models:/models:ro
-      - /var/cache/saha/s2s:/var/cache/roban-s2s
+      - /data/models/s2s:/models:ro
+      - /data/model-cache/s2s:/var/cache/roban-s2s
     healthcheck:
       test: ["CMD", "python", "-c", "import os,urllib.request; urllib.request.urlopen('http://127.0.0.1:'+os.getenv('ROBAN_S2S_PORT','8765')+'/ready', timeout=5)"]
       interval: 30s

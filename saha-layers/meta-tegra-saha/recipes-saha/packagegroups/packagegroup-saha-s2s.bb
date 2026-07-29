@@ -5,6 +5,5 @@ inherit packagegroup
 
 RDEPENDS:${PN} = " \
     packagegroup-saha-nvidia-containers \
-    saha-s2s-container-image \
     saha-s2s \
 "

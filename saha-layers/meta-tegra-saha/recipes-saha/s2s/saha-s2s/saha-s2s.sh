@@ -11,10 +11,10 @@ SAHA_S2S_COMPOSE_DIR=${SAHA_S2S_COMPOSE_DIR:-/opt/roban/s2s}
 SAHA_S2S_COMPOSE_FILE=${SAHA_S2S_COMPOSE_FILE:-${SAHA_S2S_COMPOSE_DIR}/compose.yaml}
 SAHA_S2S_PROJECT=${SAHA_S2S_PROJECT:-saha-s2s}
 SAHA_S2S_IMAGE=${SAHA_S2S_IMAGE:-roban-s2s:arm64}
-SAHA_S2S_IMAGE_TAR=${SAHA_S2S_IMAGE_TAR:-/usr/share/saha/s2s/image.tar}
+SAHA_S2S_IMAGE_TAR=${SAHA_S2S_IMAGE_TAR:-/data/preload/s2s/image.tar}
 SAHA_S2S_PORT=${SAHA_S2S_PORT:-8765}
 SAHA_S2S_WAIT=${SAHA_S2S_WAIT:-120}
-ROBAN_S2S_MODEL_MANIFEST=${ROBAN_S2S_MODEL_MANIFEST:-/var/lib/saha/s2s/models/manifest.sha256}
+ROBAN_S2S_MODEL_MANIFEST=${ROBAN_S2S_MODEL_MANIFEST:-/data/models/s2s/manifest.sha256}
 export SAHA_S2S_IMAGE SAHA_S2S_PORT HF_ENDPOINT PIP_INDEX_URL ROBAN_S2S_ICE_SERVERS
 export ROBAN_S2S_STT_BACKEND ROBAN_S2S_LLM_BACKEND ROBAN_S2S_LLM_MODEL
 export ROBAN_S2S_LLM_BASE_URL ROBAN_S2S_TTS_BACKEND ROBAN_S2S_PIPELINE_FACTORY
@@ -60,7 +60,8 @@ verify_models() {
 }
 
 start_service() {
-    mkdir -p /var/lib/saha/s2s/models /var/cache/saha/s2s
+    mountpoint -q /data
+    mkdir -p /data/models/s2s /data/model-cache/s2s
     verify_models
     ensure_image
     cd "$SAHA_S2S_COMPOSE_DIR"

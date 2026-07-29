@@ -13,10 +13,6 @@ RDEPENDS:${PN} = " \
     saha-docker-compose \
     saha-homeassistant-config \
     saha-homeassistant-bootstrap \
-    saha-homeassistant-container-image \
-    saha-matter-server-container-image \
-    saha-livekit-server-container-image \
-    saha-livekit-agent-image \
-    roban-app \
-    packagegroup-saha-s2s \
+    packagegroup-saha-nvidia-containers \
+    saha-s2s \
 "

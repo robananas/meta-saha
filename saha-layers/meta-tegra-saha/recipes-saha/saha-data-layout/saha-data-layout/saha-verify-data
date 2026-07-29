@@ -1,0 +1,7 @@
+#!/bin/sh
+set -eu
+mountpoint -q /data
+[ "$(findmnt -n -o SOURCE /data)" = /dev/disk/by-partlabel/DATA ] || findmnt /data
+[ "$(cat /data/.saha-data-layout-version)" = 1 ]
+[ "$(docker info --format '{{.DockerRootDir}}' 2>/dev/null)" = /data/docker ]
+(cd /data/preload && sha256sum -c SHA256SUMS)

@@ -14,6 +14,13 @@ disable_conflicting_networkd_wait_online() {
         ${IMAGE_ROOTFS}${sysconfdir}/systemd/system/network-online.target.wants/systemd-networkd-wait-online.service \
         ${IMAGE_ROOTFS}${systemd_system_unitdir}/network-online.target.wants/systemd-networkd-wait-online.service
 }
-ROOTFS_POSTPROCESS_COMMAND += "disable_conflicting_networkd_wait_online;"
+saha_enforce_app_free_space() {
+    used_kib=$(du -sk ${IMAGE_ROOTFS} | cut -f1)
+    max_used_kib=$((12 * 1024 * 1024))
+    if [ "$used_kib" -gt "$max_used_kib" ]; then
+        bbfatal "APP rootfs uses ${used_kib} KiB; fixed 16 GiB APP must retain at least 4 GiB/25%. Increase APP to 20 GiB or move content to DATA."
+    fi
+}
+ROOTFS_POSTPROCESS_COMMAND += "disable_conflicting_networkd_wait_online; saha_enforce_app_free_space;"
 
 inherit nopackages

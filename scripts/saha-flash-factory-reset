@@ -1,0 +1,14 @@
+#!/usr/bin/env bash
+set -euo pipefail
+
+if [[ ! -x ./initrd-flash || ! -f external-flash.xml.in ]]; then
+  echo "Run from an unpacked Saha tegraflash archive." >&2
+  exit 2
+fi
+
+printf '%s\n' 'FACTORY RESET: this recreates the external NVMe layout and destroys APP and DATA.'
+printf '%s\n' 'Back up any required rootfs state and DATA models/logs first.'
+printf '%s\n' 'Type FACTORY-RESET to continue:'
+read -r confirmation
+[[ "$confirmation" == FACTORY-RESET ]] || { echo "Cancelled." >&2; exit 1; }
+./initrd-flash --external-only "$@"

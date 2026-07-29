@@ -1,9 +1,10 @@
 [Unit]
 Description=Independent Roban S2S Realtime service
 Documentation=https://docs.docker.com/compose/
-After=docker.service network-online.target saha-nvidia-container-runtime.service
+After=saha-data-layout.service docker.service network-online.target saha-nvidia-container-runtime.service
 Wants=network-online.target
-Requires=docker.service saha-nvidia-container-runtime.service
+Requires=saha-data-layout.service data.mount docker.service saha-nvidia-container-runtime.service
+RequiresMountsFor=/data/models/s2s /data/model-cache/s2s /data/preload/s2s
 Conflicts=shutdown.target
 
 [Service]

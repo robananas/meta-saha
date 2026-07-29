@@ -1,0 +1,11 @@
+#!/usr/bin/env bash
+set -euo pipefail
+
+if [[ ! -x ./initrd-flash || ! -f external-flash.xml.in ]]; then
+  echo "Run from an unpacked Saha tegraflash archive." >&2
+  exit 2
+fi
+
+printf '%s\n' 'Preserve-DATA upgrade: only APP will be rewritten. This does not alter GPT or format DATA.'
+printf '%s\n' 'Verify /data/.saha-data-layout-version first. Rootfs-resident HA, Matter, LiveKit, Workflow, network, Bluetooth, and identity state is not preserved.'
+./initrd-flash -k APP "$@"

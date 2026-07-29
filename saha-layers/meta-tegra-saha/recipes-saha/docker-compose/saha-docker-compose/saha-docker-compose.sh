@@ -16,15 +16,15 @@ SAHA_CLOCK_WAIT="${SAHA_CLOCK_WAIT:-90}"
 SAHA_CLOCK_MIN_YEAR="${SAHA_CLOCK_MIN_YEAR:-2024}"
 SAHA_CLOCK_BOOTSTRAP_URLS="${SAHA_CLOCK_BOOTSTRAP_URLS:-https://ha.api.io.mi.com/ https://www.cloudflare.com/ https://www.google.com/}"
 SAHA_HOMEASSISTANT_IMAGE="${SAHA_HOMEASSISTANT_IMAGE:-ghcr.io/home-assistant/home-assistant:2026.7.1}"
-SAHA_HOMEASSISTANT_IMAGE_TAR="${SAHA_HOMEASSISTANT_IMAGE_TAR:-/usr/share/saha/homeassistant/image.tar}"
+SAHA_HOMEASSISTANT_IMAGE_TAR="${SAHA_HOMEASSISTANT_IMAGE_TAR:-/data/preload/homeassistant/image.tar}"
 SAHA_MATTER_SERVER_IMAGE="${SAHA_MATTER_SERVER_IMAGE:-ghcr.io/matter-js/python-matter-server:arm64}"
-SAHA_MATTER_SERVER_IMAGE_TAR="${SAHA_MATTER_SERVER_IMAGE_TAR:-/usr/share/saha/matter-server/image.tar}"
+SAHA_MATTER_SERVER_IMAGE_TAR="${SAHA_MATTER_SERVER_IMAGE_TAR:-/data/preload/matter-server/image.tar}"
 SAHA_ROBAN_WORKFLOW_IMAGE="${SAHA_ROBAN_WORKFLOW_IMAGE:-roban-workflow-api:arm64}"
-SAHA_ROBAN_WORKFLOW_IMAGE_TAR="${SAHA_ROBAN_WORKFLOW_IMAGE_TAR:-/usr/share/saha/roban-workflow-api/image.tar}"
+SAHA_ROBAN_WORKFLOW_IMAGE_TAR="${SAHA_ROBAN_WORKFLOW_IMAGE_TAR:-/data/preload/roban-workflow-api/image.tar}"
 SAHA_LIVEKIT_SERVER_IMAGE="${SAHA_LIVEKIT_SERVER_IMAGE:-livekit/livekit-server:v1.13.4}"
-SAHA_LIVEKIT_SERVER_IMAGE_TAR="${SAHA_LIVEKIT_SERVER_IMAGE_TAR:-/usr/share/saha/livekit-server/image.tar}"
+SAHA_LIVEKIT_SERVER_IMAGE_TAR="${SAHA_LIVEKIT_SERVER_IMAGE_TAR:-/data/preload/livekit-server/image.tar}"
 SAHA_LIVEKIT_AGENT_IMAGE="${SAHA_LIVEKIT_AGENT_IMAGE:-livekit-agent:arm64}"
-SAHA_LIVEKIT_AGENT_IMAGE_TAR="${SAHA_LIVEKIT_AGENT_IMAGE_TAR:-/usr/share/saha/livekit-agent/image.tar}"
+SAHA_LIVEKIT_AGENT_IMAGE_TAR="${SAHA_LIVEKIT_AGENT_IMAGE_TAR:-/data/preload/livekit-agent/image.tar}"
 SAHA_LIVEKIT_API_KEY="${SAHA_LIVEKIT_API_KEY:-roban-local}"
 SAHA_LIVEKIT_API_SECRET="${SAHA_LIVEKIT_API_SECRET:-}"
 SAHA_LIVEKIT_CREDENTIALS_FILE="${SAHA_LIVEKIT_CREDENTIALS_FILE:-/var/lib/saha/livekit/credentials.env}"
@@ -254,6 +254,7 @@ seed_homeassistant_config() {
 }
 
 start_stack() {
+    mountpoint -q /data
     mkdir -p /var/lib/homeassistant /var/lib/matter-server
     seed_matter_certificates
     seed_homeassistant_config

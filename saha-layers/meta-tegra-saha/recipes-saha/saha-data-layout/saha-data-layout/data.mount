@@ -1,0 +1,15 @@
+[Unit]
+Description=Saha persistent DATA partition
+Requires=saha-data-prepare.service
+After=saha-data-prepare.service
+Before=local-fs.target docker.service NetworkManager.service bluetooth.service
+
+[Mount]
+What=PARTLABEL=DATA
+Where=/data
+Type=ext4
+Options=defaults,noatime
+TimeoutSec=90
+
+[Install]
+WantedBy=local-fs.target

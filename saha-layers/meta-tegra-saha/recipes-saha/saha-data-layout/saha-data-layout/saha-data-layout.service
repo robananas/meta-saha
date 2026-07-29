@@ -1,0 +1,13 @@
+[Unit]
+Description=Validate Saha DATA directory layout
+Requires=data.mount
+After=data.mount
+Before=docker.service NetworkManager.service bluetooth.service saha-docker-compose.service saha-s2s.service saha-bt-wifi-provision.service
+
+[Service]
+Type=oneshot
+ExecStart=/usr/libexec/saha-data-layout
+RemainAfterExit=yes
+
+[Install]
+WantedBy=multi-user.target

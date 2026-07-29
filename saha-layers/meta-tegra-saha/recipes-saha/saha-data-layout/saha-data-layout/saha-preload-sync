@@ -1,0 +1,20 @@
+#!/bin/sh
+set -eu
+bundle=${1:-/usr/share/saha/preload-update}
+mountpoint -q /data
+[ -f "$bundle/manifest.json" ] && [ -f "$bundle/SHA256SUMS" ] || { echo "No versioned preload update bundle at $bundle" >&2; exit 2; }
+(cd "$bundle" && sha256sum -c SHA256SUMS)
+stage=/data/preload/.update.$$
+trap 'rm -rf "$stage"' EXIT INT TERM
+mkdir -p "$stage"
+cp -a "$bundle/." "$stage/"
+sync
+old=/data/preload/.previous
+rm -rf "$old"
+mkdir -p /data/preload
+for path in /data/preload/*; do [ -e "$path" ] || continue; [ "$path" = "$stage" ] || mv "$path" "$old" 2>/dev/null || true; done
+for path in "$stage"/*; do [ -e "$path" ] && mv "$path" /data/preload/; done
+rmdir "$stage"
+sync
+trap - EXIT INT TERM
+echo "Preload bundle installed; verify docker imports before removing $old"

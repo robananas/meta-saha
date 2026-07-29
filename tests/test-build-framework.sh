@@ -143,12 +143,37 @@ grep -q 'Unsupported HAVE_DOCKER_IMAGE value' /tmp/saha-invalid-docker.out ||
 if [ ! -f "$ROOT_DIR/kas/include/docker-images.yml" ]; then
   fail "docker images kas include must exist"
 fi
-grep -q 'IMAGE_ROOTFS_EXTRA_SPACE:append:pn-saha-image-robot' \
-  "$ROOT_DIR/kas/include/docker-images.yml" ||
-  fail "docker images kas include must reserve rootfs space for robot images"
-grep -q 'IMAGE_ROOTFS_EXTRA_SPACE:append:pn-saha-image-robot-docker' \
-  "$ROOT_DIR/kas/include/docker-images.yml" ||
-  fail "docker images kas include must reserve rootfs space for robot-docker"
+DATA_LAYOUT="$ROOT_DIR/saha-layers/meta-tegra-saha/recipes-bsp/tegra-binaries/tegra-storage-layout-base/saha_flash_l4t_t234_nvme.xml"
+DATA_IMAGE="$ROOT_DIR/saha-layers/meta-tegra-saha/recipes-saha/images/saha-data-image.bb"
+DATA_RECIPE="$ROOT_DIR/saha-layers/meta-tegra-saha/recipes-saha/saha-data-layout/saha-data-layout.bb"
+[ -f "$DATA_LAYOUT" ] || fail "project-owned R39.2 external layout must exist"
+[ "$(python3 - "$DATA_LAYOUT" <<'PY'
+import sys, xml.etree.ElementTree as ET
+root = ET.parse(sys.argv[1]).getroot()
+parts = root.findall('./device/partition')
+app = next(p for p in parts if p.get('name') == 'APP')
+data = next(p for p in parts if p.get('name') == 'DATA')
+assert app.get('id') == '1'
+assert app.findtext('size').strip() == '17179869184'
+assert app.findtext('allocation_attribute').strip() != '0x808'
+assert data.findtext('filesystem_type').strip() == 'ext4'
+assert data.findtext('allocation_attribute').strip() == '0x808'
+assert sum(p.findtext('allocation_attribute', '').strip() == '0x808' for p in parts) == 1
+assert parts[-1].get('name') == 'secondary_gpt'
+print('ok')
+PY
+)" = ok ] || fail "APP/DATA partition contract invalid"
+grep -q 'DATAFILE:p3768-0000-p3767-0000' "$ROOT_DIR/kas/include/docker-images.yml" || fail "tegraflash must package DATA image"
+grep -q 'do_image_tegraflash_tar\[depends\] += "saha-data-image:do_image_complete"' "$ROOT_DIR/kas/include/docker-images.yml" || fail "tegraflash must depend on DATA image"
+grep -q 'packagegroup-saha-container-preloads' "$DATA_IMAGE" || fail "DATA image must contain all preload recipes"
+grep -q 'PARTLABEL=DATA /data ext4 defaults,noatime' "$ROOT_DIR/saha-layers/meta-tegra-saha/recipes-saha/saha-data-layout/saha-data-layout/fstab" || fail "fstab must mount DATA by label"
+grep -q '"data-root": "/data/docker"' "$ROOT_DIR/saha-layers/meta-tegra-saha/recipes-saha/saha-data-layout/saha-data-layout/daemon.json" || fail "Docker data-root must use DATA"
+grep -q 'RequiresMountsFor=/data/docker' "$ROOT_DIR/saha-layers/meta-tegra-saha/recipes-saha/saha-data-layout/saha-data-layout/docker.conf" || fail "Docker must fail without DATA"
+grep -q 'SystemMaxUse=256M' "$ROOT_DIR/saha-layers/meta-tegra-saha/recipes-saha/saha-data-layout/saha-data-layout/journald-data.conf" || fail "persistent journal must be bounded"
+! grep -q '/data/workflow-api' "$ROOT_DIR/saha-layers/meta-tegra-saha/recipes-saha/docker-compose/saha-docker-compose/compose.yaml" || fail "workflow API must not invent an application DATA volume"
+! grep -Eq 'saha-(homeassistant|matter-server|livekit-server|livekit-agent|s2s)-container-image|roban-app' "$ROOT_DIR/saha-layers/meta-tegra-saha/recipes-saha/packagegroups/packagegroup-saha-docker-images.bb" || fail "APP packagegroup must not contain preload archives"
+grep -q 'saha-data-layout' "$ROOT_DIR/saha-layers/meta-tegra-saha/recipes-saha/packagegroups/packagegroup-saha-base.bb" || fail "all images must install DATA failure protection"
+[ -f "$DATA_RECIPE" ] || fail "DATA runtime layout recipe must exist"
 grep -q 'packagegroup-saha-docker-images' \
   "$ROOT_DIR/saha-layers/meta-tegra-saha/recipes-saha/images/saha-image-robot.bb" ||
   fail "saha-image-robot must install the docker images packagegroup"
@@ -158,9 +183,12 @@ grep -q 'packagegroup-saha-docker-images' \
 grep -q 'saha-docker-compose' \
   "$ROOT_DIR/saha-layers/meta-tegra-saha/recipes-saha/packagegroups/packagegroup-saha-docker-images.bb" ||
   fail "docker images packagegroup must install docker compose launcher"
-grep -q 'roban-app' \
+! grep -q 'roban-app' \
   "$ROOT_DIR/saha-layers/meta-tegra-saha/recipes-saha/packagegroups/packagegroup-saha-docker-images.bb" ||
-  fail "docker images packagegroup must install roban-app image recipe"
+  fail "APP packagegroup must not install roban-app preload archive"
+grep -q 'roban-app' \
+  "$ROOT_DIR/saha-layers/meta-tegra-saha/recipes-saha/packagegroups/packagegroup-saha-container-preloads.bb" ||
+  fail "DATA preload packagegroup must include roban-app archive"
 NVIDIA_CONTAINER_INCLUDE="$ROOT_DIR/kas/include/nvidia-gpu-containers.yml"
 NVIDIA_CONTAINER_PACKAGEGROUP="$ROOT_DIR/saha-layers/meta-tegra-saha/recipes-saha/packagegroups/packagegroup-saha-nvidia-containers.bb"
 NVIDIA_CONTAINER_RECIPE="$ROOT_DIR/saha-layers/meta-tegra-saha/recipes-saha/nvidia-container-runtime/saha-nvidia-container-runtime.bb"
@@ -195,11 +223,11 @@ for s2s_file in "$S2S_INCLUDE" "$S2S_PACKAGEGROUP" "$S2S_IMAGE_RECIPE" "$S2S_FET
   [ -f "$s2s_file" ] || fail "S2S integration file missing: $s2s_file"
 done
 grep -q 'packagegroup-saha-s2s' "$S2S_INCLUDE" || fail "S2S include must install its packagegroup"
-grep -q 'packagegroup-saha-s2s' \
+grep -q 'saha-s2s' \
   "$ROOT_DIR/saha-layers/meta-tegra-saha/recipes-saha/packagegroups/packagegroup-saha-docker-images.bb" ||
-  fail "all Docker image profiles must include S2S by default"
+  fail "all Docker image profiles must include S2S runtime by default"
 grep -q 'packagegroup-saha-nvidia-containers' "$S2S_PACKAGEGROUP" || fail "S2S packagegroup must opt into GPU support"
-grep -q 'saha-s2s-container-image' "$S2S_PACKAGEGROUP" || fail "S2S packagegroup must preload its image"
+! grep -q 'saha-s2s-container-image' "$S2S_PACKAGEGROUP" || fail "S2S preload archive must be exclusive to DATA image"
 grep -q 'saha-s2s' "$S2S_PACKAGEGROUP" || fail "S2S packagegroup must install its runtime"
 grep -q 'S2S_IMAGE ?= "roban-s2s:arm64"' "$S2S_IMAGE_RECIPE" || fail "S2S image tag must match the backend contract"
 grep -q 'do_fetch_image\[network\] = "0"' "$S2S_IMAGE_RECIPE" || fail "S2S image recipe must remain local-only"
@@ -208,7 +236,7 @@ grep -q 'validate_archive' "$S2S_FETCH" || fail "S2S image archive must be valid
 grep -q 'config.get("architecture")' "$S2S_FETCH" || fail "S2S image archive must reject wrong architectures"
 grep -q 'roban-s2s.tar' "$S2S_FETCH" || fail "S2S preload must use its independent local archive"
 ! grep -Eq 'docker (pull|build)' "$S2S_FETCH" || fail "S2S preload must not build or download the unavailable image"
-grep -q '/usr/share/saha/s2s/image.tar' "$S2S_ENV" || fail "S2S runtime must use its independent archive path"
+grep -q '/data/preload/s2s/image.tar' "$S2S_ENV" || fail "S2S runtime must use its DATA archive path"
 grep -q 'SAHA_S2S_PROJECT=saha-s2s' "$S2S_ENV" || fail "S2S must use its own Compose project"
 grep -q 'SAHA_S2S_PORT=8765' "$S2S_ENV" || fail "S2S port must match backend and App defaults"
 grep -q 'ROBAN_S2S_ICE_SERVERS=\[\]' "$S2S_ENV" || fail "S2S must default to host ICE candidates"
@@ -217,15 +245,15 @@ grep -q 'PIP_INDEX_URL=https://pypi.tuna.tsinghua.edu.cn/simple' "$S2S_ENV" || f
 grep -q 'network_mode: host' "$S2S_COMPOSE" || fail "aiortc WebRTC must expose dynamic ICE UDP sockets"
 grep -q 'runtime: nvidia' "$S2S_COMPOSE" || fail "only the S2S container must explicitly request NVIDIA runtime"
 grep -q 'restart: "no"' "$S2S_COMPOSE" || fail "Docker must not bypass systemd S2S lifecycle policy"
-grep -q '/var/lib/saha/s2s/models:/models:ro' "$S2S_COMPOSE" || fail "S2S models must mount read-only"
-grep -q '/var/cache/saha/s2s:/var/cache/roban-s2s' "$S2S_COMPOSE" || fail "S2S cache must use its independent mount"
+grep -q '/data/models/s2s:/models:ro' "$S2S_COMPOSE" || fail "S2S DATA models must mount read-only"
+grep -q '/data/model-cache/s2s:/var/cache/roban-s2s' "$S2S_COMPOSE" || fail "S2S cache must use DATA model-cache"
 grep -q '/ready' "$S2S_COMPOSE" || fail "S2S healthcheck must enforce model readiness"
 grep -q '/health' "$ROOT_DIR/README-S2S.md" || fail "S2S integration must document liveness separately from readiness"
 grep -q -- '--project-name "$SAHA_S2S_PROJECT"' "$S2S_LAUNCHER" || fail "S2S launcher must isolate the Compose project"
 grep -q -- '--pull never' "$S2S_LAUNCHER" || fail "S2S runtime must stay offline"
 grep -q 'manifest.sha256' "$S2S_LAUNCHER" || fail "S2S launcher must verify provisioned models"
 grep -q 'Restart=on-failure' "$S2S_SERVICE" || fail "systemd must retry failed S2S starts"
-grep -q 'Requires=docker.service saha-nvidia-container-runtime.service' "$S2S_SERVICE" || fail "S2S must wait for Docker and NVIDIA registration"
+grep -q 'Requires=.*docker.service.*saha-nvidia-container-runtime.service' "$S2S_SERVICE" || fail "S2S must wait for DATA, Docker, and NVIDIA registration"
 if rg -n 'saha-s2s|roban-s2s' \
   "$ROOT_DIR/saha-layers/meta-tegra-saha/recipes-saha/docker-compose" \
   "$ROOT_DIR/saha-layers/meta-tegra-saha/recipes-saha/livekit-agent" \
@@ -344,11 +372,11 @@ for image_recipe in \
     fail "container image recipe must revalidate mutable local tar caches: $image_recipe"
 done
 grep -q 'saha-livekit-server-container-image' \
-  "$ROOT_DIR/saha-layers/meta-tegra-saha/recipes-saha/packagegroups/packagegroup-saha-docker-images.bb" ||
-  fail "docker images packagegroup must preload LiveKit Server"
+  "$ROOT_DIR/saha-layers/meta-tegra-saha/recipes-saha/packagegroups/packagegroup-saha-container-preloads.bb" ||
+  fail "DATA image must preload LiveKit Server"
 grep -q 'saha-livekit-agent-image' \
-  "$ROOT_DIR/saha-layers/meta-tegra-saha/recipes-saha/packagegroups/packagegroup-saha-docker-images.bb" ||
-  fail "docker images packagegroup must preload local LiveKit Agent"
+  "$ROOT_DIR/saha-layers/meta-tegra-saha/recipes-saha/packagegroups/packagegroup-saha-container-preloads.bb" ||
+  fail "DATA image must preload local LiveKit Agent"
 grep -q 'livekit/livekit-server:v1.13.4' \
   "$ROOT_DIR/saha-layers/meta-tegra-saha/recipes-saha/docker-compose/saha-docker-compose/compose.yaml" ||
   fail "compose stack must include pinned LiveKit Server"
@@ -458,10 +486,9 @@ grep -q 'UMask=0077' \
   fail "WiFi provisioning service must use a restrictive umask"
 grep -q '^StateDirectory=saha$' \
   "$ROOT_DIR/saha-layers/meta-tegra-saha/recipes-saha/bt-wifi-provision/saha-bt-wifi-provision/saha-bt-wifi-provision.service" ||
-  fail "WiFi provisioning service must create and own /var/lib/saha before namespace setup"
-grep -q '^StateDirectoryMode=0700$' \
-  "$ROOT_DIR/saha-layers/meta-tegra-saha/recipes-saha/bt-wifi-provision/saha-bt-wifi-provision/saha-bt-wifi-provision.service" ||
-  fail "WiFi provisioning state directory must be private"
+  fail "WiFi provisioning state must remain on rootfs"
+! grep -q '/data/' "$ROOT_DIR/saha-layers/meta-tegra-saha/recipes-saha/bt-wifi-provision/saha-bt-wifi-provision/saha-bt-wifi-provision.service" ||
+  fail "WiFi provisioning must not depend on DATA"
 grep -q '^RuntimeDirectoryPreserve=yes$' \
   "$ROOT_DIR/saha-layers/meta-tegra-saha/recipes-saha/bt-wifi-provision/saha-bt-wifi-provision/saha-bt-wifi-provision.service" ||
   fail "WiFi provisioning restarts must preserve the shared /run/saha status directory"
@@ -477,11 +504,11 @@ grep -q 'development-ble-app-keyring.json' "$BT_WIFI_PROVISION" ||
 grep -q 'install -m 0600.*development-ble-device-ed25519.key' "$BT_WIFI_PROVISION" ||
   fail "bundled BLE device private key must install with mode 0600"
 grep -q 'saha-homeassistant-container-image' \
-  "$ROOT_DIR/saha-layers/meta-tegra-saha/recipes-saha/packagegroups/packagegroup-saha-docker-images.bb" ||
-  fail "docker images packagegroup must include the Home Assistant image recipe"
+  "$ROOT_DIR/saha-layers/meta-tegra-saha/recipes-saha/packagegroups/packagegroup-saha-container-preloads.bb" ||
+  fail "DATA image must include the Home Assistant preload"
 grep -q 'saha-matter-server-container-image' \
-  "$ROOT_DIR/saha-layers/meta-tegra-saha/recipes-saha/packagegroups/packagegroup-saha-docker-images.bb" ||
-  fail "docker images packagegroup must include the Matter Server image recipe"
+  "$ROOT_DIR/saha-layers/meta-tegra-saha/recipes-saha/packagegroups/packagegroup-saha-container-preloads.bb" ||
+  fail "DATA image must include the Matter Server preload"
 grep -q 'homeassistant-container.tar' \
   "$ROOT_DIR/saha-layers/meta-tegra-saha/recipes-saha/homeassistant-container/saha-homeassistant-container-image/fetch-image.sh" ||
   fail "Home Assistant fetch script must support local tarball cache"

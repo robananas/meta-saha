@@ -106,6 +106,28 @@ lsusb -d 0955:
 ./initrd-flash
 ```
 
+### Fixed APP plus persistent DATA
+
+The Orin NX R39.2 layout is project-owned: `APP` remains GPT `id=1`, is exactly 16 GiB, and `DATA` is the only fill-to-end ext4 partition. Factory provisioning writes both the APP rootfs and the separately built, prepopulated `saha-data-image`; first boot expands DATA to the remaining NVMe capacity. `/data` is mounted by `PARTLABEL=DATA`, and Docker refuses to start unless `/data/docker` is available.
+
+The DATA image contains versioned/checksummed archives for Home Assistant, Matter Server, Workflow API, LiveKit Server, LiveKit Agent, and S2S. Ordinary APP-only upgrades preserve DATA. To update preloads without reformatting DATA, install a signed/versioned bundle under `/usr/share/saha/preload-update` and run `saha-preload-sync`; the previous bundle remains under `/data/preload/.previous` until image imports are verified.
+
+From an unpacked tegraflash archive:
+
+```bash
+# Default OS upgrade; preserves DATA and does not rewrite GPT.
+/path/to/meta-saha/scripts/saha-flash-app
+
+# Explicit destructive reset; recreates APP and DATA after typed confirmation.
+/path/to/meta-saha/scripts/saha-flash-factory-reset
+```
+
+The first transition from the historical single-APP layout is destructive. Do not shrink APP online. Back up anything required from the current rootfs before factory provisioning. Only Docker storage, preload archives, models/model caches, and bounded persistent logs belong on DATA. HA, Matter, LiveKit credentials, Workflow application state, NetworkManager, BlueZ, and BLE identity remain on APP/rootfs and are therefore reset by an APP reflash. Do not use the factory-reset command for normal upgrades.
+
+After boot, run `saha-verify-data`. Validate `lsblk`, `sgdisk -p /dev/nvme0n1`, `findmnt /data`, `df -h / /data`, and `docker info --format '{{.DockerRootDir}}'`. A missing or invalid DATA partition intentionally prevents Docker, NetworkManager persistent state, BlueZ persistent state, Compose, S2S, and bootstrap services from starting; the volatile boot journal and board-status error remain available for diagnosis.
+
+The Workflow API image currently defaults to `WORKFLOW_DATABASE_PATH=/data/workflows.db`, but no host application volume is configured. Its database remains in the container writable layer and is covered naturally by Docker's `/data/docker` data-root; no guessed application mount is added.
+
 After first boot, the hostname is `soybean`. The image includes `l4t-usb-device-mode`, which creates the target-side USB network endpoint at `192.168.55.1` and serves the host side by DHCP. For bring-up, root login is enabled with an empty password:
 
 ```bash
@@ -289,7 +311,7 @@ Build output goes to profile-specific directories such as `build/orin-nx-16g-p37
 
 By default, `saha-image-robot` includes Docker, `docker compose`, and preloaded container images for Home Assistant, Matter Server, and `roban-workflow-api:arm64`. Use `SAHA_ROBOT_IMAGE=robot-ros` or `robot-base` to omit the stack.
 
-On the device, `saha-docker-compose.service` loads the prebuilt images and starts the stack from `/opt/roban/compose/compose.yaml`. Data paths use `/var/lib/homeassistant` and `/var/lib/matter-server`. On first boot, if `/var/lib/homeassistant/configuration.yaml` is missing, the default config template from `saha-homeassistant-config` is copied in. That template includes **SmartIR**, **Xiaomi Home**, and **HACS** custom components, a preconfigured **Matter** integration pointing at the local matter-server (`ws://127.0.0.1:5580/ws`), and **Broadlink** discovery via `default_config`. Xiaomi Home, HACS, and Broadlink still require one-time setup in the Home Assistant UI (Mi account login, HACS onboarding, and RM device pairing). To change the stack, edit `saha-layers/meta-tegra-saha/recipes-saha/docker-compose/saha-docker-compose/compose.yaml` and rebuild.
+On the device, `saha-docker-compose.service` loads the prebuilt images and starts the stack from `/opt/roban/compose/compose.yaml`. Application state remains at `/var/lib/homeassistant` and `/var/lib/matter-server` on rootfs. On first boot, if `/var/lib/homeassistant/configuration.yaml` is missing, the default config template from `saha-homeassistant-config` is copied in. That template includes **SmartIR**, **Xiaomi Home**, and **HACS** custom components, a preconfigured **Matter** integration pointing at the local matter-server (`ws://127.0.0.1:5580/ws`), and **Broadlink** discovery via `default_config`. Xiaomi Home, HACS, and Broadlink still require one-time setup in the Home Assistant UI (Mi account login, HACS onboarding, and RM device pairing). To change the stack, edit `saha-layers/meta-tegra-saha/recipes-saha/docker-compose/saha-docker-compose/compose.yaml` and rebuild.
 
 ### Build-time image caches
 
