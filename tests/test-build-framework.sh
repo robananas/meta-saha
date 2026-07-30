@@ -362,9 +362,13 @@ grep -q 'python3-io' "$BOARD_STATUS_RECIPE" ||
   fail "board status recipe must install Python socket and tempfile support"
 grep -q 'python3-subprocess' "$BOARD_STATUS_RECIPE" &&
   fail "board status must not depend on python3-subprocess on wrynose; subprocess is in python3-core"
-grep -q 'saha-board-status' \
-  "$ROOT_DIR/saha-layers/meta-tegra-saha/recipes-saha/packagegroups/packagegroup-saha-base.bb" ||
+BASE_PACKAGEGROUP="$ROOT_DIR/saha-layers/meta-tegra-saha/recipes-saha/packagegroups/packagegroup-saha-base.bb"
+grep -q 'saha-board-status' "$BASE_PACKAGEGROUP" ||
   fail "base packagegroup must install board status aggregator"
+grep -q 'tcpdump' "$BASE_PACKAGEGROUP" ||
+  fail "base packagegroup must install tcpdump for packet capture"
+grep -q 'tshark' "$BASE_PACKAGEGROUP" ||
+  fail "base packagegroup must install tshark for protocol analysis"
 grep -Fq 'RuntimeDirectory=saha/board-status' "$BOARD_STATUS_SERVICE" ||
   fail "board status service must own its runtime directory"
 grep -Fq 'RuntimeDirectoryPreserve=yes' "$BOARD_STATUS_SERVICE" ||
