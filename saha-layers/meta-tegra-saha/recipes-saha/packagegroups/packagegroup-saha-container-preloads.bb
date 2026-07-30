@@ -8,4 +8,5 @@ RDEPENDS:${PN} = " \
     saha-livekit-server-container-image \
     saha-livekit-agent-image \
     saha-s2s-container-image \
+    saha-s2s-models \
 "

@@ -1,0 +1,8 @@
+The sherpa-onnx runtime is Apache-2.0. These pretrained model artifacts are redistributed from the official k2-fsa/sherpa-onnx release assets at the pinned release IDs and checksums recorded in revisions.txt.
+
+KWS: trained on the WenetSpeech L subset; upstream documentation requires checking the selected model license.
+VAD: Silero VAD; upstream project license is MIT.
+STT: community ONNX conversion of a FunASR/ModelScope Paraformer model; upstream model repository identifies Apache-2.0.
+TTS: community-contributed VITS model trained with VITS-fast-fine-tuning; upstream does not publish a model-specific SPDX identifier. Treat as CLOSED unless separately cleared.
+
+This metadata records provenance and does not replace third-party license review.

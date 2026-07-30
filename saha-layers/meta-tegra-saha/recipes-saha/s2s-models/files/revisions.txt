@@ -1,0 +1,13 @@
+pipeline=roban_voice_s2s.production_pipeline:create_pipeline
+kws.asset=sherpa-onnx-kws-zipformer-wenetspeech-3.3M-2024-01-01.tar.bz2
+kws.release=kws-models:145831594
+kws.sha256=b2f7c89690dc8ce4c6ed6afeab7cd800c36ad1421fb6b6302b4a4b194cf7f35f
+vad.asset=silero_vad.onnx
+vad.release=asr-models:130628817
+vad.sha256=9e2449e1087496d8d4caba907f23e0bd3f78d91fa552479bb9c23ac09cbb1fd6
+stt.asset=sherpa-onnx-paraformer-zh-small-2024-03-09.tar.bz2
+stt.release=asr-models:130628817
+stt.sha256=da92b3db5218c5be53aad53e57d1b6e63e7fc98a0e054fbdd6dbe18e9c6b1450
+tts.asset=sherpa-onnx-vits-zh-ll.tar.bz2
+tts.release=tts-models:130612623
+tts.sha256=f7393d1bbc59709d5f52ea76cd5bceeec62f6a29f9c1f79ff64b4c15ec841f3a

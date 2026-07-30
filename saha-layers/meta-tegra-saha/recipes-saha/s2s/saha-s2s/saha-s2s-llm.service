@@ -1,0 +1,18 @@
+[Unit]
+Description=Local llama.cpp server for Roban S2S
+After=saha-data-layout.service network.target
+Requires=saha-data-layout.service data.mount
+RequiresMountsFor=/data/models/s2s/llm /data/tools/llama.cpp
+
+[Service]
+Type=simple
+Environment=HOME=/data/model-cache/s2s
+Environment=LD_LIBRARY_PATH=/data/tools/llama.cpp
+ExecStart=/usr/bin/setpriv --reuid 10002 --regid 999 --clear-groups /data/tools/llama.cpp/llama-server --model /data/models/s2s/llm/qwen2.5-1.5b-instruct-q4_k_m.gguf --alias qwen2.5-1.5b-instruct-q4_k_m --host 127.0.0.1 --port 8081 --ctx-size 4096 --parallel 1 --n-gpu-layers 99 --mlock
+Restart=on-failure
+RestartSec=5
+LimitMEMLOCK=infinity
+TimeoutStartSec=180
+
+[Install]
+WantedBy=multi-user.target

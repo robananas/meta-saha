@@ -21,7 +21,13 @@ saha_prepare_data_image() {
         (cd "$dst" && sha256sum image.tar > manifest.sha256)
     done
     rm -rf ${IMAGE_ROOTFS}${datadir}/saha
-    install -d -m 0700 ${IMAGE_ROOTFS}/docker ${IMAGE_ROOTFS}/models/s2s ${IMAGE_ROOTFS}/model-cache/s2s
+    install -d -m 0700 ${IMAGE_ROOTFS}/docker
+    test -s ${IMAGE_ROOTFS}/models/s2s/manifest.sha256 || bbfatal "production S2S model manifest missing from DATA image"
+    (cd ${IMAGE_ROOTFS}/models/s2s && sha256sum -c manifest.sha256) || bbfatal "production S2S model verification failed"
+    chown -R 10002:999 ${IMAGE_ROOTFS}/models/s2s
+    find ${IMAGE_ROOTFS}/models/s2s -type d -exec chmod 0750 {} +
+    find ${IMAGE_ROOTFS}/models/s2s -type f -exec chmod 0640 {} +
+    install -d -o 10002 -g 999 -m 0750 ${IMAGE_ROOTFS}/model-cache/s2s ${IMAGE_ROOTFS}/tools
     install -d -m 0755 ${IMAGE_ROOTFS}/log/journal ${IMAGE_ROOTFS}/log/ros ${IMAGE_ROOTFS}/log/app
     printf '1\n' > ${IMAGE_ROOTFS}/.saha-data-layout-version
     (cd ${IMAGE_ROOTFS} && find preload -type f -print0 | sort -z | xargs -0 sha256sum > preload/SHA256SUMS)

@@ -14,6 +14,10 @@ grep -q '^LLM_LARGE_REVISION=[0-9a-f]\{40\}$' "$KIT/models.env" || fail "large L
 grep -q '^TTS_SMALL_REVISION=[0-9a-f]\{40\}$' "$KIT/models.env" || fail "small TTS revision not pinned"
 grep -q '^TTS_LARGE_REVISION=[0-9a-f]\{40\}$' "$KIT/models.env" || fail "large TTS revision not pinned"
 grep -q 'sha256sum -c' "$KIT/prepare.sh" || fail "tool checksum validation missing"
+grep -q '^KWS_SHA256=[0-9a-f]\{64\}$' "$KIT/models.env" || fail "production KWS checksum missing"
+grep -q '^PARAFORMER_SHA256=[0-9a-f]\{64\}$' "$KIT/models.env" || fail "production STT checksum missing"
+grep -q '^SILERO_VAD_SHA256=[0-9a-f]\{64\}$' "$KIT/models.env" || fail "production VAD checksum missing"
+grep -q '^TTS_FALLBACK_SHA256=[0-9a-f]\{64\}$' "$KIT/models.env" || fail "production TTS checksum missing"
 grep -q 'docker inspect.*livekit-server livekit-agent' "$KIT/run.sh" || fail "LiveKit preservation check missing"
 if grep -R -En '(token|password|secret)=' "$KIT"; then fail "possible credential embedded"; fi
 echo 'PASS: S2S benchmark kit contract'

@@ -7,12 +7,13 @@ SRC_URI = " \
     file://compose.yaml \
     file://saha-s2s.env \
     file://saha-s2s.service \
+    file://saha-s2s-llm.service \
     file://saha-s2s.sh \
 "
 
 inherit systemd
 
-SYSTEMD_SERVICE:${PN} = "saha-s2s.service"
+SYSTEMD_SERVICE:${PN} = "saha-s2s-llm.service saha-s2s.service"
 SYSTEMD_AUTO_ENABLE:${PN} = "enable"
 
 RDEPENDS:${PN} = "bash curl docker docker-compose"
@@ -32,6 +33,7 @@ do_install() {
 
     install -d ${D}${systemd_system_unitdir}
     install -m 0644 ${UNPACKDIR}/saha-s2s.service ${D}${systemd_system_unitdir}/saha-s2s.service
+    install -m 0644 ${UNPACKDIR}/saha-s2s-llm.service ${D}${systemd_system_unitdir}/saha-s2s-llm.service
 }
 
 FILES:${PN} += " \

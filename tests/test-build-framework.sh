@@ -246,7 +246,11 @@ S2S_COMPOSE="$ROOT_DIR/saha-layers/meta-tegra-saha/recipes-saha/s2s/saha-s2s/com
 S2S_ENV="$ROOT_DIR/saha-layers/meta-tegra-saha/recipes-saha/s2s/saha-s2s/saha-s2s.env"
 S2S_LAUNCHER="$ROOT_DIR/saha-layers/meta-tegra-saha/recipes-saha/s2s/saha-s2s/saha-s2s.sh"
 S2S_SERVICE="$ROOT_DIR/saha-layers/meta-tegra-saha/recipes-saha/s2s/saha-s2s/saha-s2s.service"
-for s2s_file in "$S2S_INCLUDE" "$S2S_PACKAGEGROUP" "$S2S_IMAGE_RECIPE" "$S2S_FETCH" "$S2S_RECIPE" "$S2S_COMPOSE" "$S2S_ENV" "$S2S_LAUNCHER" "$S2S_SERVICE"; do
+S2S_MODELS_RECIPE="$ROOT_DIR/saha-layers/meta-tegra-saha/recipes-saha/s2s-models/saha-s2s-models.bb"
+S2S_MODELS_PREPARE="$ROOT_DIR/saha-layers/meta-tegra-saha/recipes-saha/s2s-models/files/prepare-models.sh"
+S2S_DATA_IMAGE="$ROOT_DIR/saha-layers/meta-tegra-saha/recipes-saha/images/saha-data-image.bb"
+S2S_DATA_PACKAGEGROUP="$ROOT_DIR/saha-layers/meta-tegra-saha/recipes-saha/packagegroups/packagegroup-saha-container-preloads.bb"
+for s2s_file in "$S2S_INCLUDE" "$S2S_PACKAGEGROUP" "$S2S_IMAGE_RECIPE" "$S2S_FETCH" "$S2S_RECIPE" "$S2S_COMPOSE" "$S2S_ENV" "$S2S_LAUNCHER" "$S2S_SERVICE" "$S2S_MODELS_RECIPE" "$S2S_MODELS_PREPARE"; do
   [ -f "$s2s_file" ] || fail "S2S integration file missing: $s2s_file"
 done
 grep -q 'packagegroup-saha-s2s' "$S2S_INCLUDE" || fail "S2S include must install its packagegroup"
@@ -279,6 +283,14 @@ grep -q '/health' "$ROOT_DIR/README-S2S.md" || fail "S2S integration must docume
 grep -q -- '--project-name "$SAHA_S2S_PROJECT"' "$S2S_LAUNCHER" || fail "S2S launcher must isolate the Compose project"
 grep -q -- '--pull never' "$S2S_LAUNCHER" || fail "S2S runtime must stay offline"
 grep -q 'manifest.sha256' "$S2S_LAUNCHER" || fail "S2S launcher must verify provisioned models"
+grep -q 'saha-s2s-models' "$S2S_DATA_PACKAGEGROUP" || fail "production speech models must be exclusive to DATA image inputs"
+! grep -q 'saha-s2s-models' "$S2S_PACKAGEGROUP" || fail "APP/rootfs S2S packagegroup must not duplicate speech models"
+grep -q 'do_prepare_models\[network\] = "0"' "$S2S_MODELS_RECIPE" || fail "production model recipe must forbid network fetches"
+grep -q 'S2S_MODELS_DL_DIR.*DL_DIR' "$S2S_MODELS_RECIPE" || fail "production model recipe must consume verified DL_DIR artifacts"
+grep -q 'sha256sum -c' "$S2S_MODELS_PREPARE" || fail "production model artifacts must be checksum verified"
+grep -q '10002:999' "$S2S_MODELS_RECIPE" || fail "production models must use S2S ownership"
+grep -q 'manifest.sha256' "$S2S_MODELS_RECIPE" || fail "production model package must generate a manifest"
+grep -q 'production S2S model verification failed' "$S2S_DATA_IMAGE" || fail "DATA image must verify packaged production models"
 grep -q 'Restart=on-failure' "$S2S_SERVICE" || fail "systemd must retry failed S2S starts"
 grep -q 'Requires=.*docker.service.*saha-nvidia-container-runtime.service' "$S2S_SERVICE" || fail "S2S must wait for DATA, Docker, and NVIDIA registration"
 if rg -n 'saha-s2s|roban-s2s' \
