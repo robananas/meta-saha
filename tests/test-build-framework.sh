@@ -280,6 +280,7 @@ done
 grep -q 'network_mode: host' "$S2S_COMPOSE" || fail "aiortc WebRTC must expose dynamic ICE UDP sockets"
 grep -q 'runtime: nvidia' "$S2S_COMPOSE" || fail "only the S2S container must explicitly request NVIDIA runtime"
 grep -q 'restart: "no"' "$S2S_COMPOSE" || fail "Docker must not bypass systemd S2S lifecycle policy"
+grep -q '/proc/stat:/host/proc/stat:ro' "$S2S_COMPOSE" || fail "S2S metrics must read host CPU ticks through a read-only mount"
 grep -q '/data/models/s2s:/models:ro' "$S2S_COMPOSE" || fail "S2S DATA models must mount read-only"
 grep -q '/data/model-cache/s2s:/var/cache/roban-s2s' "$S2S_COMPOSE" || fail "S2S cache must use DATA model-cache"
 grep -q '/ready' "$S2S_COMPOSE" || fail "S2S healthcheck must enforce model readiness"

@@ -35,6 +35,7 @@ services:
       ROBAN_S2S_ICE_SERVERS: ${ROBAN_S2S_ICE_SERVERS:-[]}
       ROBAN_S2S_MAX_SESSIONS: "1"
     volumes:
+      - /proc/stat:/host/proc/stat:ro
       - /data/models/s2s:/models:ro
       - /data/model-cache/s2s:/var/cache/roban-s2s
     healthcheck:
