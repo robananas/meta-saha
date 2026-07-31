@@ -5,6 +5,7 @@ LICENSE = "MIT"
 inherit packagegroup
 
 RDEPENDS:${PN} = " \
+    frpc \
     networkmanager \
     networkmanager-daemon \
     networkmanager-nmcli \

@@ -253,6 +253,17 @@ S2S_DATA_PACKAGEGROUP="$ROOT_DIR/saha-layers/meta-tegra-saha/recipes-saha/packag
 for s2s_file in "$S2S_INCLUDE" "$S2S_PACKAGEGROUP" "$S2S_IMAGE_RECIPE" "$S2S_FETCH" "$S2S_RECIPE" "$S2S_COMPOSE" "$S2S_ENV" "$S2S_LAUNCHER" "$S2S_SERVICE" "$S2S_MODELS_RECIPE" "$S2S_MODELS_PREPARE"; do
   [ -f "$s2s_file" ] || fail "S2S integration file missing: $s2s_file"
 done
+FRPC_RECIPE="$ROOT_DIR/saha-layers/meta-tegra-saha/recipes-saha/frpc/frpc_0.70.1.bb"
+FRPC_SERVICE="$ROOT_DIR/saha-layers/meta-tegra-saha/recipes-saha/frpc/frpc/frpc.service"
+FRPC_CONFIG="$ROOT_DIR/saha-layers/meta-tegra-saha/recipes-saha/frpc/frpc/frpc.toml"
+[ -f "$FRPC_RECIPE" ] && [ -f "$FRPC_SERVICE" ] && [ -f "$FRPC_CONFIG" ] || fail "FRP client integration files must exist"
+grep -q 'frpc' "$ROOT_DIR/saha-layers/meta-tegra-saha/recipes-saha/packagegroups/packagegroup-saha-network.bb" || fail "all Saha images must install frpc"
+grep -q 'SYSTEMD_AUTO_ENABLE:${PN} = "disable"' "$FRPC_RECIPE" || fail "frpc must not start automatically after boot"
+! grep -q 'multi-user.target.wants/frpc.service' "$FRPC_RECIPE" || fail "frpc recipe must not create an enablement symlink"
+grep -q 'ExecStartPre=/usr/bin/frpc verify -c /etc/frp/frpc.toml' "$FRPC_SERVICE" || fail "frpc must validate configuration before starting"
+grep -q 'NoNewPrivileges=yes' "$FRPC_SERVICE" || fail "frpc service must use systemd hardening"
+grep -q '^serverAddr = "127.0.0.1"' "$FRPC_CONFIG" || fail "frpc default config must not expose a real server"
+! grep -Eqi '^[[:space:]]*(auth\.token|webServer\.password|auth\.oidc\.clientSecret)[[:space:]]*=[[:space:]]*"[^\"]+"' "$FRPC_CONFIG" || fail "frpc default config must not embed credentials"
 grep -q 'packagegroup-saha-s2s' "$S2S_INCLUDE" || fail "S2S include must install its packagegroup"
 grep -q 'saha-s2s' \
   "$ROOT_DIR/saha-layers/meta-tegra-saha/recipes-saha/packagegroups/packagegroup-saha-docker-images.bb" ||

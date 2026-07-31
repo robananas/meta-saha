@@ -1,0 +1,23 @@
+# Configure the FRP server and proxies before manually starting frpc.service.
+serverAddr = "127.0.0.1"
+serverPort = 7000
+
+# Prefer a separate root-owned file for production credentials:
+# auth.method = "token"
+# auth.tokenSource.type = "file"
+# auth.tokenSource.file.path = "/etc/frp/token"
+
+# Example SSH proxy (disabled until explicitly configured):
+# [[proxies]]
+# name = "ssh"
+# type = "tcp"
+# localIP = "127.0.0.1"
+# localPort = 22
+# remotePort = 6000
+
+[[proxies]]
+name = "web"
+type = "http"
+localPort = 80
+customDomains = ["board1.grpc.waiter-f.com"]
+
