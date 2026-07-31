@@ -9,6 +9,7 @@ services:
     environment:
       NVIDIA_VISIBLE_DEVICES: all
       NVIDIA_DRIVER_CAPABILITIES: compute,utility
+      CUDA_VISIBLE_DEVICES: "0"
       HF_ENDPOINT: ${HF_ENDPOINT:-https://hf-mirror.com}
       PIP_INDEX_URL: ${PIP_INDEX_URL:-https://pypi.tuna.tsinghua.edu.cn/simple}
       HF_HUB_OFFLINE: "1"
@@ -21,6 +22,10 @@ services:
       ROBAN_S2S_VAD_MODEL_PATH: /models/silero_vad.onnx
       ROBAN_S2S_STT_MODEL_PATH: /models/stt
       ROBAN_S2S_TTS_MODEL_PATH: /models/tts
+      ROBAN_S2S_KWS_PROVIDER: ${ROBAN_S2S_KWS_PROVIDER:-cuda}
+      ROBAN_S2S_VAD_PROVIDER: ${ROBAN_S2S_VAD_PROVIDER:-cuda}
+      ROBAN_S2S_STT_PROVIDER: ${ROBAN_S2S_STT_PROVIDER:-cuda}
+      ROBAN_S2S_TTS_PROVIDER: ${ROBAN_S2S_TTS_PROVIDER:-cuda}
       ROBAN_S2S_STT_BACKEND: ${ROBAN_S2S_STT_BACKEND:-sherpa-onnx}
       ROBAN_S2S_LLM_BACKEND: ${ROBAN_S2S_LLM_BACKEND:-openai-compatible}
       ROBAN_S2S_LLM_MODEL: ${ROBAN_S2S_LLM_MODEL:-}

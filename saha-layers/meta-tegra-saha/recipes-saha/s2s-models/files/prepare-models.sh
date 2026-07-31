@@ -42,6 +42,9 @@ for file in model.int8.onnx tokens.txt; do
     [ -s "$stt/$file" ] || { echo "ERROR: STT archive missing $file" >&2; exit 1; }
     cp "$stt/$file" "$dest/stt/$file"
 done
+[ -s "$stt/test_wavs/0.wav" ] || { echo "ERROR: STT archive missing test_wavs/0.wav" >&2; exit 1; }
+mkdir -p "$dest/stt/test_wavs"
+cp "$stt/test_wavs/0.wav" "$dest/stt/test_wavs/0.wav"
 
 tar -xjf "$src/$S2S_TTS_ARCHIVE" -C "$tmp"
 tts="$tmp/sherpa-onnx-vits-zh-ll"

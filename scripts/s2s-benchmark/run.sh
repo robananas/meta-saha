@@ -44,6 +44,29 @@ for spec in \
     2>&1 | tee "$RESULTS/llm-$name.txt"
 done
 
+if docker image inspect "${SAHA_S2S_IMAGE:-roban-s2s:arm64}" >/dev/null 2>&1 && [ -d /data/models/s2s ]; then
+  timeout 90 tegrastats --interval 500 >"$RESULTS/tegrastats-sherpa-cuda.txt" 2>&1 &
+  monitor_pid=$!
+  docker run --rm --runtime nvidia --entrypoint python \
+    -e NVIDIA_VISIBLE_DEVICES=all \
+    -e NVIDIA_DRIVER_CAPABILITIES=compute,utility \
+    -e CUDA_VISIBLE_DEVICES=0 \
+    -e ROBAN_S2S_MODEL_ROOT=/models \
+    -e ROBAN_S2S_KWS_PROVIDER=cuda \
+    -e ROBAN_S2S_VAD_PROVIDER=cuda \
+    -e ROBAN_S2S_STT_PROVIDER=cuda \
+    -e ROBAN_S2S_TTS_PROVIDER=cuda \
+    -e ROBAN_S2S_STT_BACKEND=sherpa-onnx \
+    -e ROBAN_S2S_TTS_BACKEND=sherpa-onnx-vits \
+    -e ROBAN_S2S_LLM_MODEL=benchmark-smoke \
+    -e ROBAN_S2S_PIPELINE_FACTORY=roban_voice_s2s.production_pipeline:create_pipeline \
+    -v /data/models/s2s:/models:ro \
+    "${SAHA_S2S_IMAGE:-roban-s2s:arm64}" -m roban_voice_s2s.cuda_smoke \
+    2>&1 | tee "$RESULTS/sherpa-cuda-four-stage.json"
+  kill "$monitor_pid" 2>/dev/null || true
+  wait "$monitor_pid" 2>/dev/null || true
+fi
+
 cat >"$RESULTS/tts-whisper-probes.txt" <<EOF
 Qwen3-TTS CUDA benchmark not run automatically. Gate it on all of:
 - isolated Python 3.12 runtime

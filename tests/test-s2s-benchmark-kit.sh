@@ -19,5 +19,7 @@ grep -q '^PARAFORMER_SHA256=[0-9a-f]\{64\}$' "$KIT/models.env" || fail "producti
 grep -q '^SILERO_VAD_SHA256=[0-9a-f]\{64\}$' "$KIT/models.env" || fail "production VAD checksum missing"
 grep -q '^TTS_FALLBACK_SHA256=[0-9a-f]\{64\}$' "$KIT/models.env" || fail "production TTS checksum missing"
 grep -q 'docker inspect.*livekit-server livekit-agent' "$KIT/run.sh" || fail "LiveKit preservation check missing"
+grep -q 'roban_voice_s2s.cuda_smoke' "$KIT/run.sh" || fail "four-stage CUDA smoke missing"
+grep -q 'tegrastats-sherpa-cuda' "$KIT/run.sh" || fail "CUDA GPU telemetry missing"
 if grep -R -En '(token|password|secret)=' "$KIT"; then fail "possible credential embedded"; fi
 echo 'PASS: S2S benchmark kit contract'

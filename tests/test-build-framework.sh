@@ -273,6 +273,10 @@ grep -q 'SAHA_S2S_PORT=8765' "$S2S_ENV" || fail "S2S port must match backend and
 grep -q 'ROBAN_S2S_ICE_SERVERS=\[\]' "$S2S_ENV" || fail "S2S must default to host ICE candidates"
 grep -q 'HF_ENDPOINT=https://hf-mirror.com' "$S2S_ENV" || fail "S2S must default to the post-flash China Hugging Face mirror"
 grep -q 'PIP_INDEX_URL=https://pypi.tuna.tsinghua.edu.cn/simple' "$S2S_ENV" || fail "S2S must default to the post-flash China Python mirror"
+for provider in KWS VAD STT TTS; do
+  grep -q "ROBAN_S2S_${provider}_PROVIDER=cuda" "$S2S_ENV" || fail "S2S ${provider} must default to CUDA"
+  grep -q "ROBAN_S2S_${provider}_PROVIDER" "$S2S_LAUNCHER" || fail "S2S launcher must export ${provider} provider"
+done
 grep -q 'network_mode: host' "$S2S_COMPOSE" || fail "aiortc WebRTC must expose dynamic ICE UDP sockets"
 grep -q 'runtime: nvidia' "$S2S_COMPOSE" || fail "only the S2S container must explicitly request NVIDIA runtime"
 grep -q 'restart: "no"' "$S2S_COMPOSE" || fail "Docker must not bypass systemd S2S lifecycle policy"
@@ -288,6 +292,7 @@ grep -q 'saha-s2s-models' "$S2S_DATA_PACKAGEGROUP" || fail "production speech mo
 grep -q 'do_prepare_models\[network\] = "0"' "$S2S_MODELS_RECIPE" || fail "production model recipe must forbid network fetches"
 grep -q 'S2S_MODELS_DL_DIR.*DL_DIR' "$S2S_MODELS_RECIPE" || fail "production model recipe must consume verified DL_DIR artifacts"
 grep -q 'sha256sum -c' "$S2S_MODELS_PREPARE" || fail "production model artifacts must be checksum verified"
+grep -q 'test_wavs/0.wav' "$S2S_MODELS_PREPARE" || fail "production models must include the controlled CUDA STT fixture"
 grep -q '10002:999' "$S2S_MODELS_RECIPE" || fail "production models must use S2S ownership"
 grep -q 'manifest.sha256' "$S2S_MODELS_RECIPE" || fail "production model package must generate a manifest"
 grep -q 'production S2S model verification failed' "$S2S_DATA_IMAGE" || fail "DATA image must verify packaged production models"
