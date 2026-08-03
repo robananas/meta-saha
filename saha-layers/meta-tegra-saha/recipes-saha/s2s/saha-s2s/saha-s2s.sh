@@ -6,6 +6,11 @@ if [ -f "$ENV_FILE" ]; then
     # shellcheck disable=SC1090
     . "$ENV_FILE"
 fi
+OLLAMA_MODEL_ENV=/data/model-config/s2s/ollama.env
+if [ -f "$OLLAMA_MODEL_ENV" ]; then
+    # shellcheck disable=SC1090
+    . "$OLLAMA_MODEL_ENV"
+fi
 
 SAHA_S2S_COMPOSE_DIR=${SAHA_S2S_COMPOSE_DIR:-/opt/roban/s2s}
 SAHA_S2S_COMPOSE_FILE=${SAHA_S2S_COMPOSE_FILE:-${SAHA_S2S_COMPOSE_DIR}/compose.yaml}

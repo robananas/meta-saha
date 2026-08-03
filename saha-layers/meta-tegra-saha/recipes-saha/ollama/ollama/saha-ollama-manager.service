@@ -1,0 +1,23 @@
+[Unit]
+Description=Saha allowlisted Ollama model manager
+After=ollama.service network-online.target
+Requires=ollama.service data.mount
+RequiresMountsFor=/data/model-config/s2s
+
+[Service]
+Type=simple
+ExecStart=/usr/bin/python3 /usr/lib/saha-ollama-manager/saha-ollama-manager.py
+Environment=PYTHONUNBUFFERED=1
+Environment=OLLAMA_URL=http://127.0.0.1:11434
+Environment=SAHA_OLLAMA_CONFIG=/data/model-config/s2s/ollama.env
+Environment=SAHA_OLLAMA_DEFAULT_CONFIG=/etc/default/ollama
+Restart=on-failure
+RestartSec=5
+NoNewPrivileges=yes
+PrivateTmp=yes
+ProtectHome=yes
+ProtectSystem=strict
+ReadWritePaths=/data/model-config/s2s
+
+[Install]
+WantedBy=multi-user.target

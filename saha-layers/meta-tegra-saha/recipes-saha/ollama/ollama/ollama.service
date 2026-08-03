@@ -1,0 +1,29 @@
+[Unit]
+Description=Ollama CUDA model server
+After=saha-data-layout.service network-online.target
+Wants=network-online.target
+Requires=saha-data-layout.service data.mount
+RequiresMountsFor=/data/models/ollama
+
+[Service]
+Type=simple
+Environment=HOME=/data/model-cache/ollama
+Environment=OLLAMA_HOST=127.0.0.1:11434
+Environment=OLLAMA_MODELS=/data/models/ollama
+Environment=OLLAMA_KEEP_ALIVE=5m
+Environment=OLLAMA_MAX_LOADED_MODELS=1
+Environment=OLLAMA_NUM_PARALLEL=1
+Environment=CUDA_VISIBLE_DEVICES=0
+ExecStart=/usr/bin/setpriv --reuid 10002 --regid 999 --groups 44,999 /usr/bin/ollama serve
+Restart=on-failure
+RestartSec=5
+TimeoutStartSec=180
+LimitMEMLOCK=infinity
+NoNewPrivileges=yes
+PrivateTmp=yes
+ProtectHome=yes
+ProtectSystem=strict
+ReadWritePaths=/data/models/ollama /data/model-cache/ollama
+
+[Install]
+WantedBy=multi-user.target
