@@ -18,29 +18,22 @@ services:
       ROBAN_S2S_PORT: ${SAHA_S2S_PORT:-8765}
       ROBAN_S2S_MODEL_ROOT: /models
       ROBAN_S2S_CACHE_DIR: /var/cache/roban-s2s
+      ROBAN_S2S_SELECTION_PATH: /model-config/selection.json
       ROBAN_S2S_KWS_MODEL_DIR: /models/kws
       ROBAN_S2S_VAD_MODEL_PATH: /models/silero_vad.onnx
-      ROBAN_S2S_STT_MODEL_PATH: /models/stt
-      ROBAN_S2S_TTS_MODEL_PATH: /models/tts
       ROBAN_S2S_KWS_PROVIDER: ${ROBAN_S2S_KWS_PROVIDER:-cuda}
       ROBAN_S2S_VAD_PROVIDER: ${ROBAN_S2S_VAD_PROVIDER:-cuda}
-      ROBAN_S2S_STT_PROVIDER: ${ROBAN_S2S_STT_PROVIDER:-cuda}
-      ROBAN_S2S_TTS_PROVIDER: ${ROBAN_S2S_TTS_PROVIDER:-cuda}
-      ROBAN_S2S_STT_BACKEND: ${ROBAN_S2S_STT_BACKEND:-sherpa-onnx}
-      ROBAN_S2S_LLM_BACKEND: ${ROBAN_S2S_LLM_BACKEND:-openai-compatible}
-      ROBAN_S2S_LLM_MODEL: ${ROBAN_S2S_LLM_MODEL:-}
-      ROBAN_S2S_LLM_BASE_URL: ${ROBAN_S2S_LLM_BASE_URL:-http://127.0.0.1:8080/v1}
-      ROBAN_S2S_TTS_BACKEND: ${ROBAN_S2S_TTS_BACKEND:-qwen3-tts}
-      ROBAN_S2S_PIPELINE_FACTORY: ${ROBAN_S2S_PIPELINE_FACTORY:-}
+      ROBAN_S2S_PIPELINE_FACTORY: roban_voice_s2s.production_pipeline:create_pipeline
       ROBAN_S2S_ICE_SERVERS: ${ROBAN_S2S_ICE_SERVERS:-[]}
       ROBAN_S2S_MAX_SESSIONS: "1"
     volumes:
       - /proc/stat:/host/proc/stat:ro
       - /proc/meminfo:/host/proc/meminfo:ro
       - /data/models/s2s:/models:ro
+      - /data/model-config/s2s:/model-config:ro
       - /data/model-cache/s2s:/var/cache/roban-s2s
     healthcheck:
-      test: ["CMD", "python", "-c", "import os,urllib.request; urllib.request.urlopen('http://127.0.0.1:'+os.getenv('ROBAN_S2S_PORT','8765')+'/ready', timeout=5)"]
+      test: ["CMD", "python", "-c", "import os,urllib.request; urllib.request.urlopen('http://127.0.0.1:'+os.getenv('ROBAN_S2S_PORT','8765')+'/health', timeout=5)"]
       interval: 30s
       timeout: 8s
       retries: 3

@@ -2,7 +2,7 @@
 Description=Validate Saha DATA directory layout
 Requires=data.mount
 After=data.mount
-Before=docker.service NetworkManager.service bluetooth.service saha-docker-compose.service saha-s2s.service saha-bt-wifi-provision.service
+Before=run-log-journal.mount systemd-journald.service systemd-journald.socket systemd-journald-dev-log.socket systemd-journald-audit.socket docker.service NetworkManager.service bluetooth.service saha-docker-compose.service saha-s2s.service saha-bt-wifi-provision.service
 
 [Service]
 Type=oneshot

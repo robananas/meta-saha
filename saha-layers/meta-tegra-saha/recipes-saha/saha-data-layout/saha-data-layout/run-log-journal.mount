@@ -2,11 +2,11 @@
 Description=Persist bounded journal on DATA
 Requires=saha-data-layout.service
 After=saha-data-layout.service
-Before=systemd-journald.service
+Before=systemd-journald.service systemd-journald.socket systemd-journald-dev-log.socket systemd-journald-audit.socket
 
 [Mount]
 What=/data/log/journal
-Where=/var/log/journal
+Where=/run/log/journal
 Type=none
 Options=bind
 

@@ -12,7 +12,6 @@ SRC_URI = " \
     file://saha-ollama-manager.py \
     file://test_saha_ollama_manager.py \
     file://ollama-tmpfiles.conf \
-    file://ollama.env \
 "
 SRC_URI[runtime.sha256sum] = "aa7e06b5683ee66c4a3ec68ea7236db43b5a5d0821f0dfe2c5a215f4462bddf4"
 SRC_URI[jetpack6.sha256sum] = "ed82cb42a215778762bd0927dd34bf222366efd31b25ccde1e1a1ee9a8b942d9"
@@ -49,14 +48,11 @@ do_install() {
     install -d ${D}${libdir}/tmpfiles.d
     install -m 0644 ${UNPACKDIR}/ollama-tmpfiles.conf ${D}${libdir}/tmpfiles.d/ollama.conf
 
-    install -d ${D}${sysconfdir}/default
-    install -m 0644 ${UNPACKDIR}/ollama.env ${D}${sysconfdir}/default/ollama
 }
 
 FILES:${PN} += " \
     ${libdir}/ollama \
     ${libdir}/saha-ollama-manager \
     ${libdir}/tmpfiles.d/ollama.conf \
-    ${sysconfdir}/default/ollama \
 "
 INSANE_SKIP:${PN} += "already-stripped dev-so file-rdeps"

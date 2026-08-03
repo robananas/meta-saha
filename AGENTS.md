@@ -4,6 +4,16 @@
 
 - The actual `meta-saha` build workspace is `zyk@10.30.32.19:/home/zyk/Desktop/meta-saha`.
 
+## Build Workspace Search Safety
+
+The remote build workspace contains very large and potentially problematic generated trees.
+
+- Never run full recursive `rg`, `rglob`, `find`, IDE indexing, or equivalent searches across the build machine's `build/` or `downloads/` directories. These scans can exhaust kernel resources and freeze `10.30.32.19`.
+- Prefer exact known paths, BitBake variables/log paths, bounded `ls`, explicit filenames, and narrowly scoped searches with a limited depth.
+- If a search under `build/` or `downloads/` is unavoidable, first restrict it to the smallest recipe, machine, task, or artifact subtree and add explicit glob exclusions for unrelated generated trees and mounts.
+- Before traversing an unfamiliar generated path, inspect its immediate mount and directory boundaries. Avoid or unmount a known problematic/stale mount before searching it.
+- Do not use broad repository-root searches on the build machine when the pattern can enter `build/` or `downloads/`; explicitly exclude both directories.
+
 ## Temporary Changes on a Test Board
 
 When testing a change directly on a Saha/Roban board, keep the deployed temporary change and the corresponding `meta-saha` source change identical.
