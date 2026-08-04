@@ -1,0 +1,18 @@
+[Unit]
+Description=Saha persistent DATA swapfile
+Requires=data.mount saha-data-layout.service
+After=data.mount saha-data-layout.service
+Before=docker.service ollama.service saha-s2s.service
+
+[Service]
+Type=oneshot
+RemainAfterExit=yes
+Environment=SAHA_SWAP_FILE=/data/swap/saha.swap
+Environment=SAHA_SWAP_SIZE_GIB=16
+ExecStart=/usr/libexec/saha-swap start
+ExecStop=/usr/libexec/saha-swap stop
+TimeoutStartSec=300
+TimeoutStopSec=60
+
+[Install]
+WantedBy=multi-user.target

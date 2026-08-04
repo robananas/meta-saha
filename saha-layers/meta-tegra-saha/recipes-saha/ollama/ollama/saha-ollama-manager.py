@@ -84,7 +84,11 @@ class PipelineSelection:
     stages: dict[Stage, StageSelection]
 
 
-OLLAMA_ADAPTER = AdapterSpec("openai-compatible-chat", "ollama", (("base_url", "http://127.0.0.1:11434/v1"),))
+OLLAMA_ADAPTER = AdapterSpec(
+    "openai-compatible-chat",
+    "ollama",
+    (("base_url", "http://127.0.0.1:11434/v1"), ("keep_alive", "30m")),
+)
 FUNASR_ADAPTER = AdapterSpec(
     "funasr-paraformer-official-v0.2.10",
     "local-bundle",
@@ -94,16 +98,15 @@ FUNASR_ADAPTER = AdapterSpec(
         ("device", "cuda"),
     ),
 )
-QWEN3_TTS_ADAPTER = AdapterSpec(
-    "qwen3-tts-0.6b-customvoice-edgellm-v0.9.1",
+SHERPA_STT_ADAPTER = AdapterSpec(
+    "sherpa-onnx-paraformer",
     "local-bundle",
-    (
-        ("model_path", "/models/tts/qwen3-tts-0.6b-customvoice"),
-        ("command", ("python", "-m", "roban_voice_s2s.qwen3_tts_cli", "--model-path", "{model_path}", "--output", "{output}")),
-        ("speaker", "serena"),
-        ("language", "Chinese"),
-        ("timeout_seconds", 180),
-    ),
+    (("model_path", "/models/stt"), ("num_threads", 4), ("provider", "cpu")),
+)
+SHERPA_VITS_ADAPTER = AdapterSpec(
+    "sherpa-onnx-vits-zh",
+    "local-bundle",
+    (("model_path", "/models/tts"), ("num_threads", 4), ("provider", "cpu")),
 )
 # The production catalog is a release gate, not a candidate list. Only models with
 # retained Orin R39.2/CUDA 13.2 evidence belong here.
@@ -122,19 +125,33 @@ CATALOG: tuple[ModelSpec, ...] = (
         (ArtifactSpec("", "5bba782a5e9196166233b9ab12ba04cadff9ef9212b4ff6153ed9290ff679025", "snapshot", 888_917_289, ("model.pt", "config.yaml", "tokens.json", "example/asr_example.wav")),),
         "verified-orin-r39.2-cuda13.2",
     ),
+    ModelSpec(
+        "sherpa-onnx-paraformer-zh",
+        "stt",
+        "Sherpa ONNX Paraformer 中文",
+        "已验证的本地中文 Paraformer；低内存、低延迟，可与 FunASR 随时切换",
+        "sherpa-onnx",
+        SHERPA_STT_ADAPTER,
+        ("zh",),
+        "INT8",
+        82_837_061,
+        512_000_000,
+        (ArtifactSpec("", "", "paraformer-bundle", 82_837_061, ("model.int8.onnx", "tokens.txt")),),
+        "verified-orin-r39.2-cuda13.2",
+    ),
     ModelSpec("qwen2.5:1.5b-instruct-q4_K_M", "llm", "Qwen 2.5 1.5B", "Orin 实测中文低延迟模型", "openai-compatible", OLLAMA_ADAPTER, ("zh", "en"), "Q4_K_M", 986_061_892, 1_500_000_000, (), "verified-orin-r39.2-cuda13.2"),
     ModelSpec(
-        "qwen3-tts-0.6b-customvoice",
+        "sherpa-onnx-vits-zh",
         "tts",
-        "Qwen3-TTS 0.6B CustomVoice",
-        "NVIDIA TensorRT Edge-LLM v0.9.1；Orin sm87 中文合成与 FunASR 回识别实测",
-        "tensorrt-edgellm",
-        QWEN3_TTS_ADAPTER,
-        ("zh", "en"),
-        "FP16",
-        2_147_483_648,
-        4_340_000_000,
-        (ArtifactSpec("", "", "engine-bundle", 2_147_483_648, ("talker/llm.engine", "talker/config.json", "code_predictor/llm.engine", "code2wav/code2wav.engine")),),
+        "Sherpa ONNX VITS 中文",
+        "已验证的本地中文 VITS；Qwen3-TTS 在 stateful Code2Wav 正确性门禁通过前不对生产可见",
+        "sherpa-onnx",
+        SHERPA_VITS_ADAPTER,
+        ("zh",),
+        None,
+        121_100_803,
+        512_000_000,
+        (ArtifactSpec("", "", "vits-bundle", 121_100_803, ("model.onnx", "tokens.txt", "lexicon.txt")),),
         "verified-orin-r39.2-cuda13.2",
     ),
 )
@@ -254,7 +271,10 @@ def active_model() -> str | None:
 def model_installed(spec: ModelSpec, ollama_models: set[str] | None = None) -> bool:
     if spec.adapter.protocol == "ollama":
         return spec.id in (ollama_models if ollama_models is not None else installed_ollama_models())
+    model_path = dict(spec.adapter.activation).get("model_path")
     destination = MODEL_ROOT / spec.stage / spec.id
+    if isinstance(model_path, str) and model_path.startswith("/models/"):
+        destination = MODEL_ROOT / Path(model_path).relative_to("/models")
     return destination.is_dir() and all((destination / required).is_file() for artifact in spec.artifacts for required in artifact.required_files)
 
 
@@ -287,7 +307,7 @@ def models_status() -> dict[str, Any]:
                     "id": spec.id,
                     "installed": model_installed(spec, ollama_models),
                     "active": spec.id == active,
-                    "compatible": selected is None or (selected.model_id == spec.id and selected.adapter == spec.adapter.name),
+                    "compatible": True,
                     "download": _state_dict(downloads[spec.id]) if spec.id in downloads else None,
                 }
                 for spec in models
