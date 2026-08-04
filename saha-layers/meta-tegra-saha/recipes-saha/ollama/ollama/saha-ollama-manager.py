@@ -38,7 +38,7 @@ class ArtifactSpec:
 class AdapterSpec:
     name: str
     protocol: str
-    activation: tuple[tuple[str, str], ...]
+    activation: tuple[tuple[str, Any], ...]
 
 
 @dataclass(frozen=True)
@@ -94,6 +94,17 @@ FUNASR_ADAPTER = AdapterSpec(
         ("device", "cuda"),
     ),
 )
+QWEN3_TTS_ADAPTER = AdapterSpec(
+    "qwen3-tts-0.6b-customvoice-edgellm-v0.9.1",
+    "local-bundle",
+    (
+        ("model_path", "/models/tts/qwen3-tts-0.6b-customvoice"),
+        ("command", ("python", "-m", "roban_voice_s2s.qwen3_tts_cli", "--model-path", "{model_path}", "--output", "{output}")),
+        ("speaker", "serena"),
+        ("language", "Chinese"),
+        ("timeout_seconds", 180),
+    ),
+)
 # The production catalog is a release gate, not a candidate list. Only models with
 # retained Orin R39.2/CUDA 13.2 evidence belong here.
 CATALOG: tuple[ModelSpec, ...] = (
@@ -112,6 +123,20 @@ CATALOG: tuple[ModelSpec, ...] = (
         "verified-orin-r39.2-cuda13.2",
     ),
     ModelSpec("qwen2.5:1.5b-instruct-q4_K_M", "llm", "Qwen 2.5 1.5B", "Orin 实测中文低延迟模型", "openai-compatible", OLLAMA_ADAPTER, ("zh", "en"), "Q4_K_M", 986_061_892, 1_500_000_000, (), "verified-orin-r39.2-cuda13.2"),
+    ModelSpec(
+        "qwen3-tts-0.6b-customvoice",
+        "tts",
+        "Qwen3-TTS 0.6B CustomVoice",
+        "NVIDIA TensorRT Edge-LLM v0.9.1；Orin sm87 中文合成与 FunASR 回识别实测",
+        "tensorrt-edgellm",
+        QWEN3_TTS_ADAPTER,
+        ("zh", "en"),
+        "FP16",
+        2_147_483_648,
+        4_340_000_000,
+        (ArtifactSpec("", "", "engine-bundle", 2_147_483_648, ("talker/llm.engine", "talker/config.json", "code_predictor/llm.engine", "code2wav/code2wav.engine")),),
+        "verified-orin-r39.2-cuda13.2",
+    ),
 )
 BY_ID = {item.id: item for item in CATALOG}
 ALLOWED = frozenset(BY_ID)
@@ -257,9 +282,16 @@ def models_status() -> dict[str, Any]:
         models = [spec for spec in CATALOG if spec.stage == stage]
         stages[stage] = {
             "activeModel": active,
-            "models": [{"id": spec.id, "installed": model_installed(spec, ollama_models), "active": spec.id == active,
-                        "compatible": spec.adapter.protocol == "ollama", "download": _state_dict(downloads[spec.id]) if spec.id in downloads else None}
-                       for spec in models],
+            "models": [
+                {
+                    "id": spec.id,
+                    "installed": model_installed(spec, ollama_models),
+                    "active": spec.id == active,
+                    "compatible": selected is None or (selected.model_id == spec.id and selected.adapter == spec.adapter.name),
+                    "download": _state_dict(downloads[spec.id]) if spec.id in downloads else None,
+                }
+                for spec in models
+            ],
         }
     return {"version": 1, "stages": stages}
 

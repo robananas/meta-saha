@@ -21,8 +21,8 @@ services:
       ROBAN_S2S_SELECTION_PATH: /model-config/selection.json
       ROBAN_S2S_KWS_MODEL_DIR: /models/kws
       ROBAN_S2S_VAD_MODEL_PATH: /models/silero_vad.onnx
-      ROBAN_S2S_KWS_PROVIDER: ${ROBAN_S2S_KWS_PROVIDER:-cuda}
-      ROBAN_S2S_VAD_PROVIDER: ${ROBAN_S2S_VAD_PROVIDER:-cuda}
+      ROBAN_S2S_KWS_PROVIDER: ${ROBAN_S2S_KWS_PROVIDER:-cpu}
+      ROBAN_S2S_VAD_PROVIDER: ${ROBAN_S2S_VAD_PROVIDER:-cpu}
       ROBAN_S2S_PIPELINE_FACTORY: roban_voice_s2s.production_pipeline:create_pipeline
       ROBAN_S2S_ICE_SERVERS: ${ROBAN_S2S_ICE_SERVERS:-[]}
       ROBAN_S2S_MAX_SESSIONS: "1"

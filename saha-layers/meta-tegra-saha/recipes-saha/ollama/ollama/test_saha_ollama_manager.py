@@ -27,6 +27,8 @@ class ModelManagerTest(unittest.TestCase):
         self.assertEqual(["funasr-paraformer-zh"], [item["id"] for item in catalog["stages"]["stt"]])
         self.assertEqual("funasr-paraformer-official-v0.2.10", catalog["stages"]["stt"][0]["adapter"])
         self.assertEqual(["qwen2.5:1.5b-instruct-q4_K_M"], [item["id"] for item in catalog["stages"]["llm"]])
+        self.assertEqual(["qwen3-tts-0.6b-customvoice"], [item["id"] for item in catalog["stages"]["tts"]])
+        self.assertEqual("qwen3-tts-0.6b-customvoice-edgellm-v0.9.1", catalog["stages"]["tts"][0]["adapter"])
         self.assertTrue(all(item["validationStatus"] == "verified-orin-r39.2-cuda13.2" for stage in catalog["stages"].values() for item in stage))
         with self.assertRaises(ValueError):
             MODULE.require_model({"modelId": "arbitrary/model:latest"})
@@ -79,6 +81,20 @@ class ModelManagerTest(unittest.TestCase):
             status = MODULE.models_status()
         self.assertIsNone(status["stages"]["llm"]["activeModel"])
         self.assertTrue(all(not item["installed"] for item in status["stages"]["llm"]["models"]))
+        self.assertTrue(all(item["compatible"] for stage in status["stages"].values() for item in stage["models"]))
+
+    def test_status_marks_selected_local_adapters_compatible(self):
+        selection = MODULE.PipelineSelection(
+            1,
+            {
+                "stt": MODULE.selection_for(MODULE.BY_ID["funasr-paraformer-zh"]),
+                "tts": MODULE.selection_for(MODULE.BY_ID["qwen3-tts-0.6b-customvoice"]),
+            },
+        )
+        with patch.object(MODULE, "read_selection", return_value=selection), patch.object(MODULE, "model_installed", return_value=True), patch.object(MODULE, "installed_ollama_models", return_value=set()):
+            status = MODULE.models_status()
+        self.assertTrue(status["stages"]["stt"]["models"][0]["compatible"])
+        self.assertTrue(status["stages"]["tts"]["models"][0]["compatible"])
 
     def test_download_state_has_rate_and_eta_contract(self):
         state = MODULE.DownloadState("qwen2.5:1.5b-instruct-q4_K_M", "downloading", 50, 100, 25.0, 2.0)

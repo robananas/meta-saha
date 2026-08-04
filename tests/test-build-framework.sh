@@ -197,7 +197,9 @@ grep -q 'SystemMaxUse=256M' "$ROOT_DIR/saha-layers/meta-tegra-saha/recipes-saha/
 ! grep -Eq '\$\{localstatedir\}[^ ]*/journal|FILES:.*localstatedir.*journal' "$DATA_RECIPE" || fail "DATA layout must let systemd create the journal mount point at runtime"
 JOURNAL_MOUNT="$ROOT_DIR/saha-layers/meta-tegra-saha/recipes-saha/saha-data-layout/saha-data-layout/run-log-journal.mount"
 grep -Eq '^Where=/run/log/journal[[:space:]]*$' "$JOURNAL_MOUNT" || fail "persistent journal bind mount must target the real volatile log directory"
-grep -Eq '^Before=.*systemd-journald\.service.*systemd-journald\.socket' "$JOURNAL_MOUNT" || fail "journal bind mount must precede both journald service and activation socket"
+if grep -Eq '^Before=.*systemd-journald\.(service|socket|dev-log\.socket|audit\.socket)' "$JOURNAL_MOUNT"; then
+  fail "persistent journal bind mount must not delay journald or its activation sockets"
+fi
 grep -Eq '^Before=.*systemd-journald\.socket' "$ROOT_DIR/saha-layers/meta-tegra-saha/recipes-saha/saha-data-layout/saha-data-layout/saha-data-layout.service" || fail "DATA layout must precede journald socket activation"
 ! grep -Eq '^Where=/var/log/journal[[:space:]]*$' "$JOURNAL_MOUNT" || fail "journal mount must not target a path beneath the /var/log symlink"
 ! grep -q '/var/volatile/log/journal' "$DATA_RECIPE" || fail "DATA layout must not populate the volatile root"
@@ -313,7 +315,11 @@ grep -q 'SAHA_S2S_PORT=8765' "$S2S_ENV" || fail "S2S port must match backend and
 grep -q 'ROBAN_S2S_ICE_SERVERS=\[\]' "$S2S_ENV" || fail "S2S must default to host ICE candidates"
 grep -q 'HF_ENDPOINT=https://hf-mirror.com' "$S2S_ENV" || fail "S2S must default to the post-flash China Hugging Face mirror"
 grep -q 'PIP_INDEX_URL=https://pypi.tuna.tsinghua.edu.cn/simple' "$S2S_ENV" || fail "S2S must default to the post-flash China Python mirror"
-for provider in KWS VAD STT TTS; do
+for provider in KWS VAD; do
+  grep -q "ROBAN_S2S_${provider}_PROVIDER=cpu" "$S2S_ENV" || fail "S2S ${provider} must default to the available ONNX Runtime CPU provider"
+  grep -q "ROBAN_S2S_${provider}_PROVIDER" "$S2S_LAUNCHER" || fail "S2S launcher must export ${provider} provider"
+done
+for provider in STT TTS; do
   grep -q "ROBAN_S2S_${provider}_PROVIDER=cuda" "$S2S_ENV" || fail "S2S ${provider} must default to CUDA"
   grep -q "ROBAN_S2S_${provider}_PROVIDER" "$S2S_LAUNCHER" || fail "S2S launcher must export ${provider} provider"
 done
