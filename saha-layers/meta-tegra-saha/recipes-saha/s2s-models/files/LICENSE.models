@@ -4,5 +4,10 @@ KWS: trained on the WenetSpeech L subset; upstream documentation requires checki
 VAD: Silero VAD; upstream project license is MIT.
 STT: community ONNX conversion of a FunASR/ModelScope Paraformer model; upstream model repository identifies Apache-2.0.
 TTS: community-contributed VITS model trained with VITS-fast-fine-tuning; upstream does not publish a model-specific SPDX identifier. Treat as CLOSED unless separately cleared.
+Matcha TTS zh-en: acoustic model redistributed by k2-fsa/sherpa-onnx from ModelScope dengcunqin/matcha_tts_zh_en_20251010. Upstream does not publish a clear model-specific license. The user has accepted this risk for testing, but the weights must remain treated as license-unclear and not represented as cleared for commercial redistribution. The sherpa-onnx runtime is Apache-2.0; that runtime license does not grant rights to the weights.
+Vocos 16 kHz universal: downloaded from the official k2-fsa/sherpa-onnx vocoder release and used only with the Matcha zh-en bundle; preserve upstream provenance and perform separate license review before redistribution.
+CosyVoice 3: official FunAudioLLM/Fun-CosyVoice3-0.5B-2512 model, Apache-2.0, pinned to complete upstream revision e0dfdde37d9a6acdc3cf92d51acfeea069003a9b. It is a separately downloaded asset and is not part of the base S2S model package.
+WeSpeaker CAM++: WeSpeaker source code is Apache-2.0. No exact model artifact, revision, checksum, or redistribution record has been verified for this image; the model remains an external requirement and is not packaged.
+NVIDIA TitaNet-Large: upstream model cards commonly identify CC-BY-4.0. No exact NeMo checkpoint revision or checksum has been verified for this image; verify the selected checkpoint's attribution and redistribution terms before packaging. The model remains an external requirement and is not packaged.
 
 This metadata records provenance and does not replace third-party license review.

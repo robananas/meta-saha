@@ -2,6 +2,7 @@
 Description=Persist bounded journal on DATA
 Requires=saha-data-layout.service
 After=saha-data-layout.service
+Before=systemd-journald.service
 
 [Mount]
 What=/data/log/journal

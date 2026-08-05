@@ -1,8 +1,10 @@
 [Unit]
 Description=Validate Saha DATA directory layout
+DefaultDependencies=no
 Requires=data.mount
 After=data.mount
-Before=run-log-journal.mount systemd-journald.service systemd-journald.socket systemd-journald-dev-log.socket systemd-journald-audit.socket docker.service NetworkManager.service bluetooth.service saha-docker-compose.service saha-s2s.service saha-bt-wifi-provision.service
+Before=run-log-journal.mount local-fs.target systemd-journald.service docker.service NetworkManager.service bluetooth.service saha-docker-compose.service saha-s2s.service saha-bt-wifi-provision.service shutdown.target
+Conflicts=shutdown.target
 
 [Service]
 Type=oneshot

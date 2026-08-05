@@ -204,10 +204,14 @@ grep -q 'SystemMaxUse=256M' "$ROOT_DIR/saha-layers/meta-tegra-saha/recipes-saha/
 ! grep -Eq '\$\{localstatedir\}[^ ]*/journal|FILES:.*localstatedir.*journal' "$DATA_RECIPE" || fail "DATA layout must let systemd create the journal mount point at runtime"
 JOURNAL_MOUNT="$ROOT_DIR/saha-layers/meta-tegra-saha/recipes-saha/saha-data-layout/saha-data-layout/run-log-journal.mount"
 grep -Eq '^Where=/run/log/journal[[:space:]]*$' "$JOURNAL_MOUNT" || fail "persistent journal bind mount must target the real volatile log directory"
-if grep -Eq '^Before=.*systemd-journald\.(service|socket|dev-log\.socket|audit\.socket)' "$JOURNAL_MOUNT"; then
-  fail "persistent journal bind mount must not delay journald or its activation sockets"
-fi
-grep -Eq '^Before=.*systemd-journald\.socket' "$ROOT_DIR/saha-layers/meta-tegra-saha/recipes-saha/saha-data-layout/saha-data-layout/saha-data-layout.service" || fail "DATA layout must precede journald socket activation"
+grep -Eq '^Before=.*systemd-journald\.service' "$JOURNAL_MOUNT" || fail "persistent journal bind mount must precede journald"
+! grep -Eq '^(Before|After)=.*systemd-journald-(dev-log|audit)\.socket|^(Before|After)=.*systemd-journald\.socket' "$JOURNAL_MOUNT" || fail "persistent journal bind mount must not order against early journald sockets"
+DATA_LAYOUT_SERVICE="$ROOT_DIR/saha-layers/meta-tegra-saha/recipes-saha/saha-data-layout/saha-data-layout/saha-data-layout.service"
+grep -Eq '^DefaultDependencies=no[[:space:]]*$' "$DATA_LAYOUT_SERVICE" || fail "DATA layout must run inside the local-fs transaction without basic.target dependencies"
+grep -Eq '^Before=.*run-log-journal\.mount' "$DATA_LAYOUT_SERVICE" || fail "DATA layout must precede the journal bind mount"
+grep -Eq '^Before=.*local-fs\.target' "$DATA_LAYOUT_SERVICE" || fail "DATA layout must complete before local-fs.target"
+grep -Eq '^Before=.*systemd-journald\.service' "$DATA_LAYOUT_SERVICE" || fail "persistent journal must be mounted before journald starts"
+! grep -Eq '^(Before|After)=.*systemd-journald-(dev-log|audit)\.socket|^(Before|After)=.*systemd-journald\.socket' "$DATA_LAYOUT_SERVICE" || fail "DATA layout must not order against early journald sockets"
 ! grep -Eq '^Where=/var/log/journal[[:space:]]*$' "$JOURNAL_MOUNT" || fail "journal mount must not target a path beneath the /var/log symlink"
 ! grep -q '/var/volatile/log/journal' "$DATA_RECIPE" || fail "DATA layout must not populate the volatile root"
 ! grep -q '/data/workflow-api' "$ROOT_DIR/saha-layers/meta-tegra-saha/recipes-saha/docker-compose/saha-docker-compose/compose.yaml" || fail "workflow API must not invent an application DATA volume"

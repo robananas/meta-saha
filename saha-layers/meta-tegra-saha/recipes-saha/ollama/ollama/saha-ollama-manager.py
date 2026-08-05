@@ -2,27 +2,39 @@
 from __future__ import annotations
 
 import dataclasses
+import hashlib
 import json
+import re
 import os
+import shutil
 import subprocess
+import tarfile
 import threading
 import time
 import urllib.error
 import urllib.request
 from dataclasses import dataclass
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
-from pathlib import Path
+from pathlib import Path, PurePosixPath
 from typing import Any, Literal
 
-Stage = Literal["stt", "llm", "tts"]
+Stage = Literal["stt", "llm", "tts", "speaker"]
 OLLAMA_URL = os.environ.get("OLLAMA_URL", "http://127.0.0.1:11434").rstrip("/")
 STATE_ROOT = Path(os.environ.get("SAHA_MODEL_MANAGER_STATE", "/data/model-cache/s2s-model-manager"))
 MODEL_ROOT = Path(os.environ.get("SAHA_MODEL_ROOT", "/data/models/s2s"))
 SELECTION_PATH = Path(os.environ.get("SAHA_MODEL_SELECTION", "/data/model-config/s2s/selection.json"))
 LEGACY_CONFIG_PATH = Path(os.environ.get("SAHA_OLLAMA_CONFIG", "/data/model-config/s2s/ollama.env"))
 TASKS_PATH = STATE_ROOT / "downloads.json"
+VOICE_ROOT = Path(os.environ.get("SAHA_VOICE_ROOT", "/data/model-config/s2s/voices"))
+VOICE_TEMP_ROOT = Path(os.environ.get("SAHA_VOICE_TEMP_ROOT", "/data/model-config/s2s/voice-temp"))
+S2S_TRANSCRIBE_URL = os.environ.get("SAHA_S2S_TRANSCRIBE_URL", "http://127.0.0.1:8765/v1/voice-references/transcribe")
+MAX_VOICE_UPLOAD_BYTES = 8 * 1024 * 1024
+VOICE_ID_PATTERN = re.compile(r"^[a-z0-9][a-z0-9._-]{0,63}$")
+REFERENCE_ID_PATTERN = re.compile(r"^[a-f0-9]{32}$")
+ALLOWED_VOICE_MIME = frozenset({"audio/wav", "audio/x-wav", "audio/mp4", "audio/m4a", "audio/aac", "audio/webm", "audio/ogg"})
 NETWORK_PROBE_URL = os.environ.get("SAHA_MODEL_PROBE_URL", "https://huggingface.co/")
-STAGES: tuple[Stage, ...] = ("stt", "llm", "tts")
+STAGES: tuple[Stage, ...] = ("stt", "llm", "tts", "speaker")
+CORE_STAGES: tuple[Stage, ...] = ("stt", "llm", "tts")
 
 
 @dataclass(frozen=True)
@@ -32,6 +44,7 @@ class ArtifactSpec:
     filename: str
     size_bytes: int
     required_files: tuple[str, ...] = ()
+    archive_root: str | None = None
 
 
 @dataclass(frozen=True)
@@ -55,6 +68,11 @@ class ModelSpec:
     memory_bytes: int
     artifacts: tuple[ArtifactSpec, ...]
     validation_status: str
+    source: str | None = None
+    license_notice: str | None = None
+    compatible: bool = True
+    download_available: bool = True
+    compatibility_reason: str | None = None
 
 
 @dataclass(frozen=True)
@@ -108,6 +126,31 @@ SHERPA_VITS_ADAPTER = AdapterSpec(
     "local-bundle",
     (("model_path", "/models/tts"), ("num_threads", 4), ("provider", "cpu")),
 )
+COSYVOICE_ADAPTER = AdapterSpec(
+    "cosyvoice3-official-sidecar",
+    "cosyvoice-sidecar",
+    (("base_url", "http://127.0.0.1:8766"), ("voice_id", "builtin-ruoban"), ("timeout_seconds", 60)),
+)
+COSYVOICE_MODEL_ID = "FunAudioLLM/Fun-CosyVoice3-0.5B-2512"
+COSYVOICE_REVISION = "e0dfdde37d9a6acdc3cf92d51acfeea069003a9b"
+COSYVOICE_HEALTH_URL = os.environ.get("SAHA_COSYVOICE_HEALTH_URL", "http://127.0.0.1:8766/health")
+COSYVOICE_PREPROCESS_URL = os.environ.get("SAHA_COSYVOICE_PREPROCESS_URL", "http://127.0.0.1:8766/v1/voices/preprocess")
+S2S_READY_URL = os.environ.get("SAHA_S2S_READY_URL", "http://127.0.0.1:8765/ready")
+MATCHA_ADAPTER = AdapterSpec(
+    "sherpa-onnx-matcha-zh-en",
+    "local-artifacts",
+    (("model_path", "/models/tts/matcha-icefall-zh-en"), ("num_threads", 4), ("provider", "cpu")),
+)
+WESPEAKER_ADAPTER = AdapterSpec(
+    "wespeaker-campp-onnx",
+    "local-external-artifact",
+    (("model_path", "/models/speaker/wespeaker-campp/campplus.onnx"), ("model_version", "external-unverified"), ("provider", "cpu"), ("sample_rate", 16000)),
+)
+TITANET_ADAPTER = AdapterSpec(
+    "nemo-titanet-large",
+    "local-external-artifact",
+    (("model_path", "/models/speaker/titanet-large/titanet-large.nemo"), ("model_version", "external-unverified"), ("device", "cpu"), ("sample_rate", 16000)),
+)
 # The production catalog is a release gate, not a candidate list. Only models with
 # retained Orin R39.2/CUDA 13.2 evidence belong here.
 CATALOG: tuple[ModelSpec, ...] = (
@@ -141,6 +184,26 @@ CATALOG: tuple[ModelSpec, ...] = (
     ),
     ModelSpec("qwen2.5:1.5b-instruct-q4_K_M", "llm", "Qwen 2.5 1.5B", "Orin 实测中文低延迟模型", "openai-compatible", OLLAMA_ADAPTER, ("zh", "en"), "Q4_K_M", 986_061_892, 1_500_000_000, (), "verified-orin-r39.2-cuda13.2"),
     ModelSpec(
+        "cosyvoice3-0.5b-2512",
+        "tts",
+        "CosyVoice 3 官方 0.5B",
+        f"官方 AutoModel FP16 候选；固定 revision {COSYVOICE_REVISION[:12]}；仅门禁通过后生产可见",
+        "cosyvoice",
+        COSYVOICE_ADAPTER,
+        ("zh", "en"),
+        "FP16",
+        11_767_984_206,
+        9_000_000_000,
+        (ArtifactSpec("", "", "snapshot", 11_767_984_206, ("REVISION", "manifest.sha256", "cosyvoice3.yaml", "llm.pt", "flow.pt", "hift.pt", "speech_tokenizer_v3.onnx", "CosyVoice-BlankEN/model.safetensors")),),
+        "candidate-orin-r39.2-cuda13.2",
+        compatible=False,
+        download_available=False,
+        compatibility_reason=(
+            f"Complete official revision {COSYVOICE_REVISION} is pinned, but remains hidden until "
+            "its recursive manifest, Orin CUDA lifecycle, latency, quality, and rollback gates pass"
+        ),
+    ),
+    ModelSpec(
         "sherpa-onnx-vits-zh",
         "tts",
         "Sherpa ONNX VITS 中文",
@@ -153,6 +216,76 @@ CATALOG: tuple[ModelSpec, ...] = (
         512_000_000,
         (ArtifactSpec("", "", "vits-bundle", 121_100_803, ("model.onnx", "tokens.txt", "lexicon.txt")),),
         "verified-orin-r39.2-cuda13.2",
+    ),
+    ModelSpec(
+        "matcha-icefall-zh-en",
+        "tts",
+        "Matcha TTS 中英双语",
+        "Matcha + Vocos 16 kHz；权重来源明确但模型专用许可不明确，仅在 Orin 门禁通过后开放",
+        "sherpa-onnx",
+        MATCHA_ADAPTER,
+        ("zh", "en"),
+        None,
+        132_916_686,
+        1_000_000_000,
+        (
+            ArtifactSpec(
+                "https://github.com/k2-fsa/sherpa-onnx/releases/download/tts-models/matcha-icefall-zh-en.tar.bz2",
+                "271b804af570400d3bcdcb53bf6e53cc9f75180ee763b9f13eb5eaf2b0d086ef",
+                "matcha-icefall-zh-en.tar.bz2",
+                79_033_838,
+                ("model-steps-3.onnx", "lexicon.txt", "tokens.txt", "espeak-ng-data", "phone-zh.fst", "date-zh.fst", "number-zh.fst"),
+                "matcha-icefall-zh-en",
+            ),
+            ArtifactSpec(
+                "https://github.com/k2-fsa/sherpa-onnx/releases/download/vocoder-models/vocos-16khz-univ.onnx",
+                "b599142a1fb8ff03de3e84ac35ff537c619e56f4267a6fe894851a42844acf9e",
+                "vocos-16khz-univ.onnx",
+                53_882_848,
+                ("vocos-16khz-univ.onnx",),
+            ),
+        ),
+        "verified-orin-r39.2-cuda13.2",
+        "k2-fsa/sherpa-onnx release assets; acoustic weights originate from ModelScope dengcunqin/matcha_tts_zh_en_20251010",
+        "Model-specific weight license is unclear. User accepted testing risk; do not represent as commercially cleared.",
+    ),
+    ModelSpec(
+        "wespeaker-campp",
+        "speaker",
+        "WeSpeaker CAM++",
+        "中文 16 kHz CAM++ ONNX；需要经过校验的外部模型制品后才能安装和激活",
+        "wespeaker",
+        WESPEAKER_ADAPTER,
+        ("zh",),
+        None,
+        0,
+        0,
+        (ArtifactSpec("", "", "campplus.onnx", 0, ("campplus.onnx",)),),
+        "external-artifact-required",
+        "WeSpeaker CAM++ upstream model; exact release artifact, revision, size, and SHA-256 are not yet verified locally",
+        "Upstream code is Apache-2.0; confirm the selected model artifact's provenance and redistribution terms separately.",
+        False,
+        False,
+        "verified artifact metadata and Orin runtime validation are required",
+    ),
+    ModelSpec(
+        "titanet-large",
+        "speaker",
+        "NVIDIA TitaNet-Large",
+        "NeMo TitaNet-Large；需要本地固定 checkpoint 和已验证的 Jetson NeMo 运行环境",
+        "nemo",
+        TITANET_ADAPTER,
+        ("multi",),
+        None,
+        0,
+        0,
+        (ArtifactSpec("", "", "titanet-large.nemo", 0, ("titanet-large.nemo",)),),
+        "external-artifact-required-incompatible",
+        "NVIDIA NeMo TitaNet-Large; exact checkpoint revision, size, and SHA-256 are not yet verified locally",
+        "Model is commonly documented as CC-BY-4.0; verify the exact checkpoint's model card and attribution before redistribution.",
+        False,
+        False,
+        "pinned checkpoint metadata, NeMo/Jetson compatibility, and board validation are required",
     ),
 )
 BY_ID = {item.id: item for item in CATALOG}
@@ -253,8 +386,16 @@ def read_selection() -> PipelineSelection:
             config = value.get("config")
             spec = BY_ID.get(model_id)
             if spec and spec.stage == stage and adapter == spec.adapter.name and isinstance(config, dict):
+                if stage == "tts" and adapter == COSYVOICE_ADAPTER.name:
+                    voice_id = config.get("voice_id")
+                    if not isinstance(voice_id, str) or not VOICE_ID_PATTERN.fullmatch(voice_id):
+                        continue
+                    config = {key: item for key, item in config.items() if key != "voice_path"}
                 stages[stage] = StageSelection(model_id, adapter, config)
-        return PipelineSelection(int(body.get("version", 1)), stages)
+        version = int(body.get("version", 1))
+        if version not in {1, 2} or (version == 1 and "speaker" in stages):
+            return PipelineSelection(1, {stage: selected for stage, selected in stages.items() if stage in CORE_STAGES})
+        return PipelineSelection(version, stages)
     except (FileNotFoundError, OSError, ValueError, json.JSONDecodeError):
         return PipelineSelection(1, {})
 
@@ -271,10 +412,7 @@ def active_model() -> str | None:
 def model_installed(spec: ModelSpec, ollama_models: set[str] | None = None) -> bool:
     if spec.adapter.protocol == "ollama":
         return spec.id in (ollama_models if ollama_models is not None else installed_ollama_models())
-    model_path = dict(spec.adapter.activation).get("model_path")
-    destination = MODEL_ROOT / spec.stage / spec.id
-    if isinstance(model_path, str) and model_path.startswith("/models/"):
-        destination = MODEL_ROOT / Path(model_path).relative_to("/models")
+    destination = _artifact_destination(spec)
     return destination.is_dir() and all((destination / required).is_file() for artifact in spec.artifacts for required in artifact.required_files)
 
 
@@ -285,7 +423,9 @@ def catalog_response() -> dict[str, Any]:
             "id": spec.id, "stage": spec.stage, "label": spec.label, "description": spec.description,
             "backend": spec.backend, "adapter": spec.adapter.name, "languages": list(spec.languages),
             "quantization": spec.quantization, "diskBytes": spec.disk_bytes, "memoryBytes": spec.memory_bytes,
-            "validationStatus": spec.validation_status,
+            "validationStatus": spec.validation_status, "source": spec.source, "licenseNotice": spec.license_notice,
+            "compatible": spec.compatible, "downloadAvailable": spec.download_available,
+            "compatibilityReason": spec.compatibility_reason,
         })
     return {"version": 1, "stages": stages}
 
@@ -307,7 +447,9 @@ def models_status() -> dict[str, Any]:
                     "id": spec.id,
                     "installed": model_installed(spec, ollama_models),
                     "active": spec.id == active,
-                    "compatible": True,
+                    "compatible": spec.compatible,
+                    "downloadAvailable": spec.download_available,
+                    "compatibilityReason": spec.compatibility_reason,
                     "download": _state_dict(downloads[spec.id]) if spec.id in downloads else None,
                 }
                 for spec in models
@@ -329,7 +471,7 @@ def pipeline_readiness() -> dict[str, Any]:
     selection = read_selection()
     ollama_models = installed_ollama_models()
     checks = []
-    for stage in STAGES:
+    for stage in CORE_STAGES:
         selected = selection.stages.get(stage)
         model_id = selected.model_id if selected else None
         spec = BY_ID.get(model_id or "")
@@ -340,6 +482,134 @@ def pipeline_readiness() -> dict[str, Any]:
         checks.append({"stage": stage, "ready": ready, "modelId": model_id, "installed": installed, "compatible": compatible, "reason": reason})
     ready = all(check["ready"] for check in checks)
     return {"status": "ready" if ready else "not_ready", "ready": ready, "checks": checks}
+
+
+def _sha256(path: Path) -> str:
+    digest = hashlib.sha256()
+    with path.open("rb") as source:
+        for chunk in iter(lambda: source.read(1024 * 1024), b""):
+            digest.update(chunk)
+    return digest.hexdigest()
+
+
+def _safe_extract_tar(archive: Path, destination: Path, archive_root: str | None) -> None:
+    destination_resolved = destination.resolve()
+    with tarfile.open(archive, mode="r:*") as source:
+        members = source.getmembers()
+        for member in members:
+            path = PurePosixPath(member.name)
+            if path.is_absolute() or ".." in path.parts or member.issym() or member.islnk() or member.isdev():
+                raise ValueError(f"unsafe tar member: {member.name}")
+            target = (destination / Path(*path.parts)).resolve()
+            if target != destination_resolved and destination_resolved not in target.parents:
+                raise ValueError(f"tar member escapes destination: {member.name}")
+        source.extractall(destination, members=members, filter="data")
+    if archive_root:
+        extracted_root = destination / archive_root
+        if not extracted_root.is_dir():
+            raise ValueError(f"archive root missing: {archive_root}")
+        for child in extracted_root.iterdir():
+            child.replace(destination / child.name)
+        extracted_root.rmdir()
+
+
+def _artifact_destination(spec: ModelSpec) -> Path:
+    model_path = dict(spec.adapter.activation).get("model_path")
+    if isinstance(model_path, str) and model_path.startswith("/models/"):
+        relative = Path(model_path).relative_to("/models")
+        required = {name for artifact in spec.artifacts for name in artifact.required_files}
+        if relative.name in required:
+            relative = relative.parent
+        return MODEL_ROOT / relative
+    return MODEL_ROOT / spec.stage / spec.id
+
+
+def _validate_staged_artifacts(spec: ModelSpec, staged: Path) -> None:
+    for artifact in spec.artifacts:
+        for required in artifact.required_files:
+            path = staged / required
+            if not path.exists() or (path.is_file() and path.stat().st_size == 0):
+                raise ValueError(f"required installed artifact missing: {required}")
+
+
+def _download_artifact(spec: ModelSpec, artifact: ArtifactSpec, offset: int, total_bytes: int, pause: threading.Event) -> int:
+    cache = STATE_ROOT / "artifacts" / spec.id
+    cache.mkdir(parents=True, exist_ok=True)
+    partial = cache / f"{artifact.filename}.part"
+    completed = partial.stat().st_size if partial.is_file() else 0
+    headers = {"Range": f"bytes={completed}-"} if completed else {}
+    request = urllib.request.Request(artifact.url, headers=headers)
+    started = time.monotonic()
+    initial = completed
+    with urllib.request.urlopen(request, timeout=60) as response:
+        if completed and response.status != 206:
+            completed = 0
+            initial = 0
+            partial.unlink(missing_ok=True)
+        mode = "ab" if completed else "wb"
+        with partial.open(mode) as output:
+            while True:
+                if pause.is_set():
+                    raise InterruptedError("download paused")
+                chunk = response.read(1024 * 1024)
+                if not chunk:
+                    break
+                output.write(chunk)
+                completed += len(chunk)
+                elapsed = max(time.monotonic() - started, 0.001)
+                rate = max(completed - initial, 0) / elapsed
+                aggregate = offset + completed
+                set_download(
+                    spec.id,
+                    status="downloading",
+                    bytes_completed=aggregate,
+                    bytes_total=total_bytes,
+                    bytes_per_second=rate,
+                    eta_seconds=(total_bytes - aggregate) / rate if rate else None,
+                    error=None,
+                )
+    if completed != artifact.size_bytes:
+        raise ValueError(f"artifact size mismatch for {artifact.filename}: expected {artifact.size_bytes}, got {completed}")
+    actual = _sha256(partial)
+    if actual != artifact.sha256:
+        raise ValueError(f"artifact SHA-256 mismatch for {artifact.filename}: expected {artifact.sha256}, got {actual}")
+    return completed
+
+
+def pull_artifact_model(model: str) -> None:
+    spec = BY_ID[model]
+    pause = PAUSE_EVENTS.setdefault(model, threading.Event())
+    total_bytes = sum(artifact.size_bytes for artifact in spec.artifacts)
+    staging = _artifact_destination(spec).with_name(f".{spec.id}.installing")
+    try:
+        completed = 0
+        for artifact in spec.artifacts:
+            completed += _download_artifact(spec, artifact, completed, total_bytes, pause)
+        shutil.rmtree(staging, ignore_errors=True)
+        staging.mkdir(parents=True)
+        cache = STATE_ROOT / "artifacts" / spec.id
+        for artifact in spec.artifacts:
+            downloaded = cache / f"{artifact.filename}.part"
+            if artifact.archive_root:
+                _safe_extract_tar(downloaded, staging, artifact.archive_root)
+            else:
+                shutil.copy2(downloaded, staging / artifact.filename)
+        _validate_staged_artifacts(spec, staging)
+        destination = _artifact_destination(spec)
+        destination.parent.mkdir(parents=True, exist_ok=True)
+        backup = destination.with_name(f".{destination.name}.previous")
+        shutil.rmtree(backup, ignore_errors=True)
+        if destination.exists():
+            destination.replace(backup)
+        staging.replace(destination)
+        shutil.rmtree(backup, ignore_errors=True)
+        set_download(model, status="success", bytes_completed=total_bytes, bytes_total=total_bytes, bytes_per_second=0.0, eta_seconds=0.0, error=None)
+    except InterruptedError:
+        shutil.rmtree(staging, ignore_errors=True)
+        set_download(model, status="paused", bytes_per_second=0.0, eta_seconds=None)
+    except (OSError, ValueError, tarfile.TarError, urllib.error.URLError) as error:
+        shutil.rmtree(staging, ignore_errors=True)
+        set_download(model, status="error", bytes_per_second=0.0, eta_seconds=None, error=str(error))
 
 
 def pull_ollama_model(model: str) -> None:
@@ -371,13 +641,17 @@ def pull_ollama_model(model: str) -> None:
 
 
 def start_download(model: str) -> bool:
+    spec = BY_ID[model]
+    if not spec.download_available:
+        raise RuntimeError(spec.compatibility_reason or "model requires an externally supplied artifact")
     with DOWNLOAD_LOCK:
         current = DOWNLOADS.get(model)
         if current and current.status in {"starting", "downloading"}:
             return False
     PAUSE_EVENTS.setdefault(model, threading.Event()).clear()
     set_download(model, status="starting", error=None, bytes_per_second=0.0, eta_seconds=None)
-    threading.Thread(target=pull_ollama_model, args=(model,), daemon=True, name=f"model-download-{model}").start()
+    target = pull_ollama_model if BY_ID[model].adapter.protocol == "ollama" else pull_artifact_model
+    threading.Thread(target=target, args=(model,), daemon=True, name=f"model-download-{model}").start()
     return True
 
 
@@ -397,13 +671,50 @@ def require_model(body: dict[str, Any], stage: str | None = None) -> ModelSpec:
     return spec
 
 
+def wait_ready(url: str, timeout: int) -> dict[str, Any]:
+    deadline = time.monotonic() + timeout
+    last_error: Exception | None = None
+    while time.monotonic() < deadline:
+        try:
+            with urllib.request.urlopen(url, timeout=5) as response:
+                body = json.load(response)
+            if body.get("status") in {"ready", "ok"} or body.get("ready") is True:
+                return body
+        except (OSError, ValueError, json.JSONDecodeError, urllib.error.URLError) as error:
+            last_error = error
+        time.sleep(2)
+    raise RuntimeError(f"service did not become ready: {url}: {last_error}")
+
+
+def run_s2s_command(command: str, timeout: int = 360) -> None:
+    subprocess.run(["saha-s2s", command], check=True, timeout=timeout)
+
+
+def selection_uses_cosyvoice(selection: PipelineSelection) -> bool:
+    selected = selection.stages.get("tts")
+    return bool(selected and selected.adapter == COSYVOICE_ADAPTER.name)
+
+
 def activate(spec: ModelSpec) -> None:
+    if not spec.compatible:
+        raise RuntimeError(spec.compatibility_reason or "model is not compatible with this release")
     if not model_installed(spec):
         raise RuntimeError("model is not installed")
     old = read_selection()
+    old_uses_cosyvoice = selection_uses_cosyvoice(old)
+    new_uses_cosyvoice = spec.adapter.protocol == "cosyvoice-sidecar" or (spec.stage != "tts" and old_uses_cosyvoice)
+    sidecar_started = False
+    if new_uses_cosyvoice and not old_uses_cosyvoice:
+        run_s2s_command("cosy-start")
+        sidecar_started = True
+        health = wait_ready(COSYVOICE_HEALTH_URL, 300)
+        if health.get("revision") != COSYVOICE_REVISION:
+            run_s2s_command("cosy-stop")
+            raise RuntimeError("CosyVoice sidecar revision mismatch")
     stages = dict(old.stages)
     stages[spec.stage] = selection_for(spec)
-    _atomic_json(SELECTION_PATH, selection_dict(PipelineSelection(1, stages)))
+    selection_version = 2 if "speaker" in stages else old.version
+    _atomic_json(SELECTION_PATH, selection_dict(PipelineSelection(selection_version, stages)))
     if spec.stage == "llm":
         LEGACY_CONFIG_PATH.parent.mkdir(parents=True, exist_ok=True)
         temporary = LEGACY_CONFIG_PATH.with_suffix(".tmp")
@@ -412,9 +723,133 @@ def activate(spec: ModelSpec) -> None:
         temporary.replace(LEGACY_CONFIG_PATH)
     try:
         subprocess.run(["systemctl", "try-restart", "saha-s2s.service"], check=True, timeout=180)
-    except (OSError, subprocess.SubprocessError):
+        wait_ready(S2S_READY_URL, 180)
+    except (OSError, RuntimeError, subprocess.SubprocessError):
         _atomic_json(SELECTION_PATH, selection_dict(old))
+        subprocess.run(["systemctl", "try-restart", "saha-s2s.service"], check=False, timeout=180)
+        if sidecar_started:
+            try:
+                run_s2s_command("cosy-stop")
+            except (OSError, subprocess.SubprocessError):
+                pass
         raise
+    if old_uses_cosyvoice and not selection_uses_cosyvoice(PipelineSelection(selection_version, stages)):
+        run_s2s_command("cosy-stop")
+
+
+def _voice_profile(voice_id: str) -> dict[str, Any]:
+    if not VOICE_ID_PATTERN.fullmatch(voice_id):
+        raise ValueError("invalid voiceId")
+    directory = VOICE_ROOT / voice_id
+    try:
+        profile = json.loads((directory / "profile.json").read_text(encoding="utf-8"))
+        wav = directory / "reference.wav"
+        if not wav.is_file() or profile.get("voiceId") != voice_id or profile.get("wavSha256") != _sha256(wav):
+            raise ValueError("voice profile integrity check failed")
+        return profile
+    except (FileNotFoundError, OSError, json.JSONDecodeError) as error:
+        raise ValueError("voice profile does not exist") from error
+
+
+def voices_response() -> dict[str, Any]:
+    voices = []
+    if VOICE_ROOT.is_dir():
+        for directory in sorted(VOICE_ROOT.iterdir()):
+            if not directory.is_dir() or not VOICE_ID_PATTERN.fullmatch(directory.name):
+                continue
+            try:
+                profile = _voice_profile(directory.name)
+                voices.append({key: profile.get(key) for key in ("voiceId", "name", "kind", "promptText", "durationSeconds", "source", "replaceable", "createdAt")})
+            except ValueError:
+                continue
+    selection = read_selection().stages.get("tts")
+    active = selection.config.get("voice_id") if selection and selection.adapter == COSYVOICE_ADAPTER.name else None
+    return {"version": 1, "activeVoiceId": active, "voices": voices}
+
+
+def stage_voice_upload(content_type: str, payload: bytes) -> dict[str, Any]:
+    if content_type not in ALLOWED_VOICE_MIME:
+        raise ValueError("unsupported reference audio MIME type")
+    if not payload or len(payload) > MAX_VOICE_UPLOAD_BYTES:
+        raise ValueError("reference audio must contain 1 byte to 8 MiB")
+    request = urllib.request.Request(S2S_TRANSCRIBE_URL, data=payload, headers={"Content-Type": content_type}, method="POST")
+    with urllib.request.urlopen(request, timeout=120) as response:
+        result = json.load(response)
+    reference_id = str(result.get("referenceId", ""))
+    if not REFERENCE_ID_PATTERN.fullmatch(reference_id):
+        raise RuntimeError("S2S returned an invalid referenceId")
+    return result
+
+
+def create_voice(body: dict[str, Any]) -> dict[str, Any]:
+    reference_id = str(body.get("referenceId", ""))
+    if not REFERENCE_ID_PATTERN.fullmatch(reference_id):
+        raise ValueError("invalid referenceId")
+    name = str(body.get("name", "")).strip()
+    prompt_text = str(body.get("promptText", "")).strip()
+    if not 1 <= len(name) <= 40 or not 1 <= len(prompt_text) <= 500:
+        raise ValueError("name must be 1-40 characters and promptText 1-500 characters")
+    source = VOICE_TEMP_ROOT / f"{reference_id}.wav"
+    if not source.is_file() or source.is_symlink():
+        raise ValueError("reference has expired or does not exist")
+    voice_id = f"user-{hashlib.sha256((reference_id + name).encode()).hexdigest()[:16]}"
+    staging = VOICE_ROOT / f".{voice_id}.installing"
+    shutil.rmtree(staging, ignore_errors=True)
+    staging.mkdir(mode=0o700, parents=True)
+    shutil.copy2(source, staging / "reference.wav")
+    import wave
+    with wave.open(str(staging / "reference.wav"), "rb") as wav:
+        duration = wav.getnframes() / wav.getframerate()
+        if wav.getnchannels() != 1 or wav.getsampwidth() != 2 or wav.getframerate() != 16000 or not 5 <= duration <= 10:
+            raise ValueError("reference must be canonical 5-10 second 16 kHz mono PCM16 WAV")
+    profile = {"version": 1, "voiceId": voice_id, "name": name, "kind": "user", "promptText": prompt_text, "durationSeconds": round(duration, 3), "wavSha256": _sha256(staging / "reference.wav"), "source": "user-recording", "replaceable": False, "createdAt": int(time.time())}
+    _atomic_json(staging / "profile.json", profile)
+    destination = VOICE_ROOT / voice_id
+    if destination.exists():
+        raise ValueError("voice profile already exists")
+    staging.replace(destination)
+    source.unlink(missing_ok=True)
+    return profile
+
+
+def select_voice(voice_id: str) -> dict[str, Any]:
+    profile = _voice_profile(voice_id)
+    selection = read_selection()
+    tts = selection.stages.get("tts")
+    if not tts or tts.adapter != COSYVOICE_ADAPTER.name:
+        raise RuntimeError("CosyVoice must be the active TTS before selecting a voice")
+    stages = dict(selection.stages)
+    stages["tts"] = StageSelection(tts.model_id, tts.adapter, {**tts.config, "voice_id": voice_id})
+    _atomic_json(SELECTION_PATH, selection_dict(PipelineSelection(selection.version, stages)))
+    try:
+        reload_request = urllib.request.Request(
+            COSYVOICE_PREPROCESS_URL.rsplit("/", 1)[0] + "/reload",
+            data=b"{}",
+            headers={"Content-Type": "application/json"},
+            method="POST",
+        )
+        with urllib.request.urlopen(reload_request, timeout=30):
+            pass
+        request = urllib.request.Request(COSYVOICE_PREPROCESS_URL, data=json.dumps({"voice_id": voice_id}).encode(), headers={"Content-Type": "application/json"}, method="POST")
+        with urllib.request.urlopen(request, timeout=120):
+            pass
+        subprocess.run(["systemctl", "try-restart", "saha-s2s.service"], check=True, timeout=180)
+        wait_ready(S2S_READY_URL, 180)
+    except BaseException:
+        _atomic_json(SELECTION_PATH, selection_dict(selection))
+        subprocess.run(["systemctl", "try-restart", "saha-s2s.service"], check=False, timeout=180)
+        raise
+    return profile
+
+
+def delete_voice(voice_id: str) -> None:
+    profile = _voice_profile(voice_id)
+    if profile.get("kind") == "builtin":
+        raise ValueError("built-in voice cannot be deleted")
+    active = voices_response()["activeVoiceId"]
+    if active == voice_id:
+        raise RuntimeError("active voice cannot be deleted")
+    shutil.rmtree(VOICE_ROOT / voice_id)
 
 
 def network_status() -> dict[str, Any]:
@@ -469,10 +904,22 @@ class Handler(BaseHTTPRequestHandler):
 
     def do_GET(self) -> None:
         try:
+            match = re.fullmatch(r"/v1/voices/([a-z0-9][a-z0-9._-]{0,63})/preview", self.path)
+            if match:
+                profile = _voice_profile(match.group(1))
+                payload = (VOICE_ROOT / profile["voiceId"] / "reference.wav").read_bytes()
+                self.send_response(200)
+                self.send_header("Content-Type", "audio/wav")
+                self.send_header("Content-Length", str(len(payload)))
+                self.send_header("Access-Control-Allow-Origin", "*")
+                self.end_headers()
+                self.wfile.write(payload)
+                return
             routes = {
                 "/health": lambda: {"status": "ok"}, "/v1/catalog": catalog_response,
                 "/v1/models/status": models_status, "/v1/models": legacy_model_status,
                 "/v1/pipeline/readiness": pipeline_readiness, "/v1/network/status": network_status,
+                "/v1/voices": voices_response,
             }
             function = routes.get(self.path)
             self.send_json(200, function()) if function else self.send_json(404, {"error": "not found"})
@@ -481,7 +928,25 @@ class Handler(BaseHTTPRequestHandler):
 
     def do_POST(self) -> None:
         try:
+            if self.path == "/v1/voices/upload":
+                content_type = self.headers.get("Content-Type", "").split(";", 1)[0].strip().lower()
+                length = int(self.headers.get("Content-Length", "0"))
+                if length > MAX_VOICE_UPLOAD_BYTES:
+                    self.send_json(413, {"error": "reference audio exceeds 8 MiB"})
+                    return
+                self.send_json(200, stage_voice_upload(content_type, self.rfile.read(length)))
+                return
             body = self.read_json()
+            if self.path == "/v1/voices":
+                self.send_json(201, create_voice(body))
+                return
+            if self.path == "/v1/voices/select":
+                self.send_json(200, select_voice(str(body.get("voiceId", ""))))
+                return
+            if self.path == "/v1/voices/delete":
+                delete_voice(str(body.get("voiceId", "")))
+                self.send_json(200, {"status": "deleted"})
+                return
             spec = require_model(body)
             if self.path in {"/v1/models/download", "/v1/models/pull", "/v1/models/resume"}:
                 started = start_download(spec.id)
@@ -505,13 +970,25 @@ class Handler(BaseHTTPRequestHandler):
         print(f"saha-s2s-model-manager: {format % args}", flush=True)
 
 
+def restore_selected_sidecars() -> None:
+    if selection_uses_cosyvoice(read_selection()):
+        run_s2s_command("cosy-start")
+        health = wait_ready(COSYVOICE_HEALTH_URL, 300)
+        if health.get("revision") != COSYVOICE_REVISION:
+            run_s2s_command("cosy-stop")
+            raise RuntimeError("selected CosyVoice revision does not match the pinned release")
+
+
 def main() -> None:
     STATE_ROOT.mkdir(parents=True, exist_ok=True)
+    VOICE_ROOT.mkdir(mode=0o700, parents=True, exist_ok=True)
+    VOICE_TEMP_ROOT.mkdir(mode=0o700, parents=True, exist_ok=True)
     for stage in STAGES:
         (MODEL_ROOT / stage).mkdir(parents=True, exist_ok=True)
     interrupted = load_downloads()
     for model in interrupted:
         start_download(model)
+    restore_selected_sidecars()
     address = os.environ.get("SAHA_MODEL_MANAGER_HOST", os.environ.get("SAHA_OLLAMA_MANAGER_HOST", "0.0.0.0"))
     port = int(os.environ.get("SAHA_MODEL_MANAGER_PORT", os.environ.get("SAHA_OLLAMA_MANAGER_PORT", "11435")))
     ThreadingHTTPServer((address, port), Handler).serve_forever()

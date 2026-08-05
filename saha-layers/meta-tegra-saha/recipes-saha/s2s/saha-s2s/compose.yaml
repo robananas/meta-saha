@@ -19,6 +19,11 @@ services:
       ROBAN_S2S_MODEL_ROOT: /models
       ROBAN_S2S_CACHE_DIR: /var/cache/roban-s2s
       ROBAN_S2S_SELECTION_PATH: /model-config/selection.json
+      ROBAN_S2S_VOICEPRINT_DIR: ${ROBAN_S2S_VOICEPRINT_DIR:-/var/lib/roban-s2s/voiceprints}
+      ROBAN_S2S_VOICE_REFERENCE_TEMP_DIR: /voice-temp
+      ROBAN_S2S_SPEAKER_PROVIDER: ${ROBAN_S2S_SPEAKER_PROVIDER:-cpu}
+      ROBAN_S2S_WESPEAKER_THRESHOLD: ${ROBAN_S2S_WESPEAKER_THRESHOLD:-}
+      ROBAN_S2S_TITANET_THRESHOLD: ${ROBAN_S2S_TITANET_THRESHOLD:-}
       ROBAN_S2S_KWS_MODEL_DIR: /models/kws
       ROBAN_S2S_VAD_MODEL_PATH: /models/silero_vad.onnx
       ROBAN_S2S_KWS_PROVIDER: ${ROBAN_S2S_KWS_PROVIDER:-cpu}
@@ -32,9 +37,42 @@ services:
       - /data/models/s2s:/models:ro
       - /data/model-config/s2s:/model-config:ro
       - /data/model-cache/s2s:/var/cache/roban-s2s
+      - /data/voiceprints/s2s:/var/lib/roban-s2s/voiceprints:rw
+      - /data/model-config/s2s/voice-temp:/voice-temp:rw
     healthcheck:
       test: ["CMD", "python", "-c", "import os,urllib.request; urllib.request.urlopen('http://127.0.0.1:'+os.getenv('ROBAN_S2S_PORT','8765')+'/health', timeout=5)"]
       interval: 30s
       timeout: 8s
       retries: 3
       start_period: 30s
+
+  roban-cosyvoice:
+    profiles: ["cosyvoice"]
+    image: ${SAHA_COSYVOICE_IMAGE:-roban-cosyvoice:arm64}
+    container_name: saha-cosyvoice
+    runtime: nvidia
+    network_mode: host
+    restart: "no"
+    init: true
+    environment:
+      NVIDIA_VISIBLE_DEVICES: all
+      NVIDIA_DRIVER_CAPABILITIES: compute,utility
+      CUDA_VISIBLE_DEVICES: "0"
+      HF_HUB_OFFLINE: "1"
+      TRANSFORMERS_OFFLINE: "1"
+      ROBAN_COSYVOICE_HOST: 127.0.0.1
+      ROBAN_COSYVOICE_PORT: ${SAHA_COSYVOICE_PORT:-8766}
+      ROBAN_COSYVOICE_MODEL_DIR: /models/Fun-CosyVoice3-0.5B-2512
+      ROBAN_COSYVOICE_VOICE_ROOT: /voices
+      ROBAN_COSYVOICE_CACHE_ROOT: /var/cache/roban-cosyvoice/voices
+      ROBAN_COSYVOICE_FP16: "1"
+    volumes:
+      - /data/models/s2s/tts/cosyvoice3:/models:ro
+      - /data/model-config/s2s/voices:/voices:ro
+      - /data/model-cache/s2s/cosyvoice3:/var/cache/roban-cosyvoice
+    healthcheck:
+      test: ["CMD", "python", "-c", "import os,urllib.request; urllib.request.urlopen('http://127.0.0.1:'+os.getenv('ROBAN_COSYVOICE_PORT','8766')+'/health', timeout=5)"]
+      interval: 10s
+      timeout: 5s
+      retries: 6
+      start_period: 180s

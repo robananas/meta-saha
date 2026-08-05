@@ -29,6 +29,7 @@ do_install() {
 
     install -d ${D}${localstatedir}/lib/saha/s2s/models
     install -d ${D}${localstatedir}/cache/saha/s2s
+    install -d ${D}/data/model-config/s2s/voices
 
     install -d ${D}${systemd_system_unitdir}
     install -m 0644 ${UNPACKDIR}/saha-s2s.service ${D}${systemd_system_unitdir}/saha-s2s.service
@@ -39,4 +40,5 @@ FILES:${PN} += " \
     ${sysconfdir}/default/saha-s2s \
     ${localstatedir}/lib/saha/s2s/models \
     ${localstatedir}/cache/saha/s2s \
+    /data/model-config/s2s/voices \
 "
