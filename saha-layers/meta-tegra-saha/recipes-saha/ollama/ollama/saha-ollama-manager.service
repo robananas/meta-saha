@@ -14,6 +14,7 @@ Environment=SAHA_MODEL_MANAGER_STATE=/data/model-cache/s2s-model-manager
 Environment=SAHA_MODEL_ROOT=/data/models/s2s
 Environment=SAHA_MODEL_SELECTION=/data/model-config/s2s/selection.json
 Environment=SAHA_OLLAMA_CONFIG=/data/model-config/s2s/ollama.env
+Environment=SAHA_MODEL_PROBE_URL=https://www.baidu.com/
 Restart=on-failure
 RestartSec=5
 NoNewPrivileges=yes

@@ -60,6 +60,9 @@ services:
       CUDA_VISIBLE_DEVICES: "0"
       HF_HUB_OFFLINE: "1"
       TRANSFORMERS_OFFLINE: "1"
+      HF_HOME: /tmp/huggingface
+      NUMBA_CACHE_DIR: /tmp/numba
+      MPLCONFIGDIR: /tmp/matplotlib
       ROBAN_COSYVOICE_HOST: 127.0.0.1
       ROBAN_COSYVOICE_PORT: ${SAHA_COSYVOICE_PORT:-8766}
       ROBAN_COSYVOICE_MODEL_DIR: /models/Fun-CosyVoice3-0.5B-2512

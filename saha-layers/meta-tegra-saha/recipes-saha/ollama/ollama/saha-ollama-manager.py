@@ -31,8 +31,8 @@ S2S_TRANSCRIBE_URL = os.environ.get("SAHA_S2S_TRANSCRIBE_URL", "http://127.0.0.1
 MAX_VOICE_UPLOAD_BYTES = 8 * 1024 * 1024
 VOICE_ID_PATTERN = re.compile(r"^[a-z0-9][a-z0-9._-]{0,63}$")
 REFERENCE_ID_PATTERN = re.compile(r"^[a-f0-9]{32}$")
-ALLOWED_VOICE_MIME = frozenset({"audio/wav", "audio/x-wav", "audio/mp4", "audio/m4a", "audio/aac", "audio/webm", "audio/ogg"})
-NETWORK_PROBE_URL = os.environ.get("SAHA_MODEL_PROBE_URL", "https://huggingface.co/")
+ALLOWED_VOICE_MIME = frozenset({"audio/wav", "audio/x-wav", "audio/mp4", "audio/m4a", "audio/mpeg", "audio/aac", "audio/webm", "audio/ogg"})
+NETWORK_PROBE_URL = os.environ.get("SAHA_MODEL_PROBE_URL", "https://www.baidu.com/")
 STAGES: tuple[Stage, ...] = ("stt", "llm", "tts", "speaker")
 CORE_STAGES: tuple[Stage, ...] = ("stt", "llm", "tts")
 

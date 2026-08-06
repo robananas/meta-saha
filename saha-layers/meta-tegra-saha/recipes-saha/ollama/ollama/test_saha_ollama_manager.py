@@ -209,6 +209,43 @@ class ModelManagerTest(unittest.TestCase):
                 with self.assertRaisesRegex(ValueError, "integrity"):
                     MODULE._voice_profile("user-test")
 
+    def test_voice_upload_accepts_audio_mpeg_into_decode_path(self):
+        class Response:
+            def __enter__(self):
+                return self
+
+            def __exit__(self, *_args):
+                return False
+
+        request = None
+
+        def urlopen(captured, timeout):
+            nonlocal request
+            request = captured
+            self.assertEqual(120, timeout)
+            return Response()
+
+        with patch.object(MODULE.urllib.request, "urlopen", side_effect=urlopen), patch.object(
+            MODULE.json, "load", return_value={"referenceId": "a" * 32}
+        ):
+            result = MODULE.stage_voice_upload("audio/mpeg", b"encoded-audio")
+
+        self.assertEqual("a" * 32, result["referenceId"])
+        self.assertEqual("audio/mpeg", request.headers["Content-type"])
+        self.assertEqual(b"encoded-audio", request.data)
+
+    def test_forged_audio_mpeg_is_rejected_by_decode_path(self):
+        with patch.object(
+            MODULE.urllib.request,
+            "urlopen",
+            side_effect=MODULE.urllib.error.HTTPError(
+                MODULE.S2S_TRANSCRIBE_URL, 400, "audio decode failed", {}, None
+            ),
+        ):
+            with self.assertRaises(MODULE.urllib.error.HTTPError) as raised:
+                MODULE.stage_voice_upload("audio/mpeg", b"not audio")
+        self.assertEqual(400, raised.exception.code)
+
     def test_voice_upload_rejects_mime_size_and_path_ids(self):
         with self.assertRaisesRegex(ValueError, "MIME"):
             MODULE.stage_voice_upload("application/octet-stream", b"x")

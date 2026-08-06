@@ -103,6 +103,7 @@ start_cosyvoice() {
     test -s "$cosy_model_dir/manifest.sha256"
     (cd "$cosy_model_dir" && sha256sum -c manifest.sha256)
     mkdir -p /data/model-cache/s2s/cosyvoice3 /data/model-config/s2s/voices
+    chmod 0755 /data/model-config/s2s /data/model-config/s2s/voices
     cd "$SAHA_S2S_COMPOSE_DIR"
     compose --profile cosyvoice up -d --pull never --no-deps roban-cosyvoice
     if ! wait_http "http://127.0.0.1:${SAHA_COSYVOICE_PORT}/health" "$SAHA_COSYVOICE_WAIT"; then
