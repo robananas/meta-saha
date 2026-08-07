@@ -34,8 +34,8 @@ class ModelManagerTest(unittest.TestCase):
         self.assertEqual(["cosyvoice3-0.5b-2512", "sherpa-onnx-vits-zh", "matcha-icefall-zh-en"], [item["id"] for item in catalog["stages"]["tts"]])
         cosyvoice = catalog["stages"]["tts"][0]
         self.assertEqual("cosyvoice3-official-sidecar", cosyvoice["adapter"])
-        self.assertEqual("candidate-orin-r39.2-cuda13.2", cosyvoice["validationStatus"])
-        self.assertFalse(cosyvoice["compatible"])
+        self.assertEqual("verified-test-board-orin-r39.2-cuda13.2", cosyvoice["validationStatus"])
+        self.assertTrue(cosyvoice["compatible"])
         self.assertFalse(cosyvoice["downloadAvailable"])
         self.assertIn(MODULE.COSYVOICE_REVISION, cosyvoice["compatibilityReason"])
         self.assertEqual("sherpa-onnx-vits-zh", catalog["stages"]["tts"][1]["adapter"])
@@ -44,7 +44,8 @@ class ModelManagerTest(unittest.TestCase):
         self.assertEqual("verified-orin-r39.2-cuda13.2", matcha["validationStatus"])
         self.assertIn("license is unclear", matcha["licenseNotice"])
         self.assertEqual(["wespeaker-campp", "titanet-large"], [item["id"] for item in catalog["stages"]["speaker"]])
-        self.assertTrue(all(not item["compatible"] for item in catalog["stages"]["speaker"]))
+        self.assertTrue(catalog["stages"]["speaker"][0]["compatible"])
+        self.assertFalse(catalog["stages"]["speaker"][0]["downloadAvailable"])
         self.assertTrue(all(not item["downloadAvailable"] for item in catalog["stages"]["speaker"]))
         self.assertTrue(all(item["validationStatus"] == "verified-orin-r39.2-cuda13.2" for stage in (catalog["stages"]["stt"], catalog["stages"]["llm"]) for item in stage))
         with self.assertRaises(ValueError):
@@ -55,7 +56,14 @@ class ModelManagerTest(unittest.TestCase):
             readiness = MODULE.pipeline_readiness()
         self.assertFalse(readiness["ready"])
         self.assertEqual("not_ready", readiness["status"])
-        self.assertEqual(["not_selected"] * 3, [check["reason"] for check in readiness["checks"]])
+        self.assertEqual(["not_selected"] * 4, [check["reason"] for check in readiness["checks"]])
+
+    def test_wespeaker_profile_version_binds_official_frontend_contract(self):
+        config = dict(MODULE.WESPEAKER_ADAPTER.activation)
+        self.assertEqual(
+            f"{MODULE.WESPEAKER_REVISION}+{MODULE.WESPEAKER_FRONTEND_VERSION}",
+            config["model_version"],
+        )
 
     def test_version_two_selection_accepts_optional_speaker(self):
         selection = MODULE.PipelineSelection(
@@ -97,14 +105,15 @@ class ModelManagerTest(unittest.TestCase):
         with patch.object(MODULE, "read_selection", return_value=selection), patch.object(MODULE, "model_installed", return_value=True), patch.object(MODULE, "installed_ollama_models", return_value=set()):
             readiness = MODULE.pipeline_readiness()
         self.assertTrue(readiness["ready"])
-        self.assertEqual(list(MODULE.CORE_STAGES), [check["stage"] for check in readiness["checks"]])
+        self.assertEqual(list(MODULE.STAGES), [check["stage"] for check in readiness["checks"]])
+        self.assertFalse(readiness["checks"][-1]["ready"])
 
-    def test_external_speaker_artifacts_cannot_be_downloaded_or_activated(self):
+    def test_wespeaker_is_preprovisioned_and_cannot_download(self):
         spec = MODULE.BY_ID["wespeaker-campp"]
-        with self.assertRaisesRegex(RuntimeError, "verified artifact metadata"):
+        with self.assertRaisesRegex(RuntimeError, "Pre-provisioned"):
             MODULE.start_download(spec.id)
-        with self.assertRaisesRegex(RuntimeError, "verified artifact metadata"):
-            MODULE.activate(spec)
+        self.assertTrue(spec.compatible)
+        self.assertEqual(MODULE.WESPEAKER_SHA256, spec.artifacts[0].sha256)
 
     def test_selection_is_atomic_and_legacy_compatible(self):
         with tempfile.TemporaryDirectory() as directory:
@@ -131,21 +140,51 @@ class ModelManagerTest(unittest.TestCase):
                 json.loads(selection.read_text()),
             )
             self.assertEqual("ROBAN_S2S_LLM_MODEL=qwen2.5:1.5b-instruct-q4_K_M\n", legacy.read_text())
+            self.assertEqual(0o644, selection.stat().st_mode & 0o777)
 
-    def test_cosyvoice_candidate_cannot_activate_before_board_gates(self):
+    def test_cosyvoice_activation_starts_sidecar_and_checks_revision(self):
         old = MODULE.PipelineSelection(1, {"tts": MODULE.selection_for(MODULE.BY_ID["sherpa-onnx-vits-zh"])})
         commands = []
-        with tempfile.TemporaryDirectory() as directory, patch.object(MODULE, "SELECTION_PATH", Path(directory) / "selection.json"), patch.object(MODULE, "read_selection", return_value=old), patch.object(MODULE, "model_installed", return_value=True), patch.object(MODULE, "run_s2s_command", side_effect=lambda command, timeout=360: commands.append(command)):
-            with self.assertRaisesRegex(RuntimeError, MODULE.COSYVOICE_REVISION):
+        class Response:
+            def __enter__(self): return self
+            def __exit__(self, *_args): return False
+        with tempfile.TemporaryDirectory() as directory, patch.object(MODULE, "SELECTION_PATH", Path(directory) / "selection.json"), patch.object(MODULE, "read_selection", return_value=old), patch.object(MODULE, "model_installed", return_value=True), patch.object(MODULE, "voices_response", return_value={"activeVoiceId": "user-test", "voices": [{"voiceId": "user-test", "kind": "user"}]}), patch.object(MODULE, "run_s2s_command", side_effect=lambda command, timeout=360: commands.append(command)), patch.object(MODULE, "wait_ready", side_effect=[{"status": "ok", "revision": MODULE.COSYVOICE_REVISION}, {"ready": True}]), patch.object(MODULE.urllib.request, "urlopen", return_value=Response()), patch.object(MODULE.subprocess, "run"):
+            MODULE.activate(MODULE.BY_ID["cosyvoice3-0.5b-2512"])
+        self.assertEqual(["cosy-start", "restart"], commands)
+
+    def test_cosyvoice_activation_requires_user_voice_and_stops_new_sidecar(self):
+        old = MODULE.PipelineSelection(1, {"tts": MODULE.selection_for(MODULE.BY_ID["sherpa-onnx-vits-zh"])})
+        commands = []
+        with tempfile.TemporaryDirectory() as directory, patch.object(MODULE, "SELECTION_PATH", Path(directory) / "selection.json"), patch.object(MODULE, "read_selection", return_value=old), patch.object(MODULE, "model_installed", return_value=True), patch.object(MODULE, "voices_response", return_value={"activeVoiceId": None, "voices": []}), patch.object(MODULE, "run_s2s_command", side_effect=lambda command, timeout=360: commands.append(command)), patch.object(MODULE, "wait_ready", return_value={"status": "ok", "revision": MODULE.COSYVOICE_REVISION}):
+            with self.assertRaisesRegex(RuntimeError, "user voice"):
                 MODULE.activate(MODULE.BY_ID["cosyvoice3-0.5b-2512"])
-        self.assertEqual([], commands)
+        self.assertEqual(["cosy-start", "cosy-stop"], commands)
+
+    def test_cosyvoice_preprocess_failure_does_not_write_selection(self):
+        old = MODULE.PipelineSelection(1, {"tts": MODULE.selection_for(MODULE.BY_ID["sherpa-onnx-vits-zh"])})
+        commands = []
+        with patch.object(MODULE, "read_selection", return_value=old), patch.object(MODULE, "model_installed", return_value=True), patch.object(MODULE, "voices_response", return_value={"activeVoiceId": "user-test", "voices": [{"voiceId": "user-test", "kind": "user"}]}), patch.object(MODULE, "run_s2s_command", side_effect=lambda command, timeout=360: commands.append(command)), patch.object(MODULE, "wait_ready", return_value={"status": "ok", "revision": MODULE.COSYVOICE_REVISION}), patch.object(MODULE, "prepare_cosy_voice", side_effect=OSError("preprocess failed")), patch.object(MODULE, "_atomic_json") as atomic:
+            with self.assertRaisesRegex(OSError, "preprocess failed"):
+                MODULE.activate(MODULE.BY_ID["cosyvoice3-0.5b-2512"])
+        atomic.assert_not_called()
+        self.assertEqual(["cosy-start", "cosy-stop"], commands)
+
+    def test_cosyvoice_s2s_failure_restores_selection_and_old_runtime(self):
+        old = MODULE.PipelineSelection(1, {"tts": MODULE.selection_for(MODULE.BY_ID["sherpa-onnx-vits-zh"])})
+        commands = []
+        with patch.object(MODULE, "read_selection", return_value=old), patch.object(MODULE, "model_installed", return_value=True), patch.object(MODULE, "voices_response", return_value={"activeVoiceId": "user-test", "voices": [{"voiceId": "user-test", "kind": "user"}]}), patch.object(MODULE, "run_s2s_command", side_effect=lambda command, timeout=360: commands.append(command)), patch.object(MODULE, "wait_ready", return_value={"status": "ok", "revision": MODULE.COSYVOICE_REVISION}), patch.object(MODULE, "prepare_cosy_voice"), patch.object(MODULE, "_atomic_json") as atomic, patch.object(MODULE, "restart_s2s", side_effect=[RuntimeError("s2s failed"), None]) as restart:
+            with self.assertRaisesRegex(RuntimeError, "s2s failed"):
+                MODULE.activate(MODULE.BY_ID["cosyvoice3-0.5b-2512"])
+        self.assertEqual(MODULE.selection_dict(old), atomic.call_args_list[-1].args[1])
+        self.assertEqual(2, restart.call_count)
+        self.assertEqual(["cosy-start", "cosy-stop"], commands)
 
     def test_switching_away_stops_cosyvoice_after_s2s_ready(self):
         old = MODULE.PipelineSelection(1, {"tts": MODULE.selection_for(MODULE.BY_ID["cosyvoice3-0.5b-2512"])})
         commands = []
         with tempfile.TemporaryDirectory() as directory, patch.object(MODULE, "SELECTION_PATH", Path(directory) / "selection.json"), patch.object(MODULE, "read_selection", return_value=old), patch.object(MODULE, "model_installed", return_value=True), patch.object(MODULE, "run_s2s_command", side_effect=lambda command, timeout=360: commands.append(command)), patch.object(MODULE, "wait_ready", return_value={"ready": True}), patch.object(MODULE.subprocess, "run"):
             MODULE.activate(MODULE.BY_ID["sherpa-onnx-vits-zh"])
-        self.assertEqual(["cosy-stop"], commands)
+        self.assertEqual(["restart", "cosy-stop"], commands)
 
     def test_persisted_inflight_download_is_scheduled_to_resume(self):
         with tempfile.TemporaryDirectory() as directory:
@@ -171,8 +210,8 @@ class ModelManagerTest(unittest.TestCase):
             if item["id"] != "cosyvoice3-0.5b-2512"
         ]
         self.assertTrue(all(item["compatible"] for item in compatible_core))
-        self.assertFalse(next(item for item in status["stages"]["tts"]["models"] if item["id"] == "cosyvoice3-0.5b-2512")["compatible"])
-        self.assertTrue(all(not item["compatible"] for item in status["stages"]["speaker"]["models"]))
+        self.assertTrue(next(item for item in status["stages"]["tts"]["models"] if item["id"] == "cosyvoice3-0.5b-2512")["compatible"])
+        self.assertTrue(next(item for item in status["stages"]["speaker"]["models"] if item["id"] == "wespeaker-campp")["compatible"])
 
     def test_status_marks_selected_local_adapters_compatible(self):
         selection = MODULE.PipelineSelection(
@@ -186,7 +225,7 @@ class ModelManagerTest(unittest.TestCase):
             status = MODULE.models_status()
         self.assertTrue(status["stages"]["stt"]["models"][0]["compatible"])
         self.assertTrue(status["stages"]["stt"]["models"][1]["compatible"])
-        self.assertFalse(status["stages"]["tts"]["models"][0]["compatible"])
+        self.assertTrue(status["stages"]["tts"]["models"][0]["compatible"])
         self.assertTrue(status["stages"]["tts"]["models"][1]["compatible"])
 
     def test_voice_profile_integrity_and_selection_only_persist_voice_id(self):
@@ -272,14 +311,14 @@ class ModelManagerTest(unittest.TestCase):
                 raise OSError("preprocess failed")
             return Response()
 
-        with patch.object(MODULE, "read_selection", return_value=old), patch.object(MODULE, "_voice_profile", return_value=profile), patch.object(MODULE, "_atomic_json") as atomic, patch.object(MODULE.urllib.request, "urlopen", side_effect=urlopen), patch.object(MODULE.subprocess, "run") as run:
+        with patch.object(MODULE, "read_selection", return_value=old), patch.object(MODULE, "_voice_profile", return_value=profile), patch.object(MODULE, "_atomic_json") as atomic, patch.object(MODULE.urllib.request, "urlopen", side_effect=urlopen), patch.object(MODULE, "run_s2s_command") as run:
             with self.assertRaisesRegex(OSError, "preprocess failed"):
                 MODULE.select_voice("user-test")
 
         self.assertTrue(opened[0][0].endswith("/v1/voices/reload"))
         self.assertTrue(opened[1][0].endswith("/v1/voices/preprocess"))
         self.assertEqual(MODULE.selection_dict(old), atomic.call_args_list[-1].args[1])
-        run.assert_called_once_with(["systemctl", "try-restart", "saha-s2s.service"], check=False, timeout=180)
+        run.assert_called_once_with("restart", timeout=180)
 
     def test_download_state_has_rate_and_eta_contract(self):
         state = MODULE.DownloadState("qwen2.5:1.5b-instruct-q4_K_M", "downloading", 50, 100, 25.0, 2.0)

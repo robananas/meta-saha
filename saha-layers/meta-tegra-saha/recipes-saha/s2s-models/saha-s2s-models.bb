@@ -10,6 +10,8 @@ S2S_KWS_ARCHIVE = "sherpa-onnx-kws-zipformer-wenetspeech-3.3M-2024-01-01.tar.bz2
 S2S_KWS_SHA256 = "b2f7c89690dc8ce4c6ed6afeab7cd800c36ad1421fb6b6302b4a4b194cf7f35f"
 S2S_VAD_FILE = "silero_vad.onnx"
 S2S_VAD_SHA256 = "9e2449e1087496d8d4caba907f23e0bd3f78d91fa552479bb9c23ac09cbb1fd6"
+S2S_WESPEAKER_FILE = "voxceleb_CAM++.onnx"
+S2S_WESPEAKER_SHA256 = "b50810498b5bcf5773d086f6993d344476bd0c88b566a41e8d801aaf8461efad"
 SRC_URI = "file://prepare-models.sh file://revisions.txt file://LICENSE.models"
 
 addtask prepare_models after do_unpack before do_patch
@@ -20,6 +22,7 @@ do_prepare_models() {
     S2S_MODELS_DL_DIR="${S2S_MODELS_DL_DIR}" \
     S2S_KWS_ARCHIVE="${S2S_KWS_ARCHIVE}" S2S_KWS_SHA256="${S2S_KWS_SHA256}" \
     S2S_VAD_FILE="${S2S_VAD_FILE}" S2S_VAD_SHA256="${S2S_VAD_SHA256}" \
+    S2S_WESPEAKER_FILE="${S2S_WESPEAKER_FILE}" S2S_WESPEAKER_SHA256="${S2S_WESPEAKER_SHA256}" \
     sh ${UNPACKDIR}/prepare-models.sh ${WORKDIR}/models
 }
 

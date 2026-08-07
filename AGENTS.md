@@ -14,6 +14,19 @@ The remote build workspace contains very large and potentially problematic gener
 - Before traversing an unfamiliar generated path, inspect its immediate mount and directory boundaries. Avoid or unmount a known problematic/stale mount before searching it.
 - Do not use broad repository-root searches on the build machine when the pattern can enter `build/` or `downloads/`; explicitly exclude both directories.
 
+## ARM64 Container Artifact Promotion
+
+When an ARM64 container can be built natively on the local Apple Silicon Mac, prefer a build-once, promote-the-same-artifact workflow.
+
+- Build locally with explicit `--platform linux/arm64` when the parent image and build context are available and the build does not require remote-host-only assets.
+- Treat Mac build success as an image build result, not as Jetson runtime validation. Validate CUDA/NVIDIA runtime, mounts, readiness, resource use, rollback, and the affected user workflow on the target board.
+- Before board deployment, record the image ID, architecture, parent image, Dockerfile/context, archive size, and SHA-256. Verify the archive again on the board before loading it.
+- Preserve the currently deployed image under a clear rollback tag and deploy through the normal launcher, Compose, and systemd paths.
+- After the board passes, copy the exact board-tested archive into the expected `downloads/` path on `zyk@10.30.32.19`; verify the source and destination SHA-256 match exactly.
+- Do not rebuild the image on the packaging host merely to create the packaging input. Rebuild there only when promotion is impossible or the build depends on remote-only inputs, and then repeat board validation for that new artifact.
+- Require a reproducible Dockerfile and minimal complete context for every packaged image. Never package an image whose only provenance is a board-side `docker commit`.
+- Validate that the promoted archive contains only the intended tag/manifest and reports `arm64` before running the focused recipe or image packaging task.
+
 ## Temporary Changes on a Test Board
 
 When testing a change directly on a Saha/Roban board, keep the deployed temporary change and the corresponding `meta-saha` source change identical.
@@ -26,3 +39,15 @@ When testing a change directly on a Saha/Roban board, keep the deployed temporar
 - Run relevant syntax, lint, recipe/framework, and `git diff --check` validations. When startup or service behavior changes, reboot the board and verify service state, timing, logs, and client reconnection.
 - Keep unrelated existing working-tree changes intact. Do not overwrite, restore, stage, or commit them unless explicitly requested.
 - Report any board-only artifacts or backups and whether they should be removed after the next image deployment.
+
+## Line Endings and Formatting
+
+Prevent functional edits from producing unrelated whole-file line-ending changes.
+
+- Preserve each existing file's current line-ending style when making localized edits. Do not silently convert CRLF to LF or LF to CRLF.
+- New text files must use LF unless a platform or generated-file contract explicitly requires CRLF.
+- Never normalize an entire existing file merely because mixed or CRLF line endings were discovered during another task.
+- If line-ending normalization is required, perform it as a separate, explicit task and keep it separate from functional changes so the diff remains reviewable.
+- Before using a formatter or bulk rewrite, confirm it will not change line endings or reformat untouched parts of the file. Limit formatting to files intentionally edited.
+- After editing, inspect the focused diff for unexpected whole-file churn and run `git diff --check`. If a small logical change appears as a full-file replacement, restore the original line-ending style before continuing.
+- Do not use broad newline replacement as a workaround for patch or lint failures. Match the file's existing bytes and make the smallest targeted edit.

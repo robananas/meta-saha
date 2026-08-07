@@ -83,6 +83,17 @@ stop_service() {
     compose down
 }
 
+restart_service() {
+    cd "$SAHA_S2S_COMPOSE_DIR"
+    compose stop roban-s2s
+    compose rm -f roban-s2s
+    wait_for_docker
+    verify_models
+    ensure_image
+    compose up -d --pull never --no-deps roban-s2s
+    log "S2S restarted without changing optional sidecars"
+}
+
 wait_http() {
     url=$1
     limit=$2
@@ -103,7 +114,13 @@ start_cosyvoice() {
     test -s "$cosy_model_dir/manifest.sha256"
     (cd "$cosy_model_dir" && sha256sum -c manifest.sha256)
     mkdir -p /data/model-cache/s2s/cosyvoice3 /data/model-config/s2s/voices
-    chmod 0755 /data/model-config/s2s /data/model-config/s2s/voices
+    chmod 0755 /data/model-config/s2s
+    chmod 2750 /data/model-config/s2s/voices
+    for voice_dir in /data/model-config/s2s/voices/user-*; do
+        test -d "$voice_dir" || continue
+        chmod 2750 "$voice_dir"
+        chmod 0640 "$voice_dir/profile.json" "$voice_dir/reference.wav"
+    done
     cd "$SAHA_S2S_COMPOSE_DIR"
     compose --profile cosyvoice up -d --pull never --no-deps roban-cosyvoice
     if ! wait_http "http://127.0.0.1:${SAHA_COSYVOICE_PORT}/health" "$SAHA_COSYVOICE_WAIT"; then
@@ -124,7 +141,7 @@ case ${1:-} in
     wait-docker) wait_for_docker ;;
     start) wait_for_docker; start_service ;;
     stop) stop_service ;;
-    restart) stop_service; wait_for_docker; start_service ;;
+    restart) restart_service ;;
     status) curl -fsS "http://127.0.0.1:${SAHA_S2S_PORT}/ready" ;;
     cosy-start) wait_for_docker; start_cosyvoice ;;
     cosy-stop) stop_cosyvoice ;;

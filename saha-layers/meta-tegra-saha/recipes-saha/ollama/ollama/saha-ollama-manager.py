@@ -129,7 +129,7 @@ SHERPA_VITS_ADAPTER = AdapterSpec(
 COSYVOICE_ADAPTER = AdapterSpec(
     "cosyvoice3-official-sidecar",
     "cosyvoice-sidecar",
-    (("base_url", "http://127.0.0.1:8766"), ("voice_id", "builtin-ruoban"), ("timeout_seconds", 60)),
+    (("base_url", "http://127.0.0.1:8766"), ("voice_id", "builtin-ruoban"), ("timeout_seconds", 60), ("model_path", "/models/tts/cosyvoice3/Fun-CosyVoice3-0.5B-2512")),
 )
 COSYVOICE_MODEL_ID = "FunAudioLLM/Fun-CosyVoice3-0.5B-2512"
 COSYVOICE_REVISION = "e0dfdde37d9a6acdc3cf92d51acfeea069003a9b"
@@ -141,10 +141,13 @@ MATCHA_ADAPTER = AdapterSpec(
     "local-artifacts",
     (("model_path", "/models/tts/matcha-icefall-zh-en"), ("num_threads", 4), ("provider", "cpu")),
 )
+WESPEAKER_REVISION = "acf623ad8ca746e50baa432255cf8fc57c669c45"
+WESPEAKER_FRONTEND_VERSION = "kaldi-fbank-hamming-v1"
+WESPEAKER_SHA256 = "b50810498b5bcf5773d086f6993d344476bd0c88b566a41e8d801aaf8461efad"
 WESPEAKER_ADAPTER = AdapterSpec(
     "wespeaker-campp-onnx",
     "local-external-artifact",
-    (("model_path", "/models/speaker/wespeaker-campp/campplus.onnx"), ("model_version", "external-unverified"), ("provider", "cpu"), ("sample_rate", 16000)),
+    (("model_path", "/models/speaker/wespeaker-campp/campplus.onnx"), ("model_version", f"{WESPEAKER_REVISION}+{WESPEAKER_FRONTEND_VERSION}"), ("provider", "cpu"), ("sample_rate", 16000), ("threshold", 0.65)),
 )
 TITANET_ADAPTER = AdapterSpec(
     "nemo-titanet-large",
@@ -187,7 +190,7 @@ CATALOG: tuple[ModelSpec, ...] = (
         "cosyvoice3-0.5b-2512",
         "tts",
         "CosyVoice 3 官方 0.5B",
-        f"官方 AutoModel FP16 候选；固定 revision {COSYVOICE_REVISION[:12]}；仅门禁通过后生产可见",
+        f"官方 AutoModel FP16；固定 revision {COSYVOICE_REVISION[:12]}；仅限测试板实验使用",
         "cosyvoice",
         COSYVOICE_ADAPTER,
         ("zh", "en"),
@@ -195,12 +198,12 @@ CATALOG: tuple[ModelSpec, ...] = (
         11_767_984_206,
         9_000_000_000,
         (ArtifactSpec("", "", "snapshot", 11_767_984_206, ("REVISION", "manifest.sha256", "cosyvoice3.yaml", "llm.pt", "flow.pt", "hift.pt", "speech_tokenizer_v3.onnx", "CosyVoice-BlankEN/model.safetensors")),),
-        "candidate-orin-r39.2-cuda13.2",
-        compatible=False,
+        "verified-test-board-orin-r39.2-cuda13.2",
+        compatible=True,
         download_available=False,
         compatibility_reason=(
-            f"Complete official revision {COSYVOICE_REVISION} is pinned, but remains hidden until "
-            "its recursive manifest, Orin CUDA lifecycle, latency, quality, and rollback gates pass"
+            f"Experimental test-board activation only: official revision {COSYVOICE_REVISION}; "
+            "recursive manifest, CUDA cold start, sidecar lifecycle, synthesis, voice selection, and Sherpa rollback verified"
         ),
     ),
     ModelSpec(
@@ -253,20 +256,20 @@ CATALOG: tuple[ModelSpec, ...] = (
         "wespeaker-campp",
         "speaker",
         "WeSpeaker CAM++",
-        "中文 16 kHz CAM++ ONNX；需要经过校验的外部模型制品后才能安装和激活",
+        "官方 VoxCeleb 16 kHz CAM++ ONNX；测试板实验声纹验证",
         "wespeaker",
         WESPEAKER_ADAPTER,
         ("zh",),
         None,
-        0,
-        0,
-        (ArtifactSpec("", "", "campplus.onnx", 0, ("campplus.onnx",)),),
-        "external-artifact-required",
-        "WeSpeaker CAM++ upstream model; exact release artifact, revision, size, and SHA-256 are not yet verified locally",
-        "Upstream code is Apache-2.0; confirm the selected model artifact's provenance and redistribution terms separately.",
+        29_292_449,
+        256_000_000,
+        (ArtifactSpec("https://hf-mirror.com/Wespeaker/wespeaker-voxceleb-campplus/resolve/acf623ad8ca746e50baa432255cf8fc57c669c45/voxceleb_CAM%2B%2B.onnx", WESPEAKER_SHA256, "campplus.onnx", 29_292_449, ("campplus.onnx",)),),
+        "verified-test-board-experimental-threshold",
+        f"Wespeaker/wespeaker-voxceleb-campplus revision {WESPEAKER_REVISION}",
+        "Apache-2.0 model card and repository metadata; preserve attribution.",
+        True,
         False,
-        False,
-        "verified artifact metadata and Orin runtime validation are required",
+        "Pre-provisioned official artifact; 0.65 is an experimental test-board threshold pending broader cohort calibration",
     ),
     ModelSpec(
         "titanet-large",
@@ -299,7 +302,7 @@ def _atomic_json(path: Path, value: Any) -> None:
     path.parent.mkdir(parents=True, exist_ok=True)
     temporary = path.with_suffix(path.suffix + ".tmp")
     temporary.write_text(json.dumps(value, ensure_ascii=False, indent=2) + "\n", encoding="utf-8")
-    os.chmod(temporary, 0o640)
+    os.chmod(temporary, 0o644 if path == SELECTION_PATH else 0o640)
     temporary.replace(path)
 
 
@@ -413,7 +416,22 @@ def model_installed(spec: ModelSpec, ollama_models: set[str] | None = None) -> b
     if spec.adapter.protocol == "ollama":
         return spec.id in (ollama_models if ollama_models is not None else installed_ollama_models())
     destination = _artifact_destination(spec)
-    return destination.is_dir() and all((destination / required).is_file() for artifact in spec.artifacts for required in artifact.required_files)
+    if not destination.is_dir() or not all((destination / required).is_file() for artifact in spec.artifacts for required in artifact.required_files):
+        return False
+    if spec.id == "cosyvoice3-0.5b-2512":
+        try:
+            if (destination / "REVISION").read_text(encoding="utf-8").strip() != COSYVOICE_REVISION:
+                return False
+            manifest = destination / "manifest.sha256"
+            if not manifest.is_file():
+                return False
+            subprocess.run(["sha256sum", "-c", manifest.name], cwd=destination, stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL, check=True, timeout=120)
+        except (OSError, subprocess.SubprocessError):
+            return False
+    if spec.id == "wespeaker-campp":
+        model = destination / "campplus.onnx"
+        return model.stat().st_size == spec.disk_bytes and _sha256(model) == WESPEAKER_SHA256
+    return True
 
 
 def catalog_response() -> dict[str, Any]:
@@ -471,7 +489,7 @@ def pipeline_readiness() -> dict[str, Any]:
     selection = read_selection()
     ollama_models = installed_ollama_models()
     checks = []
-    for stage in CORE_STAGES:
+    for stage in STAGES:
         selected = selection.stages.get(stage)
         model_id = selected.model_id if selected else None
         spec = BY_ID.get(model_id or "")
@@ -480,7 +498,7 @@ def pipeline_readiness() -> dict[str, Any]:
         ready = installed and compatible
         reason = None if ready else ("not_selected" if not model_id else "not_installed" if not installed else "incompatible")
         checks.append({"stage": stage, "ready": ready, "modelId": model_id, "installed": installed, "compatible": compatible, "reason": reason})
-    ready = all(check["ready"] for check in checks)
+    ready = all(check["ready"] for check in checks if check["stage"] in CORE_STAGES)
     return {"status": "ready" if ready else "not_ready", "ready": ready, "checks": checks}
 
 
@@ -695,6 +713,49 @@ def selection_uses_cosyvoice(selection: PipelineSelection) -> bool:
     return bool(selected and selected.adapter == COSYVOICE_ADAPTER.name)
 
 
+def with_active_voice(selection: StageSelection) -> StageSelection:
+    if selection.adapter != COSYVOICE_ADAPTER.name:
+        return selection
+    voices = voices_response()
+    users = [voice["voiceId"] for voice in voices["voices"] if voice.get("kind") == "user"]
+    active = voices.get("activeVoiceId")
+    if active not in users:
+        active = users[0] if users else None
+    if not isinstance(active, str):
+        raise RuntimeError("CosyVoice activation requires an installed user voice profile")
+    return StageSelection(selection.model_id, selection.adapter, {**selection.config, "voice_id": active})
+
+
+def prepare_cosy_voice(voice_id: str) -> None:
+    reload_request = urllib.request.Request(
+        COSYVOICE_PREPROCESS_URL.rsplit("/", 1)[0] + "/reload",
+        data=b"{}",
+        headers={"Content-Type": "application/json"},
+        method="POST",
+    )
+    with urllib.request.urlopen(reload_request, timeout=30):
+        pass
+    preprocess_request = urllib.request.Request(
+        COSYVOICE_PREPROCESS_URL,
+        data=json.dumps({"voice_id": voice_id}).encode(),
+        headers={"Content-Type": "application/json"},
+        method="POST",
+    )
+    with urllib.request.urlopen(preprocess_request, timeout=120):
+        pass
+
+
+def restart_s2s(check: bool = True) -> None:
+    try:
+        run_s2s_command("restart", timeout=180)
+    except (OSError, subprocess.SubprocessError):
+        if check:
+            raise
+        return
+    if check:
+        wait_ready(S2S_READY_URL, 180)
+
+
 def activate(spec: ModelSpec) -> None:
     if not spec.compatible:
         raise RuntimeError(spec.compatibility_reason or "model is not compatible with this release")
@@ -704,37 +765,62 @@ def activate(spec: ModelSpec) -> None:
     old_uses_cosyvoice = selection_uses_cosyvoice(old)
     new_uses_cosyvoice = spec.adapter.protocol == "cosyvoice-sidecar" or (spec.stage != "tts" and old_uses_cosyvoice)
     sidecar_started = False
-    if new_uses_cosyvoice and not old_uses_cosyvoice:
-        run_s2s_command("cosy-start")
-        sidecar_started = True
-        health = wait_ready(COSYVOICE_HEALTH_URL, 300)
-        if health.get("revision") != COSYVOICE_REVISION:
-            run_s2s_command("cosy-stop")
-            raise RuntimeError("CosyVoice sidecar revision mismatch")
-    stages = dict(old.stages)
-    stages[spec.stage] = selection_for(spec)
-    selection_version = 2 if "speaker" in stages else old.version
-    _atomic_json(SELECTION_PATH, selection_dict(PipelineSelection(selection_version, stages)))
-    if spec.stage == "llm":
-        LEGACY_CONFIG_PATH.parent.mkdir(parents=True, exist_ok=True)
-        temporary = LEGACY_CONFIG_PATH.with_suffix(".tmp")
-        temporary.write_text(f"ROBAN_S2S_LLM_MODEL={spec.id}\n", encoding="utf-8")
-        os.chmod(temporary, 0o640)
-        temporary.replace(LEGACY_CONFIG_PATH)
+    selection_written = False
+    try:
+        if new_uses_cosyvoice and not old_uses_cosyvoice:
+            sidecar_started = True
+            run_s2s_command("cosy-start")
+            health = wait_ready(COSYVOICE_HEALTH_URL, 300)
+            if health.get("revision") != COSYVOICE_REVISION:
+                raise RuntimeError("CosyVoice sidecar revision mismatch")
+
+        stages = dict(old.stages)
+        stages[spec.stage] = with_active_voice(selection_for(spec)) if spec.stage == "tts" else selection_for(spec)
+        replacement = PipelineSelection(2 if "speaker" in stages else old.version, stages)
+        if spec.stage == "tts" and spec.adapter.protocol == "cosyvoice-sidecar":
+            prepare_cosy_voice(stages["tts"].config["voice_id"])
+
+        _atomic_json(SELECTION_PATH, selection_dict(replacement))
+        selection_written = True
+        if spec.stage == "llm":
+            LEGACY_CONFIG_PATH.parent.mkdir(parents=True, exist_ok=True)
+            temporary = LEGACY_CONFIG_PATH.with_suffix(".tmp")
+            temporary.write_text(f"ROBAN_S2S_LLM_MODEL={spec.id}\n", encoding="utf-8")
+            os.chmod(temporary, 0o640)
+            temporary.replace(LEGACY_CONFIG_PATH)
+        restart_s2s()
+    except BaseException:
+        if selection_written:
+            _atomic_json(SELECTION_PATH, selection_dict(old))
+            try:
+                restart_s2s()
+            except (OSError, RuntimeError, subprocess.SubprocessError):
+                pass
+        if sidecar_started and not old_uses_cosyvoice:
+            try:
+                run_s2s_command("cosy-stop")
+            except (OSError, subprocess.SubprocessError):
+                pass
+        raise
+
+    if old_uses_cosyvoice and not selection_uses_cosyvoice(replacement):
+        run_s2s_command("cosy-stop")
+
+
+def deactivate_speaker() -> None:
+    old = read_selection()
+    if "speaker" not in old.stages:
+        return
+    stages = {stage: selected for stage, selected in old.stages.items() if stage != "speaker"}
+    replacement = PipelineSelection(1, stages)
+    _atomic_json(SELECTION_PATH, selection_dict(replacement))
     try:
         subprocess.run(["systemctl", "try-restart", "saha-s2s.service"], check=True, timeout=180)
         wait_ready(S2S_READY_URL, 180)
     except (OSError, RuntimeError, subprocess.SubprocessError):
         _atomic_json(SELECTION_PATH, selection_dict(old))
         subprocess.run(["systemctl", "try-restart", "saha-s2s.service"], check=False, timeout=180)
-        if sidecar_started:
-            try:
-                run_s2s_command("cosy-stop")
-            except (OSError, subprocess.SubprocessError):
-                pass
         raise
-    if old_uses_cosyvoice and not selection_uses_cosyvoice(PipelineSelection(selection_version, stages)):
-        run_s2s_command("cosy-stop")
 
 
 def _voice_profile(voice_id: str) -> dict[str, Any]:
@@ -795,8 +881,9 @@ def create_voice(body: dict[str, Any]) -> dict[str, Any]:
     voice_id = f"user-{hashlib.sha256((reference_id + name).encode()).hexdigest()[:16]}"
     staging = VOICE_ROOT / f".{voice_id}.installing"
     shutil.rmtree(staging, ignore_errors=True)
-    staging.mkdir(mode=0o700, parents=True)
+    staging.mkdir(mode=0o750, parents=True)
     shutil.copy2(source, staging / "reference.wav")
+    os.chmod(staging / "reference.wav", 0o640)
     import wave
     with wave.open(str(staging / "reference.wav"), "rb") as wav:
         duration = wav.getnframes() / wav.getframerate()
@@ -804,6 +891,7 @@ def create_voice(body: dict[str, Any]) -> dict[str, Any]:
             raise ValueError("reference must be canonical 5-10 second 16 kHz mono PCM16 WAV")
     profile = {"version": 1, "voiceId": voice_id, "name": name, "kind": "user", "promptText": prompt_text, "durationSeconds": round(duration, 3), "wavSha256": _sha256(staging / "reference.wav"), "source": "user-recording", "replaceable": False, "createdAt": int(time.time())}
     _atomic_json(staging / "profile.json", profile)
+    os.chmod(staging / "profile.json", 0o640)
     destination = VOICE_ROOT / voice_id
     if destination.exists():
         raise ValueError("voice profile already exists")
@@ -820,24 +908,13 @@ def select_voice(voice_id: str) -> dict[str, Any]:
         raise RuntimeError("CosyVoice must be the active TTS before selecting a voice")
     stages = dict(selection.stages)
     stages["tts"] = StageSelection(tts.model_id, tts.adapter, {**tts.config, "voice_id": voice_id})
-    _atomic_json(SELECTION_PATH, selection_dict(PipelineSelection(selection.version, stages)))
     try:
-        reload_request = urllib.request.Request(
-            COSYVOICE_PREPROCESS_URL.rsplit("/", 1)[0] + "/reload",
-            data=b"{}",
-            headers={"Content-Type": "application/json"},
-            method="POST",
-        )
-        with urllib.request.urlopen(reload_request, timeout=30):
-            pass
-        request = urllib.request.Request(COSYVOICE_PREPROCESS_URL, data=json.dumps({"voice_id": voice_id}).encode(), headers={"Content-Type": "application/json"}, method="POST")
-        with urllib.request.urlopen(request, timeout=120):
-            pass
-        subprocess.run(["systemctl", "try-restart", "saha-s2s.service"], check=True, timeout=180)
-        wait_ready(S2S_READY_URL, 180)
+        prepare_cosy_voice(voice_id)
+        _atomic_json(SELECTION_PATH, selection_dict(PipelineSelection(selection.version, stages)))
+        restart_s2s()
     except BaseException:
         _atomic_json(SELECTION_PATH, selection_dict(selection))
-        subprocess.run(["systemctl", "try-restart", "saha-s2s.service"], check=False, timeout=180)
+        restart_s2s(check=False)
         raise
     return profile
 
@@ -947,6 +1024,10 @@ class Handler(BaseHTTPRequestHandler):
                 delete_voice(str(body.get("voiceId", "")))
                 self.send_json(200, {"status": "deleted"})
                 return
+            if self.path == "/v1/models/deactivate" and body.get("stage") == "speaker":
+                deactivate_speaker()
+                self.send_json(200, {"stage": "speaker", "status": "inactive"})
+                return
             spec = require_model(body)
             if self.path in {"/v1/models/download", "/v1/models/pull", "/v1/models/resume"}:
                 started = start_download(spec.id)
@@ -981,7 +1062,8 @@ def restore_selected_sidecars() -> None:
 
 def main() -> None:
     STATE_ROOT.mkdir(parents=True, exist_ok=True)
-    VOICE_ROOT.mkdir(mode=0o700, parents=True, exist_ok=True)
+    VOICE_ROOT.mkdir(mode=0o750, parents=True, exist_ok=True)
+    os.chmod(VOICE_ROOT, 0o750)
     VOICE_TEMP_ROOT.mkdir(mode=0o700, parents=True, exist_ok=True)
     for stage in STAGES:
         (MODEL_ROOT / stage).mkdir(parents=True, exist_ok=True)

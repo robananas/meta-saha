@@ -33,7 +33,12 @@ saha_prepare_data_image() {
     find ${IMAGE_ROOTFS}/models/s2s -type f -exec chmod 0640 {} +
     install -d -o 10002 -g 999 -m 0750 ${IMAGE_ROOTFS}/models/s2s/stt ${IMAGE_ROOTFS}/models/s2s/llm ${IMAGE_ROOTFS}/models/s2s/tts
     install -d -o 10002 -g 999 -m 0750 ${IMAGE_ROOTFS}/model-cache/s2s ${IMAGE_ROOTFS}/tools
-    install -d -o 0 -g 0 -m 0750 ${IMAGE_ROOTFS}/model-cache/s2s-model-manager ${IMAGE_ROOTFS}/model-config/s2s
+    install -d ${IMAGE_ROOTFS}/voiceprints ${IMAGE_ROOTFS}/voiceprints/s2s
+    chown 10002:999 ${IMAGE_ROOTFS}/voiceprints ${IMAGE_ROOTFS}/voiceprints/s2s
+    chmod 0700 ${IMAGE_ROOTFS}/voiceprints ${IMAGE_ROOTFS}/voiceprints/s2s
+    install -d -o 10003 -g 998 -m 0750 ${IMAGE_ROOTFS}/model-cache/s2s/cosyvoice3
+    install -d -o 0 -g 0 -m 0750 ${IMAGE_ROOTFS}/model-cache/s2s-model-manager
+    install -d -o 0 -g 999 -m 2750 ${IMAGE_ROOTFS}/model-config/s2s ${IMAGE_ROOTFS}/model-config/s2s/voices
     install -d -m 0755 ${IMAGE_ROOTFS}/log/journal ${IMAGE_ROOTFS}/log/ros ${IMAGE_ROOTFS}/log/app
     printf '1\n' > ${IMAGE_ROOTFS}/.saha-data-layout-version
     (cd ${IMAGE_ROOTFS} && find preload -type f -print0 | sort -z | xargs -0 sha256sum > preload/SHA256SUMS)
