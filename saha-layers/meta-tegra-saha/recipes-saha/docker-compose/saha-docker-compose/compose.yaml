@@ -16,6 +16,25 @@ services:
     environment:
       TZ: ${TZ:-Asia/Shanghai}
 
+  homeassistant-mcp:
+    container_name: homeassistant-mcp
+    image: ${SAHA_HOMEASSISTANT_MCP_IMAGE:-roban-ha-mcp:arm64}
+    restart: on-failure:5
+    network_mode: host
+    depends_on:
+      homeassistant:
+        condition: service_started
+    env_file:
+      - /etc/default/home-assistant-mcp
+      - ${SAHA_HOMEASSISTANT_MCP_CREDENTIALS_FILE:-/data/saha/homeassistant-mcp/credentials.env}
+    volumes:
+      - /data/saha/homeassistant:/data/saha/homeassistant
+    read_only: true
+    tmpfs:
+      - /tmp:size=16m,mode=1777
+    security_opt:
+      - no-new-privileges:true
+
   matter-server:
     container_name: matter-server
     image: ghcr.io/matter-js/python-matter-server:arm64

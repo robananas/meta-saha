@@ -17,6 +17,9 @@ SAHA_CLOCK_MIN_YEAR="${SAHA_CLOCK_MIN_YEAR:-2024}"
 SAHA_CLOCK_BOOTSTRAP_URLS="${SAHA_CLOCK_BOOTSTRAP_URLS:-https://ha.api.io.mi.com/ https://www.cloudflare.com/ https://www.google.com/}"
 SAHA_HOMEASSISTANT_IMAGE="${SAHA_HOMEASSISTANT_IMAGE:-ghcr.io/home-assistant/home-assistant:2026.7.1}"
 SAHA_HOMEASSISTANT_IMAGE_TAR="${SAHA_HOMEASSISTANT_IMAGE_TAR:-/data/preload/homeassistant/image.tar}"
+SAHA_HOMEASSISTANT_MCP_IMAGE="${SAHA_HOMEASSISTANT_MCP_IMAGE:-roban-ha-mcp:arm64}"
+SAHA_HOMEASSISTANT_MCP_IMAGE_TAR="${SAHA_HOMEASSISTANT_MCP_IMAGE_TAR:-/data/preload/homeassistant-mcp/image.tar}"
+SAHA_HOMEASSISTANT_MCP_CREDENTIALS_FILE="${SAHA_HOMEASSISTANT_MCP_CREDENTIALS_FILE:-/data/saha/homeassistant-mcp/credentials.env}"
 SAHA_MATTER_SERVER_IMAGE="${SAHA_MATTER_SERVER_IMAGE:-ghcr.io/matter-js/python-matter-server:arm64}"
 SAHA_MATTER_SERVER_IMAGE_TAR="${SAHA_MATTER_SERVER_IMAGE_TAR:-/data/preload/matter-server/image.tar}"
 SAHA_ROBAN_WORKFLOW_IMAGE="${SAHA_ROBAN_WORKFLOW_IMAGE:-roban-workflow-api:arm64}"
@@ -170,6 +173,7 @@ tag_if_present() {
 
 ensure_images() {
     load_tarball "$SAHA_HOMEASSISTANT_IMAGE" "$SAHA_HOMEASSISTANT_IMAGE_TAR"
+    load_tarball "$SAHA_HOMEASSISTANT_MCP_IMAGE" "$SAHA_HOMEASSISTANT_MCP_IMAGE_TAR"
     load_tarball "$SAHA_MATTER_SERVER_IMAGE" "$SAHA_MATTER_SERVER_IMAGE_TAR"
     load_tarball "$SAHA_ROBAN_WORKFLOW_IMAGE" "$SAHA_ROBAN_WORKFLOW_IMAGE_TAR"
     load_tarball "$SAHA_LIVEKIT_SERVER_IMAGE" "$SAHA_LIVEKIT_SERVER_IMAGE_TAR"
@@ -255,11 +259,13 @@ seed_homeassistant_config() {
 
 start_stack() {
     mountpoint -q /data
-    mkdir -p /var/lib/homeassistant /var/lib/matter-server
+    mkdir -p /var/lib/homeassistant /var/lib/matter-server /data/saha/homeassistant-mcp
+    test -s "$SAHA_HOMEASSISTANT_MCP_CREDENTIALS_FILE"
     seed_matter_certificates
     seed_homeassistant_config
     ensure_livekit_credentials
     export TZ="$SAHA_DOCKER_COMPOSE_TZ"
+    export SAHA_HOMEASSISTANT_MCP_IMAGE SAHA_HOMEASSISTANT_MCP_CREDENTIALS_FILE
     export SAHA_LIVEKIT_SERVER_IMAGE SAHA_LIVEKIT_AGENT_IMAGE
     export SAHA_LIVEKIT_AGENT_NAME="${SAHA_LIVEKIT_AGENT_NAME:-roban-agent}"
     export OPENAI_API_KEY="${OPENAI_API_KEY:-}"

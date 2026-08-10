@@ -2,7 +2,26 @@
 set -eu
 mountpoint -q /data || exit 1
 [ "$(cat /data/.saha-data-layout-version 2>/dev/null || true)" = 1 ] || exit 1
-install -d -m 0700 /data/docker /data/containerd /data/swap
+install -d -m 0700 /data/docker /data/containerd /data/swap /data/saha
+for name in homeassistant homeassistant-mcp; do
+    persistent="/data/saha/$name"
+    legacy="/var/lib/saha/$name"
+    install -d -m 0700 /var/lib/saha
+    if [ -d "$legacy" ] && [ ! -L "$legacy" ]; then
+        if [ -e "$persistent" ]; then
+            [ -z "$(ls -A "$legacy")" ] || exit 1
+            rmdir "$legacy"
+        else
+            mv "$legacy" "$persistent"
+        fi
+    fi
+    install -d -m 0700 "$persistent"
+    if [ ! -e "$legacy" ]; then
+        ln -s "$persistent" "$legacy"
+    fi
+    [ "$(readlink -f "$legacy")" = "$persistent" ] || exit 1
+    chmod 0700 "$persistent"
+done
 install -d -o 10002 -g 999 -m 0750 /data/models/s2s /data/models/s2s/stt /data/models/s2s/llm /data/models/s2s/tts /data/models/s2s/speaker /data/model-cache/s2s /data/tools
 install -d -o 10003 -g 998 -m 0750 /data/model-cache/s2s/cosyvoice3
 install -d /data/voiceprints /data/voiceprints/s2s

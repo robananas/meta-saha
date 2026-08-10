@@ -3,7 +3,9 @@ DESCRIPTION = "Seeds only the offline KWS and VAD resources required before mana
 LICENSE = "CLOSED"
 
 PV = "1.0"
-PACKAGE_ARCH = "allarch"
+PR = "r1"
+
+inherit allarch
 
 S2S_MODELS_DL_DIR ?= "${DL_DIR}/saha-s2s-models"
 S2S_KWS_ARCHIVE = "sherpa-onnx-kws-zipformer-wenetspeech-3.3M-2024-01-01.tar.bz2"

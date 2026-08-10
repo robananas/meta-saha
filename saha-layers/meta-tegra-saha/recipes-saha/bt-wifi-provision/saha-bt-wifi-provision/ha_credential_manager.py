@@ -14,7 +14,7 @@ import urllib.request
 from pathlib import Path
 from typing import Any
 
-CREDENTIAL_PATH = Path("/var/lib/saha/homeassistant/app-credentials.json")
+CREDENTIAL_PATH = Path("/data/saha/homeassistant/app-credentials.json")
 TOKEN_URL = "http://127.0.0.1:8123/auth/token"
 MAX_PAYLOAD_BYTES = 16 * 1024
 REFRESH_SKEW_MS = 5 * 60 * 1000

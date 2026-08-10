@@ -3,7 +3,8 @@ Description=Saha Docker Compose application stack
 Documentation=https://docs.docker.com/compose/
 After=saha-data-layout.service docker.service network-online.target systemd-timesyncd.service time-sync.target
 Wants=network-online.target systemd-timesyncd.service time-sync.target
-Requires=saha-data-layout.service data.mount docker.service
+Requires=saha-data-layout.service data.mount docker.service saha-homeassistant-mcp-credentials.service
+After=saha-homeassistant-mcp-credentials.service
 RequiresMountsFor=/data/preload
 
 [Service]

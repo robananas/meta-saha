@@ -621,6 +621,24 @@ grep -q 'saha-homeassistant-container-image' \
 grep -q 'saha-matter-server-container-image' \
   "$ROOT_DIR/saha-layers/meta-tegra-saha/recipes-saha/packagegroups/packagegroup-saha-container-preloads.bb" ||
   fail "DATA image must include the Matter Server preload"
+grep -q 'saha-homeassistant-mcp-container-image' \
+  "$ROOT_DIR/saha-layers/meta-tegra-saha/recipes-saha/packagegroups/packagegroup-saha-container-preloads.bb" ||
+  fail "DATA image must include the Home Assistant MCP preload"
+grep -q 'homeassistant-mcp:' \
+  "$ROOT_DIR/saha-layers/meta-tegra-saha/recipes-saha/docker-compose/saha-docker-compose/compose.yaml" ||
+  fail "compose stack must start the Home Assistant MCP service"
+grep -q 'HA_TOKEN_FILE=/data/saha/homeassistant/app-credentials.json' \
+  "$ROOT_DIR/saha-layers/meta-tegra-saha/recipes-saha/homeassistant-mcp/saha-homeassistant-mcp/home-assistant-mcp.env" ||
+  fail "Home Assistant MCP must reuse persistent board-owned HA credentials"
+grep -q 'persistent="/data/saha/\$name"' \
+  "$ROOT_DIR/saha-layers/meta-tegra-saha/recipes-saha/saha-data-layout/saha-data-layout/saha-data-layout.sh" ||
+  fail "DATA layout must use persistent Saha state directories"
+grep -q 'for name in homeassistant homeassistant-mcp' \
+  "$ROOT_DIR/saha-layers/meta-tegra-saha/recipes-saha/saha-data-layout/saha-data-layout/saha-data-layout.sh" ||
+  fail "DATA layout must persist Home Assistant and MCP credentials"
+grep -q 'saha-homeassistant-mcp-credentials.service' \
+  "$ROOT_DIR/saha-layers/meta-tegra-saha/recipes-saha/docker-compose/saha-docker-compose/saha-docker-compose.service" ||
+  fail "compose must wait for MCP access credential generation"
 grep -q 'homeassistant-container.tar' \
   "$ROOT_DIR/saha-layers/meta-tegra-saha/recipes-saha/homeassistant-container/saha-homeassistant-container-image/fetch-image.sh" ||
   fail "Home Assistant fetch script must support local tarball cache"

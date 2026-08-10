@@ -18,7 +18,7 @@ from typing import Any
 
 BASE_URL = "http://127.0.0.1:8123"
 CLIENT_ID = "http://localhost:8123/"
-STATE_DIR = Path("/var/lib/saha/homeassistant")
+STATE_DIR = Path("/data/saha/homeassistant")
 CREDENTIAL_PATH = STATE_DIR / "app-credentials.json"
 PENDING_PATH = STATE_DIR / "bootstrap-pending.json"
 WAIT_SECONDS = 300

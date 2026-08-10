@@ -236,7 +236,7 @@ class BoardStatus:
                 bluetooth_state = "paused"
         except (OSError, UnicodeDecodeError, json.JSONDecodeError, AttributeError):
             pass
-        credentials_ready = Path("/var/lib/saha/homeassistant/app-credentials.json").is_file()
+        credentials_ready = Path("/data/saha/homeassistant/app-credentials.json").is_file()
         home_assistant_ready = tcp_reachable(8123)
         bootstrap_ready = command_succeeds(
             ["systemctl", "is-active", "--quiet", "saha-homeassistant-bootstrap.service"]

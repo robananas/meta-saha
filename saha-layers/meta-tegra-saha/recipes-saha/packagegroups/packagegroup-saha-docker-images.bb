@@ -13,6 +13,7 @@ RDEPENDS:${PN} = " \
     saha-docker-compose \
     saha-homeassistant-config \
     saha-homeassistant-bootstrap \
+    saha-homeassistant-mcp \
     packagegroup-saha-nvidia-containers \
     saha-s2s \
 "
