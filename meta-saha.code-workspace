@@ -8,6 +8,9 @@
 		},
 		{
 			"path": "../roban-voice"
+		},
+		{
+			"path": "../generate-image-tool"
 		}
 	],
 	"settings": {}
