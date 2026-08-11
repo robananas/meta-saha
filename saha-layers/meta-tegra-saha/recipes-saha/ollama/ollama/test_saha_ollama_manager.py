@@ -320,6 +320,157 @@ class ModelManagerTest(unittest.TestCase):
         self.assertEqual(MODULE.selection_dict(old), atomic.call_args_list[-1].args[1])
         run.assert_called_once_with("restart", timeout=180)
 
+    def test_speaker_prepare_persists_old_selection_and_activates_pending_gate(self):
+        old = MODULE.PipelineSelection(1, {"llm": MODULE.selection_for(MODULE.BY_ID["qwen2.5:1.5b-instruct-q4_K_M"])})
+        runtime = {"profileId": None, "modelId": "wespeaker-campp", "modelVersion": dict(MODULE.WESPEAKER_ADAPTER.activation)["model_version"], "enrolled": False}
+        captured = []
+        with tempfile.TemporaryDirectory() as directory:
+            transaction_path = Path(directory) / "speaker-transaction.json"
+            with patch.object(MODULE, "SPEAKER_TRANSACTION_PATH", transaction_path), patch.object(
+                MODULE, "model_installed", return_value=True
+            ), patch.object(MODULE, "read_selection", return_value=old), patch.object(
+                MODULE, "_runtime_speaker_profile", return_value=runtime
+            ), patch.object(MODULE, "_write_speaker_selection", side_effect=lambda previous, selected: captured.append((previous, selected))), patch.object(
+                MODULE.uuid, "uuid4", return_value=type("Uuid", (), {"hex": "transaction-1"})()
+            ):
+                prepared = MODULE.prepare_speaker({"modelId": "wespeaker-campp", "threshold": 0.0}, now=100)
+            transaction = json.loads(transaction_path.read_text())
+            transaction_mode = transaction_path.stat().st_mode & 0o777
+        self.assertEqual("transaction-1", prepared["transactionId"])
+        self.assertEqual(MODULE.selection_dict(old), transaction["oldSelection"])
+        self.assertIsNone(transaction["previousProfile"])
+        self.assertEqual(0o600, transaction_mode)
+        self.assertTrue(captured[0][1].config["enrollment_pending"])
+        self.assertEqual(0.0, captured[0][1].config["threshold"])
+        self.assertNotIn("profile", captured[0][1].config)
+
+    def test_speaker_abort_and_expiry_restore_old_selection_and_restart(self):
+        old = MODULE.PipelineSelection(1, {"llm": MODULE.selection_for(MODULE.BY_ID["qwen2.5:1.5b-instruct-q4_K_M"])})
+        transaction = {"version": 1, "transactionId": "tx", "modelId": "wespeaker-campp", "threshold": 0.65, "previousProfile": None, "oldSelection": MODULE.selection_dict(old), "createdAt": 1, "expiresAt": 9}
+        for expired in (False, True):
+            with self.subTest(expired=expired), tempfile.TemporaryDirectory() as directory:
+                transaction_path = Path(directory) / "speaker-transaction.json"
+                selection_path = Path(directory) / "selection.json"
+                transaction_path.write_text(json.dumps(transaction))
+                with patch.object(MODULE, "SPEAKER_TRANSACTION_PATH", transaction_path), patch.object(
+                    MODULE, "SELECTION_PATH", selection_path
+                ), patch.object(MODULE, "restart_s2s") as restart:
+                    if expired:
+                        self.assertEqual("disabled", MODULE.speaker_status(now=10)["status"])
+                    else:
+                        self.assertTrue(MODULE.abort_speaker("tx", now=2))
+                self.assertEqual(MODULE.selection_dict(old), json.loads(selection_path.read_text()))
+                self.assertFalse(transaction_path.exists())
+                restart.assert_called_once_with()
+
+    def test_speaker_status_requires_an_enrolled_runtime_profile_to_enforce(self):
+        selected = MODULE.StageSelection("wespeaker-campp", MODULE.WESPEAKER_ADAPTER.name, {"threshold": 0.65})
+        selection = MODULE.PipelineSelection(2, {"speaker": selected})
+        with patch.object(MODULE, "read_selection", return_value=selection), patch.object(
+            MODULE, "_read_speaker_transaction", return_value=None
+        ), patch.object(MODULE, "_runtime_speaker_profile", return_value={
+            "enrolled": False,
+            "profileId": None,
+            "modelId": "wespeaker-campp",
+            "modelVersion": "v1",
+        }):
+            self.assertEqual("pending_enrollment", MODULE.speaker_status()["status"])
+
+    def test_speaker_threshold_accepts_boundaries_and_rejects_non_finite_values(self):
+        self.assertEqual(0.0, MODULE._speaker_threshold(0))
+        self.assertEqual(1.0, MODULE._speaker_threshold(1))
+        for value in (-0.01, 1.01, float("nan"), float("inf"), True, "0.5"):
+            with self.subTest(value=value), self.assertRaises(ValueError):
+                MODULE._speaker_threshold(value)
+
+    def test_speaker_commit_keeps_only_catalog_config_and_threshold(self):
+        old = MODULE.PipelineSelection(2, {"speaker": MODULE.StageSelection("wespeaker-campp", MODULE.WESPEAKER_ADAPTER.name, {**dict(MODULE.WESPEAKER_ADAPTER.activation), "threshold": 1.0, "enrollment_pending": True})})
+        runtime = {"profileId": "speaker-1", "modelId": "wespeaker-campp", "modelVersion": dict(MODULE.WESPEAKER_ADAPTER.activation)["model_version"], "enrolled": True, "createdAt": 101.0}
+        transaction = {"version": 1, "transactionId": "tx", "modelId": "wespeaker-campp", "threshold": 1.0, "previousProfile": None, "oldSelection": {"version": 1, "stages": {}}, "createdAt": 100, "expiresAt": 400}
+        captured = []
+        with tempfile.TemporaryDirectory() as directory:
+            transaction_path = Path(directory) / "speaker-transaction.json"
+            transaction_path.write_text(json.dumps(transaction))
+            with patch.object(MODULE, "SPEAKER_TRANSACTION_PATH", transaction_path), patch.object(
+                MODULE, "_runtime_speaker_profile", return_value=runtime
+            ), patch.object(MODULE, "read_selection", return_value=old), patch.object(
+                MODULE, "_write_speaker_selection", side_effect=lambda previous, selected: captured.append(selected)
+            ), patch.object(MODULE, "speaker_status", return_value={"status": "enforcing"}):
+                status = MODULE.commit_speaker("tx", now=101)
+        self.assertEqual("enforcing", status["status"])
+        self.assertFalse(transaction_path.exists())
+        self.assertEqual(1.0, captured[0].config["threshold"])
+        self.assertNotIn("enrollment_pending", captured[0].config)
+        self.assertNotIn("profile", captured[0].config)
+        self.assertNotIn("embedding", json.dumps(captured[0].config))
+
+    def test_speaker_commit_allows_existing_matching_profile_retry(self):
+        version = dict(MODULE.WESPEAKER_ADAPTER.activation)["model_version"]
+        identity = {"profileId": "existing", "modelId": "wespeaker-campp", "modelVersion": version, "createdAt": 50.0}
+        runtime = {**identity, "enrolled": True}
+        pending = MODULE.PipelineSelection(2, {"speaker": MODULE.StageSelection("wespeaker-campp", MODULE.WESPEAKER_ADAPTER.name, {**dict(MODULE.WESPEAKER_ADAPTER.activation), "enrollment_pending": True})})
+        transaction = {"version": 1, "transactionId": "retry", "modelId": "wespeaker-campp", "threshold": 0.65, "previousProfile": identity, "oldSelection": {"version": 1, "stages": {}}, "createdAt": 100, "expiresAt": 400}
+        with tempfile.TemporaryDirectory() as directory:
+            path = Path(directory) / "transaction.json"
+            path.write_text(json.dumps(transaction))
+            with patch.object(MODULE, "SPEAKER_TRANSACTION_PATH", path), patch.object(MODULE, "_runtime_speaker_profile", return_value=runtime), patch.object(MODULE, "read_selection", return_value=pending), patch.object(MODULE, "_write_speaker_selection"), patch.object(MODULE, "speaker_status", return_value={"status": "enforcing"}):
+                MODULE.commit_speaker("retry", now=101)
+        self.assertFalse(path.exists())
+
+    def test_speaker_selection_rolls_back_when_restart_fails(self):
+        old = MODULE.PipelineSelection(1, {})
+        selected = MODULE.StageSelection("wespeaker-campp", MODULE.WESPEAKER_ADAPTER.name, {"threshold": 0.7})
+        with patch.object(MODULE, "_atomic_json") as atomic, patch.object(
+            MODULE, "restart_s2s", side_effect=[RuntimeError("restart failed"), None]
+        ) as restart:
+            with self.assertRaisesRegex(RuntimeError, "restart failed"):
+                MODULE._write_speaker_selection(old, selected)
+        self.assertEqual(MODULE.selection_dict(old), atomic.call_args_list[-1].args[1])
+        self.assertEqual(2, restart.call_count)
+
+    def test_speaker_threshold_update_and_deactivate_remove_stage(self):
+        speaker = MODULE.StageSelection("wespeaker-campp", MODULE.WESPEAKER_ADAPTER.name, {"threshold": 0.65})
+        old = MODULE.PipelineSelection(2, {"speaker": speaker})
+        captured = []
+        with patch.object(MODULE, "read_selection", return_value=old), patch.object(
+            MODULE, "_write_speaker_selection", side_effect=lambda _old, selected: captured.append(selected)
+        ), patch.object(MODULE, "speaker_status", return_value={"status": "enforcing"}):
+            MODULE.update_speaker_threshold(0.25)
+            MODULE.deactivate_speaker()
+        self.assertEqual(0.25, captured[0].config["threshold"])
+        self.assertIsNone(captured[1])
+
+    def test_runtime_profile_contract_accepts_disabled_response_without_model_identity(self):
+        class Response:
+            def __enter__(self):
+                return self
+
+            def __exit__(self, *_args):
+                return False
+
+        body = {"enabled": False, "enrolled": False, "model_id": None, "model_version": None}
+        with patch.object(MODULE.urllib.request, "urlopen", return_value=Response()), patch.object(
+            MODULE.json, "load", return_value=body
+        ):
+            self.assertEqual(
+                {"profileId": None, "modelId": None, "modelVersion": None, "enrolled": False},
+                MODULE._runtime_speaker_profile(),
+            )
+
+    def test_runtime_profile_contract_rejects_embedding_only_legacy_response(self):
+        class Response:
+            def __enter__(self):
+                return self
+
+            def __exit__(self, *_args):
+                return False
+
+        with patch.object(MODULE.urllib.request, "urlopen", return_value=Response()), patch.object(
+            MODULE.json, "load", return_value={"profileId": "old", "embedding": [0.1]}
+        ):
+            with self.assertRaisesRegex(RuntimeError, "legacy response"):
+                MODULE._runtime_speaker_profile()
+
     def test_download_state_has_rate_and_eta_contract(self):
         state = MODULE.DownloadState("qwen2.5:1.5b-instruct-q4_K_M", "downloading", 50, 100, 25.0, 2.0)
         body = MODULE._state_dict(state)

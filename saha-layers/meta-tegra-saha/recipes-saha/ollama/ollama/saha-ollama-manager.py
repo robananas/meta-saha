@@ -4,6 +4,7 @@ from __future__ import annotations
 import dataclasses
 import hashlib
 import json
+import math
 import re
 import os
 import shutil
@@ -13,6 +14,7 @@ import threading
 import time
 import urllib.error
 import urllib.request
+import uuid
 from dataclasses import dataclass
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 from pathlib import Path, PurePosixPath
@@ -23,11 +25,14 @@ OLLAMA_URL = os.environ.get("OLLAMA_URL", "http://127.0.0.1:11434").rstrip("/")
 STATE_ROOT = Path(os.environ.get("SAHA_MODEL_MANAGER_STATE", "/data/model-cache/s2s-model-manager"))
 MODEL_ROOT = Path(os.environ.get("SAHA_MODEL_ROOT", "/data/models/s2s"))
 SELECTION_PATH = Path(os.environ.get("SAHA_MODEL_SELECTION", "/data/model-config/s2s/selection.json"))
+SPEAKER_TRANSACTION_PATH = Path(os.environ.get("SAHA_SPEAKER_TRANSACTION", "/data/model-config/s2s/speaker-transaction.json"))
 LEGACY_CONFIG_PATH = Path(os.environ.get("SAHA_OLLAMA_CONFIG", "/data/model-config/s2s/ollama.env"))
 TASKS_PATH = STATE_ROOT / "downloads.json"
 VOICE_ROOT = Path(os.environ.get("SAHA_VOICE_ROOT", "/data/model-config/s2s/voices"))
 VOICE_TEMP_ROOT = Path(os.environ.get("SAHA_VOICE_TEMP_ROOT", "/data/model-config/s2s/voice-temp"))
 S2S_TRANSCRIBE_URL = os.environ.get("SAHA_S2S_TRANSCRIBE_URL", "http://127.0.0.1:8765/v1/voice-references/transcribe")
+S2S_SPEAKER_PROFILE_URL = os.environ.get("SAHA_S2S_SPEAKER_PROFILE_URL", "http://127.0.0.1:8765/v1/speaker/profile")
+SPEAKER_TRANSACTION_TTL_SECONDS = int(os.environ.get("SAHA_SPEAKER_TRANSACTION_TTL_SECONDS", "300"))
 MAX_VOICE_UPLOAD_BYTES = 8 * 1024 * 1024
 VOICE_ID_PATTERN = re.compile(r"^[a-z0-9][a-z0-9._-]{0,63}$")
 REFERENCE_ID_PATTERN = re.compile(r"^[a-f0-9]{32}$")
@@ -298,11 +303,11 @@ DOWNLOAD_LOCK = threading.RLock()
 PAUSE_EVENTS: dict[str, threading.Event] = {}
 
 
-def _atomic_json(path: Path, value: Any) -> None:
+def _atomic_json(path: Path, value: Any, mode: int | None = None) -> None:
     path.parent.mkdir(parents=True, exist_ok=True)
     temporary = path.with_suffix(path.suffix + ".tmp")
     temporary.write_text(json.dumps(value, ensure_ascii=False, indent=2) + "\n", encoding="utf-8")
-    os.chmod(temporary, 0o644 if path == SELECTION_PATH else 0o640)
+    os.chmod(temporary, mode if mode is not None else (0o644 if path == SELECTION_PATH else 0o640))
     temporary.replace(path)
 
 
@@ -807,20 +812,235 @@ def activate(spec: ModelSpec) -> None:
         run_s2s_command("cosy-stop")
 
 
+def _speaker_threshold(value: Any) -> float:
+    if isinstance(value, bool) or not isinstance(value, (int, float)):
+        raise ValueError("threshold must be a finite number between 0 and 1")
+    threshold = float(value)
+    if not math.isfinite(threshold) or not 0 <= threshold <= 1:
+        raise ValueError("threshold must be a finite number between 0 and 1")
+    return threshold
+
+
+def _speaker_default_threshold() -> float:
+    return _speaker_threshold(dict(WESPEAKER_ADAPTER.activation)["threshold"])
+
+
+def _runtime_speaker_profile() -> dict[str, Any]:
+    request = urllib.request.Request(S2S_SPEAKER_PROFILE_URL, method="GET")
+    deadline = time.monotonic() + 30
+    while True:
+        try:
+            with urllib.request.urlopen(request, timeout=5) as response:
+                body = json.load(response)
+            break
+        except (urllib.error.URLError, OSError):
+            if time.monotonic() >= deadline:
+                raise
+            time.sleep(1)
+    if not isinstance(body, dict):
+        raise RuntimeError("S2S returned an invalid speaker profile response")
+    profile = body.get("profile", body)
+    if not isinstance(profile, dict):
+        raise RuntimeError("S2S returned an invalid speaker profile response")
+    enrolled = profile.get("enrolled")
+    model_id = profile.get("modelId", profile.get("model_id"))
+    model_version = profile.get("modelVersion", profile.get("model_version"))
+    profile_id = profile.get("profileId", profile.get("profile_id"))
+    if not isinstance(enrolled, bool):
+        raise RuntimeError("S2S speaker profile uses an unsupported legacy response")
+    if enrolled:
+        if not isinstance(model_id, str) or not model_id or not isinstance(model_version, str) or not model_version:
+            raise RuntimeError("S2S speaker profile uses an unsupported legacy response")
+        if not isinstance(profile_id, str) or not profile_id:
+            raise RuntimeError("S2S enrolled speaker profile is missing profileId")
+    else:
+        if model_id is not None and (not isinstance(model_id, str) or not model_id):
+            raise RuntimeError("S2S returned an invalid speaker modelId")
+        if model_version is not None and (not isinstance(model_version, str) or not model_version):
+            raise RuntimeError("S2S returned an invalid speaker modelVersion")
+        if profile_id is not None and (not isinstance(profile_id, str) or not profile_id):
+            raise RuntimeError("S2S returned an invalid speaker profileId")
+    result: dict[str, Any] = {"profileId": profile_id, "modelId": model_id, "modelVersion": model_version, "enrolled": enrolled}
+    created_at = profile.get("createdAt", profile.get("created_at"))
+    if isinstance(created_at, str) and created_at:
+        result["createdAt"] = created_at
+    elif isinstance(created_at, (int, float)) and not isinstance(created_at, bool) and math.isfinite(float(created_at)):
+        result["createdAt"] = float(created_at)
+    return result
+
+
+def _selection_from_dict(body: Any) -> PipelineSelection:
+    if not isinstance(body, dict) or not isinstance(body.get("stages"), dict):
+        raise RuntimeError("persisted speaker transaction has an invalid old selection")
+    stages: dict[Stage, StageSelection] = {}
+    for stage, value in body["stages"].items():
+        if stage not in STAGES or not isinstance(value, dict):
+            raise RuntimeError("persisted speaker transaction has an invalid old selection")
+        model_id, adapter, config = value.get("modelId"), value.get("adapter"), value.get("config")
+        if not isinstance(model_id, str) or not isinstance(adapter, str) or not isinstance(config, dict):
+            raise RuntimeError("persisted speaker transaction has an invalid old selection")
+        stages[stage] = StageSelection(model_id, adapter, config)
+    version = body.get("version")
+    if not isinstance(version, int):
+        raise RuntimeError("persisted speaker transaction has an invalid old selection")
+    return PipelineSelection(version, stages)
+
+
+def _load_speaker_transaction() -> dict[str, Any] | None:
+    try:
+        transaction = json.loads(SPEAKER_TRANSACTION_PATH.read_text(encoding="utf-8"))
+    except FileNotFoundError:
+        return None
+    except (OSError, json.JSONDecodeError) as error:
+        raise RuntimeError("persisted speaker transaction is invalid") from error
+    if not isinstance(transaction, dict):
+        raise RuntimeError("persisted speaker transaction is invalid")
+    _selection_from_dict(transaction.get("oldSelection"))
+    return transaction
+
+
+def _rollback_speaker_transaction(transaction: dict[str, Any]) -> None:
+    old = _selection_from_dict(transaction.get("oldSelection"))
+    _atomic_json(SELECTION_PATH, selection_dict(old))
+    try:
+        restart_s2s()
+    except BaseException:
+        restart_s2s(check=False)
+        raise
+    SPEAKER_TRANSACTION_PATH.unlink(missing_ok=True)
+
+
+def _read_speaker_transaction(now: float | None = None) -> dict[str, Any] | None:
+    transaction = _load_speaker_transaction()
+    if transaction is None:
+        return None
+    if float(transaction.get("expiresAt", 0)) <= (time.time() if now is None else now):
+        _rollback_speaker_transaction(transaction)
+        return None
+    return transaction
+
+
+def speaker_status(now: float | None = None) -> dict[str, Any]:
+    transaction = _read_speaker_transaction(now)
+    selected = read_selection().stages.get("speaker")
+    configured = selected.config.get("threshold") if selected else None
+    threshold = _speaker_threshold(configured) if configured is not None else None
+    if transaction:
+        state = "pending_enrollment"
+    elif selected:
+        profile = _runtime_speaker_profile()
+        state = "enforcing" if profile["enrolled"] else "pending_enrollment"
+    else:
+        state = "disabled"
+    result: dict[str, Any] = {"status": state, "configuredThreshold": threshold, "defaultThreshold": _speaker_default_threshold()}
+    if transaction:
+        result["transaction"] = {key: transaction[key] for key in ("transactionId", "modelId", "threshold", "createdAt", "expiresAt")}
+    return result
+
+
+def _profile_identity(profile: dict[str, Any]) -> dict[str, Any] | None:
+    if not profile["enrolled"]:
+        return None
+    return {key: profile[key] for key in ("profileId", "modelId", "modelVersion", "createdAt") if key in profile}
+
+
+def prepare_speaker(body: dict[str, Any], now: float | None = None) -> dict[str, Any]:
+    if _read_speaker_transaction(now):
+        raise RuntimeError("a speaker enrollment transaction is already pending")
+    model_id = body.get("modelId", "wespeaker-campp")
+    spec = BY_ID.get(model_id) if isinstance(model_id, str) else None
+    if not spec or spec.stage != "speaker" or not spec.compatible:
+        raise ValueError("modelId must identify a compatible speaker model")
+    if not model_installed(spec):
+        raise RuntimeError("speaker model is not installed")
+    threshold = _speaker_threshold(body.get("threshold", dict(spec.adapter.activation).get("threshold", _speaker_default_threshold())))
+    old = read_selection()
+    previous_profile = _runtime_speaker_profile()
+    if previous_profile["modelId"] != spec.id or previous_profile["modelVersion"] != dict(spec.adapter.activation).get("model_version"):
+        previous_identity = None
+    else:
+        previous_identity = _profile_identity(previous_profile)
+    created_at = time.time() if now is None else now
+    transaction = {
+        "version": 1, "transactionId": uuid.uuid4().hex, "modelId": spec.id, "threshold": threshold,
+        "previousProfile": previous_identity, "oldSelection": selection_dict(old),
+        "createdAt": created_at, "expiresAt": created_at + SPEAKER_TRANSACTION_TTL_SECONDS,
+    }
+    _atomic_json(SPEAKER_TRANSACTION_PATH, transaction, mode=0o600)
+    selected = selection_for(spec)
+    selected = StageSelection(selected.model_id, selected.adapter, {**selected.config, "threshold": threshold, "enrollment_pending": True})
+    try:
+        _write_speaker_selection(old, selected)
+    except BaseException:
+        SPEAKER_TRANSACTION_PATH.unlink(missing_ok=True)
+        raise
+    return {key: transaction[key] for key in ("transactionId", "modelId", "threshold", "createdAt", "expiresAt")}
+
+
+def abort_speaker(transaction_id: str | None = None, now: float | None = None) -> bool:
+    transaction = _read_speaker_transaction(now)
+    if not transaction:
+        return False
+    if transaction_id is not None and transaction_id != transaction.get("transactionId"):
+        raise ValueError("transactionId does not match the pending speaker transaction")
+    _rollback_speaker_transaction(transaction)
+    return True
+
+
+def _write_speaker_selection(old: PipelineSelection, selected: StageSelection | None) -> None:
+    stages = dict(old.stages)
+    if selected is None:
+        stages.pop("speaker", None)
+    else:
+        stages["speaker"] = selected
+    replacement = PipelineSelection(2 if "speaker" in stages else 1, stages)
+    _atomic_json(SELECTION_PATH, selection_dict(replacement))
+    try:
+        restart_s2s()
+    except BaseException:
+        _atomic_json(SELECTION_PATH, selection_dict(old))
+        restart_s2s(check=False)
+        raise
+
+
+def commit_speaker(transaction_id: str, now: float | None = None) -> dict[str, Any]:
+    transaction = _read_speaker_transaction(now)
+    if not transaction:
+        raise RuntimeError("speaker enrollment transaction is missing or expired")
+    if transaction_id != transaction.get("transactionId"):
+        raise ValueError("transactionId does not match the pending speaker transaction")
+    current_profile = _runtime_speaker_profile()
+    spec = BY_ID[transaction["modelId"]]
+    expected_version = dict(spec.adapter.activation).get("model_version")
+    if not current_profile["enrolled"] or current_profile["modelId"] != spec.id or current_profile["modelVersion"] != expected_version:
+        raise RuntimeError("S2S speaker profile is not enrolled for the prepared model")
+    old = read_selection()
+    pending = old.stages.get("speaker")
+    if not pending or pending.model_id != spec.id:
+        raise RuntimeError("speaker enrollment selection is no longer active")
+    config = {key: value for key, value in pending.config.items() if key not in {"enrollment_pending", "enabled", "profile"}}
+    config["threshold"] = _speaker_threshold(transaction["threshold"])
+    _write_speaker_selection(old, StageSelection(pending.model_id, pending.adapter, config))
+    SPEAKER_TRANSACTION_PATH.unlink(missing_ok=True)
+    return speaker_status(now)
+
+
+def update_speaker_threshold(value: Any) -> dict[str, Any]:
+    threshold = _speaker_threshold(value)
+    old = read_selection()
+    selected = old.stages.get("speaker")
+    if not selected:
+        raise RuntimeError("speaker profile is not configured")
+    replacement = StageSelection(selected.model_id, selected.adapter, {**selected.config, "threshold": threshold})
+    _write_speaker_selection(old, replacement)
+    return speaker_status()
+
+
 def deactivate_speaker() -> None:
     old = read_selection()
     if "speaker" not in old.stages:
         return
-    stages = {stage: selected for stage, selected in old.stages.items() if stage != "speaker"}
-    replacement = PipelineSelection(1, stages)
-    _atomic_json(SELECTION_PATH, selection_dict(replacement))
-    try:
-        subprocess.run(["systemctl", "try-restart", "saha-s2s.service"], check=True, timeout=180)
-        wait_ready(S2S_READY_URL, 180)
-    except (OSError, RuntimeError, subprocess.SubprocessError):
-        _atomic_json(SELECTION_PATH, selection_dict(old))
-        subprocess.run(["systemctl", "try-restart", "saha-s2s.service"], check=False, timeout=180)
-        raise
+    _write_speaker_selection(old, None)
 
 
 def _voice_profile(voice_id: str) -> dict[str, Any]:
@@ -996,7 +1216,7 @@ class Handler(BaseHTTPRequestHandler):
                 "/health": lambda: {"status": "ok"}, "/v1/catalog": catalog_response,
                 "/v1/models/status": models_status, "/v1/models": legacy_model_status,
                 "/v1/pipeline/readiness": pipeline_readiness, "/v1/network/status": network_status,
-                "/v1/voices": voices_response,
+                "/v1/voices": voices_response, "/v1/speaker/status": speaker_status,
             }
             function = routes.get(self.path)
             self.send_json(200, function()) if function else self.send_json(404, {"error": "not found"})
@@ -1024,9 +1244,27 @@ class Handler(BaseHTTPRequestHandler):
                 delete_voice(str(body.get("voiceId", "")))
                 self.send_json(200, {"status": "deleted"})
                 return
-            if self.path == "/v1/models/deactivate" and body.get("stage") == "speaker":
+            if self.path in {"/v1/speaker/setup/prepare", "/v1/speaker/prepare"}:
+                self.send_json(201, prepare_speaker(body))
+                return
+            if self.path in {"/v1/speaker/setup/commit", "/v1/speaker/commit"}:
+                transaction_id = body.get("transactionId")
+                if not isinstance(transaction_id, str) or not transaction_id:
+                    raise ValueError("transactionId is required")
+                self.send_json(200, commit_speaker(transaction_id))
+                return
+            if self.path in {"/v1/speaker/setup/abort", "/v1/speaker/abort"}:
+                transaction_id = body.get("transactionId")
+                if transaction_id is not None and not isinstance(transaction_id, str):
+                    raise ValueError("transactionId must be a string")
+                self.send_json(200, {"status": "aborted", "aborted": abort_speaker(transaction_id)})
+                return
+            if self.path == "/v1/speaker/threshold":
+                self.send_json(200, update_speaker_threshold(body.get("threshold")))
+                return
+            if self.path == "/v1/speaker/deactivate" or (self.path == "/v1/models/deactivate" and body.get("stage") == "speaker"):
                 deactivate_speaker()
-                self.send_json(200, {"stage": "speaker", "status": "inactive"})
+                self.send_json(200, speaker_status())
                 return
             spec = require_model(body)
             if self.path in {"/v1/models/download", "/v1/models/pull", "/v1/models/resume"}:
