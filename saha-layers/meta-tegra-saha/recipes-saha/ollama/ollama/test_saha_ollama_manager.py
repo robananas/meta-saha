@@ -4,6 +4,8 @@ import io
 import json
 import tarfile
 import tempfile
+import threading
+import time
 import unittest
 from pathlib import Path
 from unittest.mock import patch
@@ -141,6 +143,165 @@ class ModelManagerTest(unittest.TestCase):
             )
             self.assertEqual("ROBAN_S2S_LLM_MODEL=qwen2.5:1.5b-instruct-q4_K_M\n", legacy.read_text())
             self.assertEqual(0o644, selection.stat().st_mode & 0o777)
+
+    def test_pipeline_mode_missing_defaults_local_without_token_disclosure(self):
+        with tempfile.TemporaryDirectory() as directory, patch.object(
+            MODULE, "PIPELINE_MODE_PATH", Path(directory) / "missing.json"
+        ), patch.object(MODULE, "S2S_TOKEN_PATH", Path(directory) / "missing.token"), patch.object(
+            MODULE.urllib.request, "urlopen", side_effect=OSError("offline")
+        ):
+            response = MODULE.pipeline_mode_response()
+        self.assertEqual("local", response["mode"])
+        self.assertEqual(0, response["generation"])
+        self.assertFalse(response["tokenConfigured"])
+        self.assertEqual(MODULE.GROK_ENDPOINT, response["endpoint"])
+        self.assertEqual(MODULE.GROK_MODEL, response["model"])
+        self.assertNotIn("token", json.dumps(response).lower().replace("tokenconfigured", ""))
+
+    def test_pipeline_mode_readiness_error_is_sanitized(self):
+        secret_detail = "https://private.invalid/path?token=secret"
+        with tempfile.TemporaryDirectory() as directory, patch.object(
+            MODULE, "PIPELINE_MODE_PATH", Path(directory) / "missing.json"
+        ), patch.object(MODULE, "S2S_TOKEN_PATH", Path(directory) / "missing.token"), patch.object(
+            MODULE.urllib.request, "urlopen", side_effect=OSError(secret_detail)
+        ):
+            response = MODULE.pipeline_mode_response()
+        self.assertEqual(
+            {"code": "readiness_unavailable", "message": "S2S readiness is unavailable or invalid"},
+            response["error"],
+        )
+        self.assertNotIn(secret_detail, json.dumps(response))
+
+    def test_token_configured_uses_metadata_without_reading_secret(self):
+        with tempfile.TemporaryDirectory() as directory:
+            token = Path(directory) / "sub2api.token"
+            token.write_bytes(b"secret-that-must-not-be-read-or-returned")
+            with patch.object(MODULE, "S2S_TOKEN_PATH", token), patch.object(
+                Path, "read_bytes", side_effect=AssertionError("token contents must not be read")
+            ), patch.object(Path, "read_text", side_effect=AssertionError("token contents must not be read")):
+                self.assertTrue(MODULE.token_configured())
+
+    def test_pipeline_mode_accepts_only_exact_mode_schema(self):
+        for body in ({}, {"mode": "other"}, {"mode": "local", "token": "secret"}, {"mode": "grok", "endpoint": "https://evil.invalid"}):
+            with self.subTest(body=body), self.assertRaises(ValueError):
+                MODULE.set_pipeline_mode(body)
+
+    def test_pipeline_mode_requires_operator_token_for_grok_but_not_local(self):
+        with tempfile.TemporaryDirectory() as directory, patch.object(
+            MODULE, "PIPELINE_MODE_PATH", Path(directory) / "missing.json"
+        ), patch.object(MODULE, "S2S_TOKEN_PATH", Path(directory) / "missing.token"), patch.object(
+            MODULE, "pipeline_mode_response", return_value={"mode": "local"}
+        ):
+            self.assertEqual({"mode": "local"}, MODULE.set_pipeline_mode({"mode": "local"}))
+            with self.assertRaisesRegex(RuntimeError, "not configured"):
+                MODULE.set_pipeline_mode({"mode": "grok"})
+
+    def test_pipeline_mode_switch_persists_generation_and_validates_effective_ready(self):
+        with tempfile.TemporaryDirectory() as directory:
+            root = Path(directory)
+            token = root / "sub2api.token"
+            token.write_text("operator-secret\n")
+            mode = root / "pipeline-mode.json"
+            transaction = root / "pipeline-mode-transaction.json"
+            with patch.object(MODULE, "PIPELINE_MODE_PATH", mode), patch.object(
+                MODULE, "PIPELINE_MODE_TRANSACTION_PATH", transaction
+            ), patch.object(MODULE, "S2S_TOKEN_PATH", token), patch.object(
+                MODULE, "run_s2s_command"
+            ) as restart, patch.object(MODULE, "wait_ready", return_value={"ready": True}) as ready, patch.object(
+                MODULE, "pipeline_mode_response", return_value={"mode": "grok", "generation": 1}
+            ):
+                response = MODULE.set_pipeline_mode({"mode": "grok"})
+            persisted = json.loads(mode.read_text())
+        self.assertEqual({"mode": "grok", "generation": 1}, response)
+        self.assertEqual({"version": 1, "mode": "grok", "generation": 1}, persisted)
+        self.assertFalse(transaction.exists())
+        restart.assert_called_once_with("restart", timeout=180)
+        ready.assert_called_once_with(MODULE.S2S_READY_URL, 180, "grok", 1)
+
+    def test_pipeline_mode_failed_effective_validation_rolls_back_and_restarts_old_mode(self):
+        with tempfile.TemporaryDirectory() as directory:
+            root = Path(directory)
+            mode = root / "pipeline-mode.json"
+            mode.write_text(json.dumps({"version": 1, "mode": "local", "generation": 4}))
+            transaction = root / "pipeline-mode-transaction.json"
+            token = root / "sub2api.token"
+            token.write_text("operator-secret")
+            with patch.object(MODULE, "PIPELINE_MODE_PATH", mode), patch.object(
+                MODULE, "PIPELINE_MODE_TRANSACTION_PATH", transaction
+            ), patch.object(MODULE, "S2S_TOKEN_PATH", token), patch.object(
+                MODULE, "_restart_for_pipeline_mode", side_effect=[RuntimeError("mismatch with secret URL"), None]
+            ) as restart:
+                with self.assertRaisesRegex(MODULE.PipelineModeServiceError, "activation failed") as raised:
+                    MODULE.set_pipeline_mode({"mode": "grok"})
+                self.assertNotIn("secret URL", str(raised.exception))
+            persisted = json.loads(mode.read_text())
+        self.assertEqual({"version": 1, "mode": "local", "generation": 4}, persisted)
+        self.assertFalse(transaction.exists())
+        self.assertEqual("grok", restart.call_args_list[0].args[0]["mode"])
+        self.assertEqual("local", restart.call_args_list[1].args[0]["mode"])
+
+    def test_pipeline_mode_crash_recovery_rolls_back_persisted_transaction(self):
+        with tempfile.TemporaryDirectory() as directory:
+            root = Path(directory)
+            mode = root / "pipeline-mode.json"
+            mode.write_text(json.dumps({"version": 1, "mode": "grok", "generation": 2}))
+            transaction = root / "pipeline-mode-transaction.json"
+            transaction.write_text(json.dumps({
+                "version": 1,
+                "old": {"mode": "local", "generation": 1},
+                "replacement": {"mode": "grok", "generation": 2},
+            }))
+            with patch.object(MODULE, "PIPELINE_MODE_PATH", mode), patch.object(
+                MODULE, "PIPELINE_MODE_TRANSACTION_PATH", transaction
+            ), patch.object(MODULE, "_restart_for_pipeline_mode") as restart:
+                MODULE.recover_pipeline_mode_transaction()
+            persisted = json.loads(mode.read_text())
+        self.assertEqual({"version": 1, "mode": "local", "generation": 1}, persisted)
+        self.assertFalse(transaction.exists())
+        restart.assert_called_once_with({"version": 1, "mode": "local", "generation": 1})
+
+    def test_pipeline_mutations_share_one_process_wide_lock(self):
+        functions = (
+            MODULE.set_pipeline_mode,
+            MODULE.activate,
+            MODULE.prepare_speaker,
+            MODULE.speaker_status,
+            MODULE.abort_speaker,
+            MODULE.commit_speaker,
+            MODULE.update_speaker_threshold,
+            MODULE.deactivate_speaker,
+            MODULE.select_voice,
+        )
+        for function in functions:
+            with self.subTest(function=function.__name__):
+                self.assertIsNotNone(getattr(function, "__wrapped__", None))
+
+        entered = threading.Event()
+        finished = threading.Event()
+
+        @MODULE.serialized_pipeline_mutation
+        def mutation():
+            entered.set()
+            finished.set()
+
+        MODULE.PIPELINE_MUTATION_LOCK.acquire()
+        try:
+            thread = threading.Thread(target=mutation)
+            thread.start()
+            time.sleep(0.02)
+            self.assertFalse(entered.is_set())
+        finally:
+            MODULE.PIPELINE_MUTATION_LOCK.release()
+        thread.join(timeout=1)
+        self.assertTrue(finished.is_set())
+
+    def test_atomic_json_fsyncs_file_and_parent_directory(self):
+        with tempfile.TemporaryDirectory() as directory:
+            path = Path(directory) / "state.json"
+            with patch.object(MODULE.os, "fsync", wraps=MODULE.os.fsync) as fsync:
+                MODULE._atomic_json(path, {"value": 1})
+            self.assertEqual({"value": 1}, json.loads(path.read_text()))
+            self.assertGreaterEqual(fsync.call_count, 2)
 
     def test_cosyvoice_activation_starts_sidecar_and_checks_revision(self):
         old = MODULE.PipelineSelection(1, {"tts": MODULE.selection_for(MODULE.BY_ID["sherpa-onnx-vits-zh"])})

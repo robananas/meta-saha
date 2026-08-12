@@ -70,7 +70,14 @@ verify_models() {
 
 start_service() {
     mountpoint -q /data
-    mkdir -p /data/models/s2s/stt /data/models/s2s/llm /data/models/s2s/tts /data/model-cache/s2s
+    mkdir -p /data/models/s2s/stt /data/models/s2s/llm /data/models/s2s/tts /data/model-cache/s2s /data/model-config/s2s /data/model-secrets/s2s
+    chown root:999 /data/model-secrets /data/model-secrets/s2s
+    chmod 0750 /data/model-secrets /data/model-secrets/s2s
+    if [ -e /data/model-secrets/s2s/sub2api.token ]; then
+        test -f /data/model-secrets/s2s/sub2api.token && test ! -L /data/model-secrets/s2s/sub2api.token
+        chown root:999 /data/model-secrets/s2s/sub2api.token
+        chmod 0640 /data/model-secrets/s2s/sub2api.token
+    fi
     verify_models
     ensure_image
     cd "$SAHA_S2S_COMPOSE_DIR"

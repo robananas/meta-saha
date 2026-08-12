@@ -29,5 +29,11 @@ chown 10002:999 /data/voiceprints /data/voiceprints/s2s
 chmod 0700 /data/voiceprints /data/voiceprints/s2s
 install -d -o 0 -g 0 -m 0750 /data/model-cache/s2s-model-manager
 install -d -o 0 -g 999 -m 2750 /data/model-config/s2s /data/model-config/s2s/voices
+install -d -o 0 -g 999 -m 0750 /data/model-secrets /data/model-secrets/s2s
+if [ -e /data/model-secrets/s2s/sub2api.token ]; then
+    [ -f /data/model-secrets/s2s/sub2api.token ] && [ ! -L /data/model-secrets/s2s/sub2api.token ] || exit 1
+    chown 0:999 /data/model-secrets/s2s/sub2api.token
+    chmod 0640 /data/model-secrets/s2s/sub2api.token
+fi
 install -d -m 0755 /data/log/journal /data/log/ros /data/log/app /data/preload /run/log/journal
 /usr/bin/saha-board-status emit data ready >/dev/null 2>&1 || true

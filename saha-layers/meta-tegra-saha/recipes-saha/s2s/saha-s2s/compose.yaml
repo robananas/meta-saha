@@ -6,6 +6,8 @@ services:
     network_mode: host
     restart: "no"
     init: true
+    group_add:
+      - "999"
     environment:
       NVIDIA_VISIBLE_DEVICES: all
       NVIDIA_DRIVER_CAPABILITIES: compute,utility
@@ -19,6 +21,10 @@ services:
       ROBAN_S2S_MODEL_ROOT: /models
       ROBAN_S2S_CACHE_DIR: /var/cache/roban-s2s
       ROBAN_S2S_SELECTION_PATH: /model-config/selection.json
+      ROBAN_S2S_MODE_PATH: /model-config/pipeline-mode.json
+      ROBAN_S2S_GROK_TOKEN_PATH: /model-secrets/sub2api.token
+      ROBAN_S2S_GROK_ENDPOINT: https://api.roban.ai/v1
+      ROBAN_S2S_GROK_MODEL: grok-voice-latest
       ROBAN_S2S_VOICEPRINT_DIR: ${ROBAN_S2S_VOICEPRINT_DIR:-/var/lib/roban-s2s/voiceprints}
       ROBAN_S2S_VOICE_REFERENCE_TEMP_DIR: /voice-temp
       ROBAN_S2S_SPEAKER_PROVIDER: ${ROBAN_S2S_SPEAKER_PROVIDER:-cpu}
@@ -36,6 +42,7 @@ services:
       - /proc/meminfo:/host/proc/meminfo:ro
       - /data/models/s2s:/models:ro
       - /data/model-config/s2s:/model-config:ro
+      - /data/model-secrets/s2s:/model-secrets:ro
       - /data/model-cache/s2s:/var/cache/roban-s2s
       - /data/voiceprints/s2s:/var/lib/roban-s2s/voiceprints:rw
       - /data/model-config/s2s/voice-temp:/voice-temp:rw

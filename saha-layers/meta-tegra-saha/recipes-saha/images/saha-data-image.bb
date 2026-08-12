@@ -28,6 +28,8 @@ saha_prepare_data_image() {
     test ! -e ${IMAGE_ROOTFS}/models/s2s/llm || bbfatal "factory DATA image must not contain a default LLM model"
     test ! -e ${IMAGE_ROOTFS}/models/s2s/tts || bbfatal "factory DATA image must not contain a default TTS model"
     test ! -e ${IMAGE_ROOTFS}/model-config/s2s/selection.json || bbfatal "factory DATA image must not contain a default model selection"
+    test ! -e ${IMAGE_ROOTFS}/model-config/s2s/pipeline-mode.json || bbfatal "factory DATA image must not contain a default pipeline mode"
+    test ! -e ${IMAGE_ROOTFS}/model-secrets/s2s/sub2api.token || bbfatal "factory DATA image must not contain a Grok token"
     chown -R 10002:999 ${IMAGE_ROOTFS}/models/s2s
     find ${IMAGE_ROOTFS}/models/s2s -type d -exec chmod 0750 {} +
     find ${IMAGE_ROOTFS}/models/s2s -type f -exec chmod 0640 {} +
@@ -39,6 +41,7 @@ saha_prepare_data_image() {
     install -d -o 10003 -g 998 -m 0750 ${IMAGE_ROOTFS}/model-cache/s2s/cosyvoice3
     install -d -o 0 -g 0 -m 0750 ${IMAGE_ROOTFS}/model-cache/s2s-model-manager
     install -d -o 0 -g 999 -m 2750 ${IMAGE_ROOTFS}/model-config/s2s ${IMAGE_ROOTFS}/model-config/s2s/voices
+    install -d -o 0 -g 999 -m 0750 ${IMAGE_ROOTFS}/model-secrets ${IMAGE_ROOTFS}/model-secrets/s2s
     install -d -m 0755 ${IMAGE_ROOTFS}/log/journal ${IMAGE_ROOTFS}/log/ros ${IMAGE_ROOTFS}/log/app
     printf '1\n' > ${IMAGE_ROOTFS}/.saha-data-layout-version
     (cd ${IMAGE_ROOTFS} && find preload -type f -print0 | sort -z | xargs -0 sha256sum > preload/SHA256SUMS)

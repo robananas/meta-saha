@@ -3,7 +3,7 @@ Description=Saha unified S2S model manager
 After=ollama.service network-online.target
 Wants=ollama.service network-online.target
 Requires=data.mount
-RequiresMountsFor=/data/model-config/s2s /data/model-cache/s2s-model-manager /data/models/s2s
+RequiresMountsFor=/data/model-config/s2s /data/model-secrets/s2s /data/model-cache/s2s-model-manager /data/models/s2s
 
 [Service]
 Type=simple
@@ -13,6 +13,9 @@ Environment=OLLAMA_URL=http://127.0.0.1:11434
 Environment=SAHA_MODEL_MANAGER_STATE=/data/model-cache/s2s-model-manager
 Environment=SAHA_MODEL_ROOT=/data/models/s2s
 Environment=SAHA_MODEL_SELECTION=/data/model-config/s2s/selection.json
+Environment=SAHA_PIPELINE_MODE=/data/model-config/s2s/pipeline-mode.json
+Environment=SAHA_PIPELINE_MODE_TRANSACTION=/data/model-config/s2s/pipeline-mode-transaction.json
+Environment=SAHA_S2S_TOKEN_PATH=/data/model-secrets/s2s/sub2api.token
 Environment=SAHA_OLLAMA_CONFIG=/data/model-config/s2s/ollama.env
 Environment=SAHA_MODEL_PROBE_URL=https://www.baidu.com/
 Restart=on-failure
@@ -21,6 +24,7 @@ NoNewPrivileges=yes
 PrivateTmp=yes
 ProtectHome=yes
 ProtectSystem=strict
+ReadOnlyPaths=/data/model-secrets/s2s
 ReadWritePaths=/data/model-config/s2s /data/model-cache/s2s-model-manager /data/models/s2s
 
 [Install]

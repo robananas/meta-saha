@@ -13,5 +13,7 @@
 			"path": "../generate-image-tool"
 		}
 	],
-	"settings": {}
+	"settings": {
+		"java.compile.nullAnalysis.mode": "disabled"
+	}
 }
