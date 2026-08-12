@@ -73,10 +73,23 @@ start_service() {
     mkdir -p /data/models/s2s/stt /data/models/s2s/llm /data/models/s2s/tts /data/model-cache/s2s /data/model-config/s2s /data/model-secrets/s2s
     chown root:999 /data/model-secrets /data/model-secrets/s2s
     chmod 0750 /data/model-secrets /data/model-secrets/s2s
-    if [ -e /data/model-secrets/s2s/sub2api.token ]; then
-        test -f /data/model-secrets/s2s/sub2api.token && test ! -L /data/model-secrets/s2s/sub2api.token
-        chown root:999 /data/model-secrets/s2s/sub2api.token
-        chmod 0640 /data/model-secrets/s2s/sub2api.token
+    for secret in sub2api.token dashscope-api-key; do
+        path="/data/model-secrets/s2s/$secret"
+        if [ -e "$path" ]; then
+            test -f "$path" && test ! -L "$path"
+            chown root:999 "$path"
+            chmod 0640 "$path"
+        fi
+    done
+    workspace=/data/model-config/s2s/dashscope-workspace-id
+    if [ -e "$workspace" ]; then
+        test -f "$workspace" && test ! -L "$workspace"
+        workspace_id=$(dd if="$workspace" bs=129 count=1 2>/dev/null)
+        test -n "$workspace_id" && test "${#workspace_id}" -le 128
+        case "$workspace_id" in *[!A-Za-z0-9_-]* ) log "invalid DashScope workspace ID"; return 1 ;; esac
+        case "$workspace_id" in [A-Za-z0-9]* ) ;; * ) log "invalid DashScope workspace ID"; return 1 ;; esac
+        chown root:999 "$workspace"
+        chmod 0640 "$workspace"
     fi
     verify_models
     ensure_image

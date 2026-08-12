@@ -29,6 +29,8 @@ SELECTION_PATH = Path(os.environ.get("SAHA_MODEL_SELECTION", "/data/model-config
 PIPELINE_MODE_PATH = Path(os.environ.get("SAHA_PIPELINE_MODE", "/data/model-config/s2s/pipeline-mode.json"))
 PIPELINE_MODE_TRANSACTION_PATH = Path(os.environ.get("SAHA_PIPELINE_MODE_TRANSACTION", "/data/model-config/s2s/pipeline-mode-transaction.json"))
 S2S_TOKEN_PATH = Path(os.environ.get("SAHA_S2S_TOKEN_PATH", "/data/model-secrets/s2s/sub2api.token"))
+DASHSCOPE_API_KEY_PATH = Path(os.environ.get("SAHA_DASHSCOPE_API_KEY_PATH", "/data/model-secrets/s2s/dashscope-api-key"))
+DASHSCOPE_WORKSPACE_ID_PATH = Path(os.environ.get("SAHA_DASHSCOPE_WORKSPACE_ID_PATH", "/data/model-config/s2s/dashscope-workspace-id"))
 SPEAKER_TRANSACTION_PATH = Path(os.environ.get("SAHA_SPEAKER_TRANSACTION", "/data/model-config/s2s/speaker-transaction.json"))
 LEGACY_CONFIG_PATH = Path(os.environ.get("SAHA_OLLAMA_CONFIG", "/data/model-config/s2s/ollama.env"))
 TASKS_PATH = STATE_ROOT / "downloads.json"
@@ -147,12 +149,19 @@ COSYVOICE_PREPROCESS_URL = os.environ.get("SAHA_COSYVOICE_PREPROCESS_URL", "http
 S2S_READY_URL = os.environ.get("SAHA_S2S_READY_URL", "http://127.0.0.1:8765/ready")
 GROK_ENDPOINT = "https://api.roban.ai/v1"
 GROK_MODEL = "grok-voice-latest"
-PIPELINE_MODES = frozenset({"local", "grok"})
+QWEN_MODEL = "qwen-audio-3.0-realtime-flash"
+QWEN_REGION = "cn-beijing"
+PIPELINE_MODES = frozenset({"local", "realtime"})
+REALTIME_PROVIDERS = frozenset({"qwen", "grok"})
+WORKSPACE_ID_PATTERN = re.compile(r"^[A-Za-z0-9][A-Za-z0-9_-]{0,127}$")
 PIPELINE_MUTATION_LOCK = threading.RLock()
 
 
 class PipelineModeConflict(RuntimeError):
-    pass
+    def __init__(self, code: str, message: str):
+        super().__init__(message)
+        self.code = code
+        self.public_message = message
 
 
 class PipelineModeServiceError(RuntimeError):
@@ -748,7 +757,7 @@ def require_model(body: dict[str, Any], stage: str | None = None) -> ModelSpec:
     return spec
 
 
-def wait_ready(url: str, timeout: int, expected_mode: str | None = None, expected_generation: int | None = None) -> dict[str, Any]:
+def wait_ready(url: str, timeout: int, expected_mode: str | None = None, expected_generation: int | None = None, expected_provider: str | None = None) -> dict[str, Any]:
     deadline = time.monotonic() + timeout
     last_error: Exception | None = None
     while time.monotonic() < deadline:
@@ -757,8 +766,10 @@ def wait_ready(url: str, timeout: int, expected_mode: str | None = None, expecte
                 body = json.load(response)
             ready = body.get("status") in {"ready", "ok"} or body.get("ready") is True
             if ready and expected_mode is not None:
-                if body.get("effectiveMode") != expected_mode or body.get("effectiveGeneration") != expected_generation:
-                    raise RuntimeError("S2S readiness does not match the requested pipeline mode generation")
+                if (body.get("effectiveMode") != expected_mode or
+                        body.get("effectiveProvider") != expected_provider or
+                        body.get("effectiveGeneration") != expected_generation):
+                    raise RuntimeError("S2S readiness does not match the requested pipeline provider generation")
             if ready:
                 return body
         except (OSError, ValueError, RuntimeError, json.JSONDecodeError, urllib.error.URLError) as error:
@@ -767,51 +778,128 @@ def wait_ready(url: str, timeout: int, expected_mode: str | None = None, expecte
     raise RuntimeError(f"service did not become ready: {url}: {last_error}")
 
 
-def read_pipeline_mode() -> dict[str, Any]:
-    try:
-        body = json.loads(PIPELINE_MODE_PATH.read_text(encoding="utf-8"))
-    except FileNotFoundError:
-        return {"version": 1, "mode": "local", "generation": 0}
-    except (OSError, json.JSONDecodeError) as error:
-        raise RuntimeError("persisted pipeline mode is invalid") from error
-    if not isinstance(body, dict) or body.get("version") != 1 or body.get("mode") not in PIPELINE_MODES:
+def _pipeline_config(mode: str, provider: str | None, generation: int) -> dict[str, Any]:
+    return {"version": 2, "mode": mode, "provider": provider, "generation": generation}
+
+
+def _normalize_pipeline_config(body: Any) -> dict[str, Any]:
+    if not isinstance(body, dict):
         raise RuntimeError("persisted pipeline mode is invalid")
     generation = body.get("generation")
     if isinstance(generation, bool) or not isinstance(generation, int) or generation < 0:
         raise RuntimeError("persisted pipeline mode is invalid")
-    return {"version": 1, "mode": body["mode"], "generation": generation}
+    if body.get("version") == 1:
+        legacy_mode = body.get("mode")
+        if legacy_mode == "local":
+            return _pipeline_config("local", None, generation)
+        if legacy_mode == "grok":
+            return _pipeline_config("realtime", "grok", generation)
+    if body.get("version") == 2:
+        mode, provider = body.get("mode"), body.get("provider")
+        if mode == "local" and provider is None:
+            return _pipeline_config(mode, provider, generation)
+        if mode == "realtime" and provider in REALTIME_PROVIDERS:
+            return _pipeline_config(mode, provider, generation)
+    raise RuntimeError("persisted pipeline mode is invalid")
 
 
-def token_configured() -> bool:
+def read_pipeline_mode() -> dict[str, Any]:
     try:
-        return S2S_TOKEN_PATH.is_file() and S2S_TOKEN_PATH.stat().st_size > 0
+        return _normalize_pipeline_config(json.loads(PIPELINE_MODE_PATH.read_text(encoding="utf-8")))
+    except FileNotFoundError:
+        return _pipeline_config("local", None, 0)
+    except (OSError, json.JSONDecodeError) as error:
+        raise RuntimeError("persisted pipeline mode is invalid") from error
+
+
+def _nonempty_regular_file(path: Path) -> bool:
+    try:
+        stat = path.stat()
+        return path.is_file() and not path.is_symlink() and stat.st_size > 0 and not stat.st_mode & 0o027
     except OSError:
         return False
 
 
+def token_configured() -> bool:
+    return _nonempty_regular_file(S2S_TOKEN_PATH)
+
+
+def qwen_key_configured() -> bool:
+    return _nonempty_regular_file(DASHSCOPE_API_KEY_PATH)
+
+
+def qwen_workspace_configured() -> bool:
+    try:
+        if not _nonempty_regular_file(DASHSCOPE_WORKSPACE_ID_PATH):
+            return False
+        workspace_id = DASHSCOPE_WORKSPACE_ID_PATH.read_text(encoding="utf-8")
+        if workspace_id.endswith("\n"):
+            workspace_id = workspace_id[:-1]
+        return bool(WORKSPACE_ID_PATTERN.fullmatch(workspace_id))
+    except OSError:
+        return False
+
+
+def provider_catalog() -> dict[str, dict[str, Any]]:
+    qwen_configured = qwen_key_configured() and qwen_workspace_configured()
+    return {
+        "qwen": {
+            "available": qwen_configured, "configured": qwen_configured,
+            "reason": None if qwen_configured else "configuration_missing",
+            "model": QWEN_MODEL, "region": QWEN_REGION, "label": "Qwen Realtime",
+        },
+        "grok": {
+            "available": False, "configured": token_configured(),
+            "reason": "balance_unavailable", "model": GROK_MODEL,
+            "region": "global", "label": "Grok Voice",
+        },
+    }
+
+
+def _safe_readiness_error(value: Any) -> dict[str, str] | None:
+    if not isinstance(value, dict):
+        return None
+    code, message = value.get("code"), value.get("message")
+    if not isinstance(code, str) or not re.fullmatch(r"[a-z0-9_]{1,64}", code):
+        return None
+    if not isinstance(message, str) or not 1 <= len(message) <= 256 or "http" in message.lower():
+        return None
+    return {"code": code, "message": message}
+
+
+def _read_readiness_response() -> dict[str, Any]:
+    try:
+        with urllib.request.urlopen(S2S_READY_URL, timeout=5) as response:
+            return json.load(response)
+    except urllib.error.HTTPError as error:
+        if error.code != 503:
+            raise
+        return json.load(error)
+
+
 def pipeline_mode_response() -> dict[str, Any]:
     configured = read_pipeline_mode()
-    effective_mode = None
+    effective_mode = effective_provider = None
     effective_generation = None
     status = "error"
     error = None
     try:
-        with urllib.request.urlopen(S2S_READY_URL, timeout=5) as response:
-            readiness = json.load(response)
+        readiness = _read_readiness_response()
         candidate_mode = readiness.get("effectiveMode")
+        candidate_provider = readiness.get("effectiveProvider")
         candidate_generation = readiness.get("effectiveGeneration")
-        if candidate_mode not in PIPELINE_MODES or isinstance(candidate_generation, bool) or not isinstance(candidate_generation, int):
-            raise RuntimeError("S2S readiness is missing effective pipeline mode generation")
-        effective_mode = candidate_mode
-        effective_generation = candidate_generation
+        valid_provider = (candidate_mode == "local" and candidate_provider is None) or (candidate_mode == "realtime" and candidate_provider in REALTIME_PROVIDERS)
+        if candidate_mode not in PIPELINE_MODES or not valid_provider or isinstance(candidate_generation, bool) or not isinstance(candidate_generation, int):
+            raise RuntimeError("S2S readiness is missing effective pipeline provider generation")
+        effective_mode, effective_provider, effective_generation = candidate_mode, candidate_provider, candidate_generation
         status = "ready" if readiness.get("ready") is True or readiness.get("status") in {"ready", "ok"} else "not_ready"
+        error = _safe_readiness_error(readiness.get("error"))
     except (OSError, ValueError, RuntimeError, json.JSONDecodeError, urllib.error.URLError):
         error = {"code": "readiness_unavailable", "message": "S2S readiness is unavailable or invalid"}
     return {
-        "mode": configured["mode"], "generation": configured["generation"],
-        "effectiveMode": effective_mode, "effectiveGeneration": effective_generation,
-        "status": status, "error": error, "tokenConfigured": token_configured(),
-        "endpoint": GROK_ENDPOINT, "model": GROK_MODEL,
+        "mode": configured["mode"], "provider": configured["provider"], "generation": configured["generation"],
+        "effectiveMode": effective_mode, "effectiveProvider": effective_provider, "effectiveGeneration": effective_generation,
+        "status": status, "error": error, "providers": provider_catalog(),
     }
 
 
@@ -822,23 +910,23 @@ def _load_pipeline_mode_transaction() -> dict[str, Any] | None:
         return None
     except (OSError, json.JSONDecodeError) as error:
         raise RuntimeError("persisted pipeline mode transaction is invalid") from error
-    if not isinstance(transaction, dict) or transaction.get("version") != 1:
+    if not isinstance(transaction, dict) or transaction.get("version") not in {1, 2}:
         raise RuntimeError("persisted pipeline mode transaction is invalid")
-    for key in ("old", "replacement"):
-        value = transaction.get(key)
-        if not isinstance(value, dict) or value.get("mode") not in PIPELINE_MODES or not isinstance(value.get("generation"), int):
-            raise RuntimeError("persisted pipeline mode transaction is invalid")
-    return transaction
+    old, replacement = transaction.get("old"), transaction.get("replacement")
+    if transaction["version"] == 1:
+        old = {"version": 1, **old} if isinstance(old, dict) else old
+        replacement = {"version": 1, **replacement} if isinstance(replacement, dict) else replacement
+    return {"version": 2, "old": _normalize_pipeline_config(old), "replacement": _normalize_pipeline_config(replacement)}
 
 
 def _restart_for_pipeline_mode(configured: dict[str, Any], check: bool = True) -> None:
     run_s2s_command("restart", timeout=180)
     if check:
-        wait_ready(S2S_READY_URL, 180, configured["mode"], configured["generation"])
+        wait_ready(S2S_READY_URL, 180, configured["mode"], configured["generation"], configured["provider"])
 
 
 def _rollback_pipeline_mode(transaction: dict[str, Any]) -> None:
-    old = {"version": 1, **transaction["old"]}
+    old = _normalize_pipeline_config(transaction["old"])
     try:
         _atomic_json(PIPELINE_MODE_PATH, old)
         _restart_for_pipeline_mode(old)
@@ -860,20 +948,27 @@ def recover_pipeline_mode_transaction() -> None:
 
 @serialized_pipeline_mutation
 def set_pipeline_mode(body: dict[str, Any]) -> dict[str, Any]:
-    if set(body) != {"mode"} or body.get("mode") not in PIPELINE_MODES:
-        raise ValueError("request must contain only mode with value local or grok")
-    requested = body["mode"]
-    if requested == "grok" and not token_configured():
-        raise PipelineModeConflict("Grok token is not configured on this device")
+    if body == {"mode": "local"}:
+        requested_mode, requested_provider = "local", None
+    elif body == {"mode": "realtime", "provider": "qwen"}:
+        requested_mode, requested_provider = "realtime", "qwen"
+    elif set(body) == {"mode", "provider"} and body.get("mode") == "realtime" and body.get("provider") == "grok":
+        raise PipelineModeConflict("provider_unavailable", "Grok is unavailable because balance is unavailable")
+    else:
+        raise ValueError("request must be exactly {mode: local} or {mode: realtime, provider: qwen}")
+    if requested_provider == "qwen" and not (qwen_key_configured() and qwen_workspace_configured()):
+        raise PipelineModeConflict("configuration_missing", "Qwen key and workspace configuration are required")
     old = read_pipeline_mode()
-    if requested == old["mode"]:
+    try:
+        stored_version = json.loads(PIPELINE_MODE_PATH.read_text(encoding="utf-8")).get("version")
+    except FileNotFoundError:
+        stored_version = 2
+    except (OSError, json.JSONDecodeError, AttributeError):
+        stored_version = None
+    if requested_mode == old["mode"] and requested_provider == old["provider"] and stored_version == 2:
         return pipeline_mode_response()
-    replacement = {"version": 1, "mode": requested, "generation": old["generation"] + 1}
-    transaction = {
-        "version": 1,
-        "old": {"mode": old["mode"], "generation": old["generation"]},
-        "replacement": {"mode": replacement["mode"], "generation": replacement["generation"]},
-    }
+    replacement = _pipeline_config(requested_mode, requested_provider, old["generation"] + 1)
+    transaction = {"version": 2, "old": old, "replacement": replacement}
     transaction_persisted = False
     try:
         _atomic_json(PIPELINE_MODE_TRANSACTION_PATH, transaction, mode=0o600)
@@ -1473,8 +1568,8 @@ class Handler(BaseHTTPRequestHandler):
                 self.send_json(404, {"error": "not found"})
         except (json.JSONDecodeError, ValueError) as error:
             self.send_json(400, {"error": str(error)})
-        except PipelineModeConflict:
-            self.send_json(409, {"error": {"code": "token_not_configured", "message": "Grok token is not configured on this device"}})
+        except PipelineModeConflict as error:
+            self.send_json(409, {"error": {"code": error.code, "message": error.public_message}})
         except PipelineModeRollbackError:
             self.send_json(503, {"error": {"code": "pipeline_mode_rollback_failed", "message": "Pipeline mode rollback failed"}})
         except PipelineModeServiceError:

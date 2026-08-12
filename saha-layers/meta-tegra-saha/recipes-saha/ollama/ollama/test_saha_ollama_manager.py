@@ -144,6 +144,17 @@ class ModelManagerTest(unittest.TestCase):
             self.assertEqual("ROBAN_S2S_LLM_MODEL=qwen2.5:1.5b-instruct-q4_K_M\n", legacy.read_text())
             self.assertEqual(0o644, selection.stat().st_mode & 0o777)
 
+    def test_pipeline_mode_v1_reads_as_v2_preserving_generation(self):
+        with tempfile.TemporaryDirectory() as directory:
+            path = Path(directory) / "pipeline-mode.json"
+            for persisted, expected in (
+                ({"version": 1, "mode": "local", "generation": 7}, {"version": 2, "mode": "local", "provider": None, "generation": 7}),
+                ({"version": 1, "mode": "grok", "generation": 8}, {"version": 2, "mode": "realtime", "provider": "grok", "generation": 8}),
+            ):
+                path.write_text(json.dumps(persisted))
+                with patch.object(MODULE, "PIPELINE_MODE_PATH", path):
+                    self.assertEqual(expected, MODULE.read_pipeline_mode())
+
     def test_pipeline_mode_missing_defaults_local_without_token_disclosure(self):
         with tempfile.TemporaryDirectory() as directory, patch.object(
             MODULE, "PIPELINE_MODE_PATH", Path(directory) / "missing.json"
@@ -153,10 +164,13 @@ class ModelManagerTest(unittest.TestCase):
             response = MODULE.pipeline_mode_response()
         self.assertEqual("local", response["mode"])
         self.assertEqual(0, response["generation"])
-        self.assertFalse(response["tokenConfigured"])
-        self.assertEqual(MODULE.GROK_ENDPOINT, response["endpoint"])
-        self.assertEqual(MODULE.GROK_MODEL, response["model"])
-        self.assertNotIn("token", json.dumps(response).lower().replace("tokenconfigured", ""))
+        self.assertIsNone(response["provider"])
+        self.assertEqual({"qwen", "grok"}, set(response["providers"]))
+        self.assertEqual(MODULE.QWEN_MODEL, response["providers"]["qwen"]["model"])
+        self.assertEqual(MODULE.QWEN_REGION, response["providers"]["qwen"]["region"])
+        self.assertEqual("balance_unavailable", response["providers"]["grok"]["reason"])
+        self.assertNotIn("token", json.dumps(response).lower())
+        self.assertNotIn("workspaceurl", json.dumps(response).lower())
 
     def test_pipeline_mode_readiness_error_is_sanitized(self):
         secret_detail = "https://private.invalid/path?token=secret"
@@ -176,47 +190,75 @@ class ModelManagerTest(unittest.TestCase):
         with tempfile.TemporaryDirectory() as directory:
             token = Path(directory) / "sub2api.token"
             token.write_bytes(b"secret-that-must-not-be-read-or-returned")
+            token.chmod(0o600)
             with patch.object(MODULE, "S2S_TOKEN_PATH", token), patch.object(
                 Path, "read_bytes", side_effect=AssertionError("token contents must not be read")
             ), patch.object(Path, "read_text", side_effect=AssertionError("token contents must not be read")):
                 self.assertTrue(MODULE.token_configured())
 
     def test_pipeline_mode_accepts_only_exact_mode_schema(self):
-        for body in ({}, {"mode": "other"}, {"mode": "local", "token": "secret"}, {"mode": "grok", "endpoint": "https://evil.invalid"}):
+        for body in ({}, {"mode": "other"}, {"mode": "local", "provider": None}, {"mode": "local", "token": "secret"}, {"mode": "realtime"}, {"mode": "realtime", "provider": "unknown"}, {"mode": "realtime", "provider": "qwen", "endpoint": "https://evil.invalid"}):
             with self.subTest(body=body), self.assertRaises(ValueError):
                 MODULE.set_pipeline_mode(body)
+        with self.assertRaises(MODULE.PipelineModeConflict) as raised:
+            MODULE.set_pipeline_mode({"mode": "realtime", "provider": "grok"})
+        self.assertEqual("provider_unavailable", raised.exception.code)
 
-    def test_pipeline_mode_requires_operator_token_for_grok_but_not_local(self):
-        with tempfile.TemporaryDirectory() as directory, patch.object(
-            MODULE, "PIPELINE_MODE_PATH", Path(directory) / "missing.json"
-        ), patch.object(MODULE, "S2S_TOKEN_PATH", Path(directory) / "missing.token"), patch.object(
-            MODULE, "pipeline_mode_response", return_value={"mode": "local"}
-        ):
-            self.assertEqual({"mode": "local"}, MODULE.set_pipeline_mode({"mode": "local"}))
-            with self.assertRaisesRegex(RuntimeError, "not configured"):
-                MODULE.set_pipeline_mode({"mode": "grok"})
+    def test_qwen_requires_independent_safe_operator_files_without_state_change(self):
+        with tempfile.TemporaryDirectory() as directory:
+            root = Path(directory)
+            mode = root / "pipeline-mode.json"
+            mode.write_text(json.dumps({"version": 2, "mode": "local", "provider": None, "generation": 3}))
+            key, workspace = root / "key", root / "workspace"
+            with patch.object(MODULE, "PIPELINE_MODE_PATH", mode), patch.object(MODULE, "DASHSCOPE_API_KEY_PATH", key), patch.object(MODULE, "DASHSCOPE_WORKSPACE_ID_PATH", workspace):
+                with self.assertRaises(MODULE.PipelineModeConflict):
+                    MODULE.set_pipeline_mode({"mode": "realtime", "provider": "qwen"})
+                self.assertEqual(3, json.loads(mode.read_text())["generation"])
+                key.write_text("secret")
+                key.chmod(0o600)
+                for invalid in ("bad.name", "bad/name", "bad:name", "bad%name", "bad name", "_bad", "a" * 129):
+                    workspace.write_text(invalid)
+                    workspace.chmod(0o600)
+                    self.assertFalse(MODULE.qwen_workspace_configured())
+                workspace.write_text("ws_real_123")
+                workspace.chmod(0o644)
+                self.assertFalse(MODULE.qwen_workspace_configured())
+                workspace.chmod(0o600)
+                self.assertTrue(MODULE.qwen_workspace_configured())
+
+    def test_pipeline_mode_structured_503_retains_effective_fields_and_safe_error(self):
+        readiness = {"status": "not_ready", "ready": False, "effectiveMode": "realtime", "effectiveProvider": "qwen", "effectiveGeneration": 4, "error": {"code": "provider_connecting", "message": "Provider is connecting"}}
+        with patch.object(MODULE, "read_pipeline_mode", return_value={"version": 2, "mode": "realtime", "provider": "qwen", "generation": 4}), patch.object(MODULE, "_read_readiness_response", return_value=readiness), patch.object(MODULE, "provider_catalog", return_value={}):
+            response = MODULE.pipeline_mode_response()
+        self.assertEqual("qwen", response["effectiveProvider"])
+        self.assertEqual(4, response["effectiveGeneration"])
+        self.assertEqual("not_ready", response["status"])
+        self.assertEqual(readiness["error"], response["error"])
 
     def test_pipeline_mode_switch_persists_generation_and_validates_effective_ready(self):
         with tempfile.TemporaryDirectory() as directory:
             root = Path(directory)
-            token = root / "sub2api.token"
-            token.write_text("operator-secret\n")
+            key, workspace = root / "dashscope-api-key", root / "dashscope-workspace-id"
+            key.write_text("operator-secret\n")
+            workspace.write_text("ws_real_123\n")
+            key.chmod(0o600)
+            workspace.chmod(0o600)
             mode = root / "pipeline-mode.json"
             transaction = root / "pipeline-mode-transaction.json"
             with patch.object(MODULE, "PIPELINE_MODE_PATH", mode), patch.object(
                 MODULE, "PIPELINE_MODE_TRANSACTION_PATH", transaction
-            ), patch.object(MODULE, "S2S_TOKEN_PATH", token), patch.object(
-                MODULE, "run_s2s_command"
-            ) as restart, patch.object(MODULE, "wait_ready", return_value={"ready": True}) as ready, patch.object(
-                MODULE, "pipeline_mode_response", return_value={"mode": "grok", "generation": 1}
-            ):
-                response = MODULE.set_pipeline_mode({"mode": "grok"})
+            ), patch.object(MODULE, "DASHSCOPE_API_KEY_PATH", key), patch.object(
+                MODULE, "DASHSCOPE_WORKSPACE_ID_PATH", workspace
+            ), patch.object(MODULE, "run_s2s_command") as restart, patch.object(
+                MODULE, "wait_ready", return_value={"ready": True}
+            ) as ready, patch.object(MODULE, "pipeline_mode_response", return_value={"mode": "realtime", "provider": "qwen", "generation": 1}):
+                response = MODULE.set_pipeline_mode({"mode": "realtime", "provider": "qwen"})
             persisted = json.loads(mode.read_text())
-        self.assertEqual({"mode": "grok", "generation": 1}, response)
-        self.assertEqual({"version": 1, "mode": "grok", "generation": 1}, persisted)
+        self.assertEqual({"mode": "realtime", "provider": "qwen", "generation": 1}, response)
+        self.assertEqual({"version": 2, "mode": "realtime", "provider": "qwen", "generation": 1}, persisted)
         self.assertFalse(transaction.exists())
         restart.assert_called_once_with("restart", timeout=180)
-        ready.assert_called_once_with(MODULE.S2S_READY_URL, 180, "grok", 1)
+        ready.assert_called_once_with(MODULE.S2S_READY_URL, 180, "realtime", 1, "qwen")
 
     def test_pipeline_mode_failed_effective_validation_rolls_back_and_restarts_old_mode(self):
         with tempfile.TemporaryDirectory() as directory:
@@ -224,20 +266,23 @@ class ModelManagerTest(unittest.TestCase):
             mode = root / "pipeline-mode.json"
             mode.write_text(json.dumps({"version": 1, "mode": "local", "generation": 4}))
             transaction = root / "pipeline-mode-transaction.json"
-            token = root / "sub2api.token"
-            token.write_text("operator-secret")
+            key, workspace = root / "dashscope-api-key", root / "dashscope-workspace-id"
+            key.write_text("operator-secret")
+            workspace.write_text("ws_real_123")
+            key.chmod(0o600)
+            workspace.chmod(0o600)
             with patch.object(MODULE, "PIPELINE_MODE_PATH", mode), patch.object(
                 MODULE, "PIPELINE_MODE_TRANSACTION_PATH", transaction
-            ), patch.object(MODULE, "S2S_TOKEN_PATH", token), patch.object(
-                MODULE, "_restart_for_pipeline_mode", side_effect=[RuntimeError("mismatch with secret URL"), None]
-            ) as restart:
+            ), patch.object(MODULE, "DASHSCOPE_API_KEY_PATH", key), patch.object(
+                MODULE, "DASHSCOPE_WORKSPACE_ID_PATH", workspace
+            ), patch.object(MODULE, "_restart_for_pipeline_mode", side_effect=[RuntimeError("mismatch with secret URL"), None]) as restart:
                 with self.assertRaisesRegex(MODULE.PipelineModeServiceError, "activation failed") as raised:
-                    MODULE.set_pipeline_mode({"mode": "grok"})
+                    MODULE.set_pipeline_mode({"mode": "realtime", "provider": "qwen"})
                 self.assertNotIn("secret URL", str(raised.exception))
             persisted = json.loads(mode.read_text())
-        self.assertEqual({"version": 1, "mode": "local", "generation": 4}, persisted)
+        self.assertEqual({"version": 2, "mode": "local", "provider": None, "generation": 4}, persisted)
         self.assertFalse(transaction.exists())
-        self.assertEqual("grok", restart.call_args_list[0].args[0]["mode"])
+        self.assertEqual("qwen", restart.call_args_list[0].args[0]["provider"])
         self.assertEqual("local", restart.call_args_list[1].args[0]["mode"])
 
     def test_pipeline_mode_crash_recovery_rolls_back_persisted_transaction(self):
@@ -256,9 +301,9 @@ class ModelManagerTest(unittest.TestCase):
             ), patch.object(MODULE, "_restart_for_pipeline_mode") as restart:
                 MODULE.recover_pipeline_mode_transaction()
             persisted = json.loads(mode.read_text())
-        self.assertEqual({"version": 1, "mode": "local", "generation": 1}, persisted)
+        self.assertEqual({"version": 2, "mode": "local", "provider": None, "generation": 1}, persisted)
         self.assertFalse(transaction.exists())
-        restart.assert_called_once_with({"version": 1, "mode": "local", "generation": 1})
+        restart.assert_called_once_with({"version": 2, "mode": "local", "provider": None, "generation": 1})
 
     def test_pipeline_mutations_share_one_process_wide_lock(self):
         functions = (

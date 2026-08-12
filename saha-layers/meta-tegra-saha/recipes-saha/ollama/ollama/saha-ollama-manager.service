@@ -16,6 +16,8 @@ Environment=SAHA_MODEL_SELECTION=/data/model-config/s2s/selection.json
 Environment=SAHA_PIPELINE_MODE=/data/model-config/s2s/pipeline-mode.json
 Environment=SAHA_PIPELINE_MODE_TRANSACTION=/data/model-config/s2s/pipeline-mode-transaction.json
 Environment=SAHA_S2S_TOKEN_PATH=/data/model-secrets/s2s/sub2api.token
+Environment=SAHA_DASHSCOPE_API_KEY_PATH=/data/model-secrets/s2s/dashscope-api-key
+Environment=SAHA_DASHSCOPE_WORKSPACE_ID_PATH=/data/model-config/s2s/dashscope-workspace-id
 Environment=SAHA_OLLAMA_CONFIG=/data/model-config/s2s/ollama.env
 Environment=SAHA_MODEL_PROBE_URL=https://www.baidu.com/
 Restart=on-failure

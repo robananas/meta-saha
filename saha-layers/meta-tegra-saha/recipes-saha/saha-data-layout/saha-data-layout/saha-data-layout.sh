@@ -30,10 +30,23 @@ chmod 0700 /data/voiceprints /data/voiceprints/s2s
 install -d -o 0 -g 0 -m 0750 /data/model-cache/s2s-model-manager
 install -d -o 0 -g 999 -m 2750 /data/model-config/s2s /data/model-config/s2s/voices
 install -d -o 0 -g 999 -m 0750 /data/model-secrets /data/model-secrets/s2s
-if [ -e /data/model-secrets/s2s/sub2api.token ]; then
-    [ -f /data/model-secrets/s2s/sub2api.token ] && [ ! -L /data/model-secrets/s2s/sub2api.token ] || exit 1
-    chown 0:999 /data/model-secrets/s2s/sub2api.token
-    chmod 0640 /data/model-secrets/s2s/sub2api.token
+for secret in sub2api.token dashscope-api-key; do
+    path="/data/model-secrets/s2s/$secret"
+    if [ -e "$path" ]; then
+        [ -f "$path" ] && [ ! -L "$path" ] || exit 1
+        chown 0:999 "$path"
+        chmod 0640 "$path"
+    fi
+done
+workspace=/data/model-config/s2s/dashscope-workspace-id
+if [ -e "$workspace" ]; then
+    [ -f "$workspace" ] && [ ! -L "$workspace" ] || exit 1
+    workspace_id=$(dd if="$workspace" bs=129 count=1 2>/dev/null)
+    [ -n "$workspace_id" ] && [ "${#workspace_id}" -le 128 ] || exit 1
+    case "$workspace_id" in *[!A-Za-z0-9_-]* ) exit 1 ;; esac
+    case "$workspace_id" in [A-Za-z0-9]* ) ;; * ) exit 1 ;; esac
+    chown 0:999 "$workspace"
+    chmod 0640 "$workspace"
 fi
 install -d -m 0755 /data/log/journal /data/log/ros /data/log/app /data/preload /run/log/journal
 /usr/bin/saha-board-status emit data ready >/dev/null 2>&1 || true
