@@ -12,6 +12,7 @@ RDEPENDS:${PN} = " \
     tcpdump \
     tshark \
     can-utils \
+    kernel-module-gs-usb \
     tegra-tools-tegrastats \
     saha-board-status \
     saha-data-layout \
