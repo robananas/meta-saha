@@ -11,6 +11,7 @@ SAHA_S2S_COMPOSE_FILE=${SAHA_S2S_COMPOSE_FILE:-${SAHA_S2S_COMPOSE_DIR}/compose.y
 SAHA_S2S_PROJECT=${SAHA_S2S_PROJECT:-saha-s2s}
 SAHA_S2S_IMAGE=${SAHA_S2S_IMAGE:-roban-s2s:arm64}
 SAHA_S2S_IMAGE_TAR=${SAHA_S2S_IMAGE_TAR:-/data/preload/s2s/image.tar}
+SAHA_DOCKER_LOAD_LOCK=${SAHA_DOCKER_LOAD_LOCK:-/run/lock/saha-docker-load.lock}
 SAHA_S2S_PORT=${SAHA_S2S_PORT:-8765}
 SAHA_S2S_WAIT=${SAHA_S2S_WAIT:-120}
 SAHA_COSYVOICE_IMAGE=${SAHA_COSYVOICE_IMAGE:-roban-cosyvoice:arm64}
@@ -51,7 +52,9 @@ ensure_named_image() {
         log "required offline image archive is missing: ${archive}"
         return 1
     fi
-    docker load -i "$archive" >/dev/null
+    # Serialize with saha-docker-compose: concurrent docker load races containerd ingest.
+    mkdir -p "$(dirname "$SAHA_DOCKER_LOAD_LOCK")"
+    flock "$SAHA_DOCKER_LOAD_LOCK" docker load -i "$archive" >/dev/null
     docker image inspect "$image" >/dev/null 2>&1
 }
 

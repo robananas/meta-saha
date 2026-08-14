@@ -31,6 +31,7 @@ SAHA_LIVEKIT_AGENT_IMAGE_TAR="${SAHA_LIVEKIT_AGENT_IMAGE_TAR:-/data/preload/live
 SAHA_LIVEKIT_API_KEY="${SAHA_LIVEKIT_API_KEY:-roban-local}"
 SAHA_LIVEKIT_API_SECRET="${SAHA_LIVEKIT_API_SECRET:-}"
 SAHA_LIVEKIT_CREDENTIALS_FILE="${SAHA_LIVEKIT_CREDENTIALS_FILE:-/var/lib/saha/livekit/credentials.env}"
+SAHA_DOCKER_LOAD_LOCK="${SAHA_DOCKER_LOAD_LOCK:-/run/lock/saha-docker-load.lock}"
 
 log() {
     logger -t saha-docker-compose "$*"
@@ -138,8 +139,10 @@ load_tarball() {
     fi
 
     log "loading preload tar for ${image}: ${tar}"
+    # Serialize with saha-s2s: concurrent docker load races containerd ingest.
+    mkdir -p "$(dirname "$SAHA_DOCKER_LOAD_LOCK")"
     set +e
-    load_output=$(docker load -i "$tar" 2>&1)
+    load_output=$(flock "$SAHA_DOCKER_LOAD_LOCK" docker load -i "$tar" 2>&1)
     load_status=$?
     set -e
 

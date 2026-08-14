@@ -1,7 +1,8 @@
 [Unit]
 Description=Independent Roban S2S Realtime service
 Documentation=https://docs.docker.com/compose/
-After=saha-data-layout.service docker.service network-online.target saha-nvidia-container-runtime.service ollama.service
+# After compose so first-boot docker load does not race containerd with saha-docker-compose.
+After=saha-data-layout.service docker.service network-online.target saha-nvidia-container-runtime.service ollama.service saha-docker-compose.service
 Wants=network-online.target
 Requires=saha-data-layout.service data.mount docker.service saha-nvidia-container-runtime.service ollama.service
 RequiresMountsFor=/data/models/s2s /data/model-config/s2s /data/model-secrets/s2s /data/model-cache/s2s /data/preload/s2s
@@ -15,7 +16,7 @@ ExecStartPre=/usr/bin/saha-s2s wait-docker
 ExecStart=/usr/bin/saha-s2s start
 ExecStop=/usr/bin/saha-s2s stop
 ExecReload=/usr/bin/saha-s2s restart
-TimeoutStartSec=300
+TimeoutStartSec=900
 TimeoutStopSec=90
 # The gateway remains running and reports not_ready until all three stages are selected.
 # Container readiness must not turn an intentionally empty factory image into a restart loop.
