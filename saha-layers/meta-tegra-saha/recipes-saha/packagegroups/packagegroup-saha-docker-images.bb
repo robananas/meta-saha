@@ -15,5 +15,6 @@ RDEPENDS:${PN} = " \
     saha-homeassistant-bootstrap \
     saha-homeassistant-mcp \
     packagegroup-saha-nvidia-containers \
+    ollama \
     saha-s2s \
 "
