@@ -139,7 +139,7 @@ load_tarball() {
     fi
 
     log "loading preload tar for ${image}: ${tar}"
-    # Serialize with saha-s2s: concurrent docker load races containerd ingest.
+    # Serialize offline docker load: concurrent ingest races containerd.
     mkdir -p "$(dirname "$SAHA_DOCKER_LOAD_LOCK")"
     set +e
     load_output=$(flock "$SAHA_DOCKER_LOAD_LOCK" docker load -i "$tar" 2>&1)
