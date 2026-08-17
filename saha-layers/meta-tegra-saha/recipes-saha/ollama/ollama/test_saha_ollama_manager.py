@@ -155,19 +155,20 @@ class ModelManagerTest(unittest.TestCase):
                 with patch.object(MODULE, "PIPELINE_MODE_PATH", path):
                     self.assertEqual(expected, MODULE.read_pipeline_mode())
 
-    def test_pipeline_mode_missing_defaults_local_without_token_disclosure(self):
+    def test_pipeline_mode_missing_defaults_qwen_realtime_without_token_disclosure(self):
         with tempfile.TemporaryDirectory() as directory, patch.object(
             MODULE, "PIPELINE_MODE_PATH", Path(directory) / "missing.json"
         ), patch.object(MODULE, "S2S_TOKEN_PATH", Path(directory) / "missing.token"), patch.object(
             MODULE.urllib.request, "urlopen", side_effect=OSError("offline")
         ):
             response = MODULE.pipeline_mode_response()
-        self.assertEqual("local", response["mode"])
+        self.assertEqual("realtime", response["mode"])
         self.assertEqual(0, response["generation"])
-        self.assertIsNone(response["provider"])
+        self.assertEqual("qwen", response["provider"])
         self.assertEqual({"qwen", "grok"}, set(response["providers"]))
         self.assertEqual(MODULE.QWEN_MODEL, response["providers"]["qwen"]["model"])
         self.assertEqual(MODULE.QWEN_REGION, response["providers"]["qwen"]["region"])
+        self.assertEqual("qwen-audio-3.0-realtime-flash", response["providers"]["qwen"]["model"])
         self.assertEqual("balance_unavailable", response["providers"]["grok"]["reason"])
         self.assertNotIn("token", json.dumps(response).lower())
         self.assertNotIn("workspaceurl", json.dumps(response).lower())

@@ -807,7 +807,8 @@ def read_pipeline_mode() -> dict[str, Any]:
     try:
         return _normalize_pipeline_config(json.loads(PIPELINE_MODE_PATH.read_text(encoding="utf-8")))
     except FileNotFoundError:
-        return _pipeline_config("local", None, 0)
+        # Factory/board-test default: Qwen Audio Realtime (flash).
+        return _pipeline_config("realtime", "qwen", 0)
     except (OSError, json.JSONDecodeError) as error:
         raise RuntimeError("persisted pipeline mode is invalid") from error
 
@@ -962,7 +963,8 @@ def set_pipeline_mode(body: dict[str, Any]) -> dict[str, Any]:
     try:
         stored_version = json.loads(PIPELINE_MODE_PATH.read_text(encoding="utf-8")).get("version")
     except FileNotFoundError:
-        stored_version = 2
+        # Missing file still reports the Qwen default, but first apply must persist it.
+        stored_version = None
     except (OSError, json.JSONDecodeError, AttributeError):
         stored_version = None
     if requested_mode == old["mode"] and requested_provider == old["provider"] and stored_version == 2:

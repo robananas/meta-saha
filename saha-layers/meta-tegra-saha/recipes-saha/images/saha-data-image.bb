@@ -41,7 +41,6 @@ saha_prepare_data_image() {
     test ! -e ${IMAGE_ROOTFS}/models/s2s/llm || bbfatal "factory DATA image must not contain a default LLM model"
     test ! -e ${IMAGE_ROOTFS}/models/s2s/tts || bbfatal "factory DATA image must not contain a default TTS model"
     test ! -e ${IMAGE_ROOTFS}/model-config/s2s/selection.json || bbfatal "factory DATA image must not contain a default model selection"
-    test ! -e ${IMAGE_ROOTFS}/model-config/s2s/pipeline-mode.json || bbfatal "factory DATA image must not contain a default pipeline mode"
     chown -R 10002:999 ${IMAGE_ROOTFS}/models/s2s
     find ${IMAGE_ROOTFS}/models/s2s -type d -exec chmod 0750 {} +
     find ${IMAGE_ROOTFS}/models/s2s -type f -exec chmod 0640 {} +
@@ -54,6 +53,11 @@ saha_prepare_data_image() {
     install -d -o 0 -g 0 -m 0750 ${IMAGE_ROOTFS}/model-cache/s2s-model-manager
     install -d -o 0 -g 999 -m 2750 ${IMAGE_ROOTFS}/model-config/s2s ${IMAGE_ROOTFS}/model-config/s2s/voices
     install -d -o 0 -g 999 -m 0750 ${IMAGE_ROOTFS}/model-secrets ${IMAGE_ROOTFS}/model-secrets/s2s
+    # Default board voice mode: Qwen Audio Realtime (qwen-audio-3.0-realtime-flash).
+    printf '%s\n' '{"version":2,"mode":"realtime","provider":"qwen","generation":0}' > \
+        ${IMAGE_ROOTFS}/model-config/s2s/pipeline-mode.json
+    chown 0:999 ${IMAGE_ROOTFS}/model-config/s2s/pipeline-mode.json
+    chmod 0640 ${IMAGE_ROOTFS}/model-config/s2s/pipeline-mode.json
     # Optional gitignored secrets from SAHA_LOCAL_SECRETS_DIR (.local-secrets).
     secrets_dir="${SAHA_LOCAL_SECRETS_DIR}"
     if [ -s "$secrets_dir/sub2api.token" ]; then

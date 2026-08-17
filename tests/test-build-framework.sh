@@ -372,7 +372,11 @@ grep -q 'factory DATA image must not contain a default STT model' "$S2S_DATA_IMA
 grep -q 'factory DATA image must not contain a default LLM model' "$S2S_DATA_IMAGE" || fail "DATA image must assert LLM absence"
 grep -q 'factory DATA image must not contain a default TTS model' "$S2S_DATA_IMAGE" || fail "DATA image must assert TTS absence"
 grep -q 'factory DATA image must not contain a default model selection' "$S2S_DATA_IMAGE" || fail "DATA image must assert selection absence"
-grep -q 'factory DATA image must not contain a default pipeline mode' "$S2S_DATA_IMAGE" || fail "DATA image must default missing pipeline mode to local"
+grep -q 'provider":"qwen"' "$S2S_DATA_IMAGE" || fail "DATA image must seed default Qwen Audio Realtime pipeline mode"
+grep -q 'pipeline-mode.json' "$S2S_DATA_IMAGE" || fail "DATA image must install default pipeline-mode.json"
+grep -q '_pipeline_config("realtime", "qwen", 0)' \
+  "$ROOT_DIR/saha-layers/meta-tegra-saha/recipes-saha/ollama/ollama/saha-ollama-manager.py" ||
+  fail "manager must default missing pipeline mode to Qwen realtime"
 grep -q 'SAHA_LOCAL_SECRETS_DIR' "$S2S_DATA_IMAGE" || fail "DATA image must resolve .local-secrets for optional S2S credentials"
 grep -q 'model-secrets/s2s/sub2api.token' "$S2S_DATA_IMAGE" || fail "DATA image must install optional Grok token from .local-secrets"
 grep -q 'model-secrets/s2s/dashscope-api-key' "$S2S_DATA_IMAGE" || fail "DATA image must install optional DashScope key from .local-secrets"
