@@ -28,6 +28,8 @@ MODEL_ROOT = Path(os.environ.get("SAHA_MODEL_ROOT", "/data/models/s2s"))
 SELECTION_PATH = Path(os.environ.get("SAHA_MODEL_SELECTION", "/data/model-config/s2s/selection.json"))
 PIPELINE_MODE_PATH = Path(os.environ.get("SAHA_PIPELINE_MODE", "/data/model-config/s2s/pipeline-mode.json"))
 PIPELINE_MODE_TRANSACTION_PATH = Path(os.environ.get("SAHA_PIPELINE_MODE_TRANSACTION", "/data/model-config/s2s/pipeline-mode-transaction.json"))
+REALTIME_SETTINGS_PATH = Path(os.environ.get("SAHA_REALTIME_SETTINGS", "/data/model-config/s2s/realtime-settings.json"))
+REALTIME_SETTINGS_TRANSACTION_PATH = Path(os.environ.get("SAHA_REALTIME_SETTINGS_TRANSACTION", "/data/model-config/s2s/realtime-settings-transaction.json"))
 S2S_TOKEN_PATH = Path(os.environ.get("SAHA_S2S_TOKEN_PATH", "/data/model-secrets/s2s/sub2api.token"))
 DASHSCOPE_API_KEY_PATH = Path(os.environ.get("SAHA_DASHSCOPE_API_KEY_PATH", "/data/model-secrets/s2s/dashscope-api-key"))
 DASHSCOPE_WORKSPACE_ID_PATH = Path(os.environ.get("SAHA_DASHSCOPE_WORKSPACE_ID_PATH", "/data/model-config/s2s/dashscope-workspace-id"))
@@ -813,6 +815,106 @@ def read_pipeline_mode() -> dict[str, Any]:
         raise RuntimeError("persisted pipeline mode is invalid") from error
 
 
+QWEN_REALTIME_MODELS = ("qwen-audio-3.0-realtime-flash", "qwen-audio-3.0-realtime-plus")
+QWEN_REALTIME_VOICES = ("longanqian", "longanlingxin", "longanlingxi", "longanxiaoxin", "longanlufeng")
+REALTIME_TURN_MODES = ("smart_turn", "server_vad")
+DEFAULT_REALTIME_INSTRUCTIONS = "请始终使用中文自然、简洁地回答用户。"
+
+
+def _default_realtime_settings(generation: int = 0) -> dict[str, Any]:
+    return {
+        "version": 1, "generation": generation,
+        "model": QWEN_REALTIME_MODELS[0], "turnMode": "smart_turn",
+        "threshold": 0.5, "silenceDurationMs": 800,
+        "voice": QWEN_REALTIME_VOICES[0], "enableSpeechEmotion": True,
+        "maxHistoryTurns": 20, "instructions": DEFAULT_REALTIME_INSTRUCTIONS,
+    }
+
+
+def _normalize_realtime_settings(value: Any) -> dict[str, Any]:
+    if not isinstance(value, dict):
+        raise RuntimeError("persisted realtime settings are invalid")
+    expected = set(_default_realtime_settings())
+    if set(value) != expected or value.get("version") != 1:
+        raise RuntimeError("persisted realtime settings are invalid")
+    generation, model, turn_mode = value.get("generation"), value.get("model"), value.get("turnMode")
+    threshold, silence = value.get("threshold"), value.get("silenceDurationMs")
+    voice, emotion = value.get("voice"), value.get("enableSpeechEmotion")
+    history, instructions = value.get("maxHistoryTurns"), value.get("instructions")
+    valid = (
+        not isinstance(generation, bool) and isinstance(generation, int) and generation >= 0
+        and model in QWEN_REALTIME_MODELS and turn_mode in REALTIME_TURN_MODES
+        and not isinstance(threshold, bool) and isinstance(threshold, (int, float)) and -1 <= threshold <= 1
+        and not isinstance(silence, bool) and isinstance(silence, int) and 200 <= silence <= 6000
+        and voice in QWEN_REALTIME_VOICES and isinstance(emotion, bool)
+        and not isinstance(history, bool) and isinstance(history, int) and 1 <= history <= 50
+        and isinstance(instructions, str) and 1 <= len(instructions.strip()) <= 2000
+    )
+    if not valid:
+        raise RuntimeError("persisted realtime settings are invalid")
+    return {
+        "version": 1, "generation": generation, "model": model, "turnMode": turn_mode,
+        "threshold": float(threshold), "silenceDurationMs": silence, "voice": voice,
+        "enableSpeechEmotion": emotion, "maxHistoryTurns": history, "instructions": instructions.strip(),
+    }
+
+
+def read_realtime_settings() -> dict[str, Any]:
+    try:
+        return _normalize_realtime_settings(json.loads(REALTIME_SETTINGS_PATH.read_text(encoding="utf-8")))
+    except FileNotFoundError:
+        return _default_realtime_settings()
+    except (OSError, json.JSONDecodeError) as error:
+        raise RuntimeError("persisted realtime settings are invalid") from error
+
+
+def realtime_settings_response() -> dict[str, Any]:
+    configured = read_realtime_settings()
+    effective_generation = effective_model = None
+    status, error = "error", None
+    try:
+        readiness = _read_readiness_response()
+        effective_generation = readiness.get("effectiveRealtimeGeneration")
+        effective_model = readiness.get("effectiveRealtimeModel")
+        status = "ready" if readiness.get("ready") is True or readiness.get("status") in {"ready", "ok"} else "not_ready"
+    except (OSError, ValueError, json.JSONDecodeError, urllib.error.URLError):
+        error = {"code": "readiness_unavailable", "message": "S2S readiness is unavailable or invalid"}
+    return {**configured, "effectiveGeneration": effective_generation, "effectiveModel": effective_model, "status": status, "error": error}
+
+
+@serialized_pipeline_mutation
+def set_realtime_settings(body: dict[str, Any]) -> dict[str, Any]:
+    if not isinstance(body, dict) or "version" in body or "generation" in body:
+        raise ValueError("request must contain realtime setting fields without version or generation")
+    old = read_realtime_settings()
+    try:
+        replacement = _normalize_realtime_settings({"version": 1, "generation": old["generation"] + 1, **body})
+    except RuntimeError as error:
+        raise ValueError(str(error)) from error
+    if all(replacement[key] == old[key] for key in replacement if key != "generation"):
+        return realtime_settings_response()
+    transaction = {"version": 1, "old": old, "replacement": replacement}
+    persisted = False
+    try:
+        _atomic_json(REALTIME_SETTINGS_TRANSACTION_PATH, transaction, mode=0o600)
+        persisted = True
+        _atomic_json(REALTIME_SETTINGS_PATH, replacement)
+        run_s2s_command("restart", timeout=180)
+        readiness = wait_ready(S2S_READY_URL, 180)
+        if readiness.get("effectiveRealtimeGeneration") != replacement["generation"] or readiness.get("effectiveRealtimeModel") != replacement["model"]:
+            raise RuntimeError("S2S readiness does not match requested realtime settings")
+        _durable_unlink(REALTIME_SETTINGS_TRANSACTION_PATH)
+    except BaseException as error:
+        if persisted:
+            _atomic_json(REALTIME_SETTINGS_PATH, old)
+            try:
+                run_s2s_command("restart", timeout=180)
+            finally:
+                _durable_unlink(REALTIME_SETTINGS_TRANSACTION_PATH)
+        raise PipelineModeServiceError("realtime settings activation failed") from error
+    return realtime_settings_response()
+
+
 def _nonempty_regular_file(path: Path) -> bool:
     try:
         stat = path.stat()
@@ -1502,6 +1604,7 @@ class Handler(BaseHTTPRequestHandler):
                 "/health": lambda: {"status": "ok"}, "/v1/catalog": catalog_response,
                 "/v1/models/status": models_status, "/v1/models": legacy_model_status,
                 "/v1/pipeline/readiness": pipeline_readiness, "/v1/pipeline/mode": pipeline_mode_response,
+                "/v1/realtime/settings": realtime_settings_response,
                 "/v1/network/status": network_status, "/v1/voices": voices_response,
                 "/v1/speaker/status": speaker_status,
             }
@@ -1523,6 +1626,9 @@ class Handler(BaseHTTPRequestHandler):
             body = self.read_json()
             if self.path == "/v1/pipeline/mode":
                 self.send_json(200, set_pipeline_mode(body))
+                return
+            if self.path == "/v1/realtime/settings":
+                self.send_json(200, set_realtime_settings(body))
                 return
             if self.path == "/v1/voices":
                 self.send_json(201, create_voice(body))

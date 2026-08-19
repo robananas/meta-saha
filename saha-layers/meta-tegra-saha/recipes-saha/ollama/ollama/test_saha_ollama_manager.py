@@ -24,6 +24,32 @@ class ModelManagerTest(unittest.TestCase):
         MODULE.DOWNLOADS.clear()
         MODULE.PAUSE_EVENTS.clear()
 
+    def test_realtime_settings_defaults_validation_and_secret_rejection(self):
+        with tempfile.TemporaryDirectory() as directory, patch.object(MODULE, "REALTIME_SETTINGS_PATH", Path(directory) / "missing.json"):
+            settings = MODULE.read_realtime_settings()
+            self.assertEqual("qwen-audio-3.0-realtime-flash", settings["model"])
+            self.assertEqual("smart_turn", settings["turnMode"])
+            for field in ("apiKey", "token", "endpoint", "workspaceId"):
+                with self.assertRaises(RuntimeError):
+                    MODULE._normalize_realtime_settings({**settings, field: "secret"})
+            with self.assertRaises(RuntimeError):
+                MODULE._normalize_realtime_settings({**settings, "threshold": 2})
+
+    def test_realtime_settings_persist_restart_and_confirm_generation(self):
+        with tempfile.TemporaryDirectory() as directory:
+            root = Path(directory)
+            settings = root / "realtime.json"
+            transaction = root / "transaction.json"
+            with patch.object(MODULE, "REALTIME_SETTINGS_PATH", settings), patch.object(MODULE, "REALTIME_SETTINGS_TRANSACTION_PATH", transaction), patch.object(MODULE, "run_s2s_command") as restart, patch.object(MODULE, "wait_ready", return_value={"effectiveRealtimeGeneration": 1, "effectiveRealtimeModel": "qwen-audio-3.0-realtime-plus"}), patch.object(MODULE, "realtime_settings_response", side_effect=lambda: {**MODULE.read_realtime_settings(), "effectiveGeneration": 1, "effectiveModel": "qwen-audio-3.0-realtime-plus", "status": "ready", "error": None}):
+                body = MODULE._default_realtime_settings()
+                body.pop("version"); body.pop("generation")
+                body["model"] = "qwen-audio-3.0-realtime-plus"
+                result = MODULE.set_realtime_settings(body)
+                self.assertEqual(1, result["generation"])
+                self.assertEqual("qwen-audio-3.0-realtime-plus", result["model"])
+                restart.assert_called_once_with("restart", timeout=180)
+                self.assertFalse(transaction.exists())
+
     def test_catalog_is_immutable_allowlisted_and_stage_grouped(self):
         self.assertIsInstance(MODULE.CATALOG, tuple)
         self.assertEqual({item.id for item in MODULE.CATALOG}, MODULE.ALLOWED)

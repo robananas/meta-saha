@@ -56,7 +56,9 @@ saha_prepare_data_image() {
     # Default board voice mode: Qwen Audio Realtime (qwen-audio-3.0-realtime-flash).
     printf '%s\n' '{"version":2,"mode":"realtime","provider":"qwen","generation":0}' > \
         ${IMAGE_ROOTFS}/model-config/s2s/pipeline-mode.json
-    chown 0:999 ${IMAGE_ROOTFS}/model-config/s2s/pipeline-mode.json
+    printf '%s\n' '{"version":1,"generation":0,"model":"qwen-audio-3.0-realtime-flash","turnMode":"smart_turn","threshold":0.5,"silenceDurationMs":800,"voice":"longanqian","enableSpeechEmotion":true,"maxHistoryTurns":20,"instructions":"请始终使用中文自然、简洁地回答用户。"}' > \
+        ${IMAGE_ROOTFS}/model-config/s2s/realtime-settings.json
+    chown 0:999 ${IMAGE_ROOTFS}/model-config/s2s/pipeline-mode.json ${IMAGE_ROOTFS}/model-config/s2s/realtime-settings.json
     chmod 0640 ${IMAGE_ROOTFS}/model-config/s2s/pipeline-mode.json
     # Optional gitignored secrets from SAHA_LOCAL_SECRETS_DIR (.local-secrets).
     secrets_dir="${SAHA_LOCAL_SECRETS_DIR}"
