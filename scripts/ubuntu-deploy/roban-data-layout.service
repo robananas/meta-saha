@@ -1,0 +1,11 @@
+[Unit]
+Description=Roban Ubuntu persistent data layout
+Before=roban-core.service roban-ha-bootstrap.service roban-edge.service roban-bt-wifi-provision.service
+
+[Service]
+Type=oneshot
+ExecStart=/usr/local/libexec/roban-ubuntu data-layout
+RemainAfterExit=yes
+
+[Install]
+WantedBy=multi-user.target

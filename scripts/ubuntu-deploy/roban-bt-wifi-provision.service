@@ -1,0 +1,21 @@
+[Unit]
+Description=Roban Bluetooth WiFi provisioning for Ubuntu
+After=bluetooth.service NetworkManager.service NetworkManager-wait-online.service roban-ha-bootstrap.service
+Wants=NetworkManager-wait-online.service
+Requires=bluetooth.service roban-ha-bootstrap.service
+BindsTo=bluetooth.service
+
+[Service]
+Type=simple
+Environment=PYTHONUNBUFFERED=1
+Environment=SAHA_BT_WIFI_LOCAL_NAME=Roban-Bluetooth
+Environment=ROBAN_DEVICE_IDENTITY_FILE=/etc/roban/ble-device-ed25519.key
+Environment=ROBAN_APP_KEYRING_FILE=/etc/roban/ble-app-keyring.json
+UMask=0077
+ExecStartPre=/bin/sh -c 'bluetoothctl power on >/dev/null 2>&1 || true'
+ExecStart=/usr/local/libexec/roban-ubuntu ble
+Restart=on-failure
+RestartSec=10
+
+[Install]
+WantedBy=multi-user.target

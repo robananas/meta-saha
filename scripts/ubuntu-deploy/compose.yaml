@@ -1,0 +1,139 @@
+services:
+  matter-server:
+    image: ${IMAGE_MATTER}
+    container_name: matter-server
+    restart: unless-stopped
+    network_mode: host
+    security_opt:
+      - apparmor:unconfined
+    volumes:
+      - /var/lib/matter-server:/data
+      - /run/dbus:/run/dbus:ro
+      - ${ROBAN_RELEASE_DIR}/saha-matter-server-offline.py:/opt/saha-matter-server-offline.py:ro
+    entrypoint: ["python3", "/opt/saha-matter-server-offline.py"]
+    extra_hosts:
+      - on.dcl.csa-iot.org=127.0.0.1
+      - on.test-net.dcl.csa-iot.org=127.0.0.1
+      - api.github.com=127.0.0.1
+      - raw.githubusercontent.com=127.0.0.1
+    command:
+      - --storage-path
+      - /data
+      - --paa-root-cert-dir
+      - /data/credentials
+      - --primary-interface
+      - ${ROBAN_WIFI_INTERFACE}
+      - --bluetooth-adapter
+      - "0"
+    healthcheck:
+      test: ["CMD", "python3", "-c", "import socket; socket.create_connection(('127.0.0.1',5580),2).close()"]
+      interval: 3s
+      timeout: 3s
+      retries: 60
+
+  homeassistant:
+    image: ${IMAGE_HOME_ASSISTANT}
+    container_name: homeassistant
+    depends_on:
+      matter-server:
+        condition: service_healthy
+    restart: unless-stopped
+    network_mode: host
+    privileged: true
+    volumes:
+      - /var/lib/homeassistant:/config
+      - /etc/localtime:/etc/localtime:ro
+      - /run/dbus:/run/dbus:ro
+      - /run/saha:/run/saha
+    environment:
+      TZ: Asia/Shanghai
+
+  roban-workflow-api:
+    image: ${IMAGE_WORKFLOW}
+    container_name: roban-workflow-api
+    restart: unless-stopped
+    network_mode: host
+    volumes:
+      - /var/lib/roban-ubuntu/workflow:/data
+      - /run/saha/board-status:/run/saha/board-status:ro
+    environment:
+      TZ: Asia/Shanghai
+      BOARD_STATUS_DIR: /run/saha/board-status
+      WORKFLOW_DATABASE_PATH: /data/workflows.db
+
+  livekit-server:
+    image: ${IMAGE_LIVEKIT_SERVER}
+    container_name: livekit-server
+    restart: unless-stopped
+    network_mode: host
+    env_file: [/etc/roban-ubuntu/livekit.env]
+    command: ["--bind", "0.0.0.0", "--udp-port", "7882"]
+
+  livekit-agent:
+    image: ${IMAGE_LIVEKIT_AGENT}
+    container_name: livekit-agent
+    restart: unless-stopped
+    network_mode: host
+    depends_on: [livekit-server]
+    env_file: [/etc/roban-ubuntu/livekit.env]
+    environment:
+      LIVEKIT_URL: ws://127.0.0.1:7880
+      LIVEKIT_PUBLIC_URL: ${LIVEKIT_PUBLIC_URL}
+      LIVEKIT_AGENT_NAME: roban-agent
+      ROBAN_TOKEN_PORT: "7883"
+
+  homeassistant-mcp:
+    image: ${IMAGE_HA_MCP}
+    container_name: homeassistant-mcp
+    restart: unless-stopped
+    network_mode: host
+    depends_on:
+      homeassistant:
+        condition: service_started
+    env_file:
+      - /etc/roban-ubuntu/home-assistant-mcp.env
+      - /etc/roban-ubuntu/home-assistant-mcp-credentials.env
+    volumes:
+      - /var/lib/roban-ubuntu/homeassistant:/data/saha/homeassistant:ro
+    read_only: true
+    tmpfs:
+      - /tmp
+    security_opt: [no-new-privileges:true]
+
+  roban-s2s:
+    image: ${IMAGE_S2S}
+    container_name: saha-s2s
+    restart: unless-stopped
+    network_mode: host
+    init: true
+    environment:
+      ROBAN_S2S_IMAGE_PROFILE: realtime-cpu
+      ROBAN_S2S_HOST: 0.0.0.0
+      ROBAN_S2S_PORT: "8765"
+      ROBAN_S2S_MODEL_ROOT: /models
+      ROBAN_S2S_CACHE_DIR: /var/cache/roban-s2s
+      ROBAN_S2S_SELECTION_PATH: /model-config/selection.json
+      ROBAN_S2S_MODE_PATH: /model-config/pipeline-mode.json
+      ROBAN_S2S_REALTIME_SETTINGS_PATH: /model-config/realtime-settings.json
+      ROBAN_S2S_DASHSCOPE_API_KEY_PATH: /model-secrets/dashscope-api-key
+      ROBAN_S2S_DASHSCOPE_WORKSPACE_ID_PATH: /model-config/dashscope-workspace-id
+      ROBAN_S2S_GROK_TOKEN_PATH: /model-secrets/sub2api.token
+      ROBAN_S2S_KWS_MODEL_DIR: /models/kws
+      ROBAN_S2S_VAD_MODEL_PATH: /models/silero_vad.onnx
+      ROBAN_S2S_KWS_PROVIDER: cpu
+      ROBAN_S2S_VAD_PROVIDER: cpu
+      ROBAN_S2S_ICE_SERVERS: "[]"
+      ROBAN_S2S_MAX_SESSIONS: "1"
+      HF_HUB_OFFLINE: "1"
+      TRANSFORMERS_OFFLINE: "1"
+    volumes:
+      - /var/lib/roban-ubuntu/models/s2s:/models:ro
+      - /var/lib/roban-ubuntu/model-config/s2s:/model-config:ro
+      - /etc/roban-ubuntu/s2s-secrets:/model-secrets:ro
+      - /var/lib/roban-ubuntu/model-cache/s2s:/var/cache/roban-s2s
+      - /var/lib/roban-ubuntu/voiceprints:/var/lib/roban-s2s/voiceprints
+    healthcheck:
+      test: ["CMD", "python", "-c", "import urllib.request; urllib.request.urlopen('http://127.0.0.1:8765/health',timeout=5)"]
+      interval: 15s
+      timeout: 8s
+      retries: 5

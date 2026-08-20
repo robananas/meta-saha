@@ -1,0 +1,14 @@
+[Unit]
+Description=Roban cloud-only realtime settings manager
+After=roban-edge.service network-online.target
+Requires=roban-edge.service
+
+[Service]
+Type=simple
+Environment=PYTHONUNBUFFERED=1
+ExecStart=/usr/local/libexec/roban-ubuntu manager
+Restart=on-failure
+RestartSec=5
+
+[Install]
+WantedBy=multi-user.target

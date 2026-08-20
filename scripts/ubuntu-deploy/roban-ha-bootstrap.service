@@ -1,0 +1,12 @@
+[Unit]
+Description=Roban Home Assistant bootstrap
+After=roban-core.service
+Requires=roban-core.service
+
+[Service]
+Type=oneshot
+ExecStart=/usr/local/libexec/roban-ubuntu bootstrap
+TimeoutStartSec=360
+
+[Install]
+WantedBy=multi-user.target

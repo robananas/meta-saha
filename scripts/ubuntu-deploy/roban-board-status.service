@@ -1,0 +1,18 @@
+[Unit]
+Description=Roban board status aggregator
+After=local-fs.target roban-data-layout.service
+Requires=roban-data-layout.service
+Before=roban-core.service roban-bt-wifi-provision.service
+
+[Service]
+Type=simple
+Environment=PYTHONUNBUFFERED=1
+RuntimeDirectory=saha/board-status
+RuntimeDirectoryMode=0755
+RuntimeDirectoryPreserve=yes
+ExecStart=/usr/local/libexec/roban-ubuntu board-status
+Restart=on-failure
+RestartSec=2
+
+[Install]
+WantedBy=multi-user.target

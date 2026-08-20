@@ -1,0 +1,230 @@
+#!/usr/bin/env bash
+set -euo pipefail
+
+repo_root="$(cd "$(dirname "$0")/.." && pwd)"
+source_dir="$repo_root/scripts/ubuntu-deploy"
+command_name="${1:-status}"
+shift || true
+
+prefix="${ROBAN_PREFIX:-/opt/roban-ubuntu}"
+etc_dir="${ROBAN_ETC_DIR:-/etc/roban-ubuntu}"
+state_dir="${ROBAN_STATE_DIR:-/var/lib/roban-ubuntu}"
+unit_dir="${ROBAN_UNIT_DIR:-/etc/systemd/system}"
+libexec="${ROBAN_LIBEXEC:-/usr/local/libexec/roban-ubuntu}"
+dry_run=0
+seed_dir="${ROBAN_SEED_DIR:-/var/tmp/roban-ubuntu-seed}"
+image_tag="${ROBAN_IMAGE_TAG:-20260819-arm64}"
+registry="${ROBAN_REGISTRY:-registry.cn-beijing.aliyuncs.com/roban}"
+
+while (($#)); do
+  case "$1" in
+    --dry-run) dry_run=1 ;;
+    --seed-dir) seed_dir=$2; shift ;;
+    --registry) registry=$2; shift ;;
+    --image-tag) image_tag=$2; shift ;;
+    *) echo "unknown option: $1" >&2; exit 2 ;;
+  esac
+  shift
+done
+
+log() { printf '[roban-ubuntu] %s\n' "$*"; }
+run() { if ((dry_run)); then printf '+ '; printf '%q ' "$@"; printf '\n'; else "$@"; fi; }
+require_root() { [[ ${EUID:-$(id -u)} -eq 0 ]] || { echo "run as root" >&2; exit 1; }; }
+
+preflight() {
+  source /etc/os-release
+  [[ $ID == ubuntu && $VERSION_ID == 24.04 && $VERSION_CODENAME == noble ]] || { echo "Ubuntu 24.04 noble required" >&2; return 1; }
+  [[ $(uname -m) == aarch64 ]] || { echo "ARM64 required" >&2; return 1; }
+  command -v docker >/dev/null && docker compose version >/dev/null && docker info >/dev/null
+  for command in curl python3 nmcli bluetoothctl dbus-send sha256sum; do command -v "$command" >/dev/null || { echo "missing command: $command" >&2; return 1; }; done
+  python3 -c 'import cryptography, dbus' 2>/dev/null || { echo "missing Ubuntu packages: python3-cryptography python3-dbus" >&2; return 1; }
+  systemctl is-active --quiet NetworkManager bluetooth docker
+  docker info --format '{{json .Runtimes}}' | grep -q 'nvidia'
+}
+
+image_ref() { printf '%s/%s:%s' "$registry" "$1" "$image_tag"; }
+resolve_image() {
+  local name=$1 ref
+  ref=$(image_ref "$name")
+  docker pull --platform linux/arm64 "$ref" >/dev/null
+  local arch os digest
+  arch=$(docker image inspect "$ref" --format '{{.Architecture}}')
+  os=$(docker image inspect "$ref" --format '{{.Os}}')
+  [[ $arch == arm64 && $os == linux ]] || { echo "invalid image platform: $ref $os/$arch" >&2; return 1; }
+  digest=$(docker image inspect "$ref" --format '{{index .RepoDigests 0}}')
+  [[ -n $digest ]] || { echo "missing RepoDigest: $ref" >&2; return 1; }
+  printf '%s' "$digest"
+}
+
+write_secret_file() {
+  local path=$1
+  shift
+  [[ -s $path ]] && return 0
+  umask 077
+  printf '%s\n' "$@" >"$path"
+}
+
+install_assets() {
+  local release=$1 wifi=$2
+  install -d -m 0755 "$release" "$release/ble" "$release/ha-template" "$release/matter-paa"
+  install -m 0644 "$source_dir/compose.yaml" "$release/compose.yaml"
+  install -m 0644 "$repo_root/saha-layers/meta-tegra-saha/recipes-saha/docker-compose/saha-docker-compose/saha-matter-server-offline.py" "$release/"
+  cp -a "$repo_root/saha-layers/meta-tegra-saha/recipes-saha/docker-compose/saha-docker-compose/matter-paa/." "$release/matter-paa/"
+  cp -a "$repo_root/saha-layers/meta-tegra-saha/recipes-saha/homeassistant-config/saha-homeassistant-config/." "$release/ha-template/"
+  for file in automations.yaml scenes.yaml scripts.yaml; do : >"$release/ha-template/$file"; done
+  install -d "$release/ha-template/custom_components"
+  if [[ -d "$release/ha-template/custom-components/saha_matter" ]]; then mv "$release/ha-template/custom-components/saha_matter" "$release/ha-template/custom_components/"; fi
+  rm -rf "$release/ha-template/custom-components"
+  install -d "$release/ha-template/custom_components/smartir/codes/climate" "$release/ha-template/custom_components/smartir/codes/media_player"
+  cp "$release/ha-template/smartir-codes/climate/1084.json" "$release/ha-template/custom_components/smartir/codes/climate/"
+  cp "$release/ha-template/smartir-codes/media_player/1380.json" "$release/ha-template/custom_components/smartir/codes/media_player/"
+  fetch_component() { local repo=$1 commit=$2 name=$3 subdir=${4:-custom_components/$3}; local archive="$release/$name.tar.gz" unpack="$release/.unpack-$name"; curl -fsSL "https://github.com/$repo/archive/$commit.tar.gz" -o "$archive"; mkdir -p "$unpack" "$release/ha-template/custom_components/$name"; tar -xzf "$archive" -C "$unpack" --strip-components=1; cp -a "$unpack/$subdir/." "$release/ha-template/custom_components/$name/"; rm -rf "$archive" "$unpack"; }
+  if [[ ! -f /var/lib/homeassistant/configuration.yaml ]]; then
+    fetch_component smartHomeHub/SmartIR 878df57d82cca1a458fab2de491de3dd6e670771 smartir custom_components/smartir
+    fetch_component XiaoMi/ha_xiaomi_home 001af5384a66dddb6e45f60bbeee6e536c236af4 xiaomi_home custom_components/xiaomi_home
+    fetch_component hacs/integration c0dfd8b44297c3673c21973e2539375a53687a9c hacs custom_components/hacs
+  fi
+  cp -a "$repo_root/saha-layers/meta-tegra-saha/recipes-saha/bt-wifi-provision/saha-bt-wifi-provision/." "$release/ble/"
+  install -m 0755 "$repo_root/saha-layers/meta-tegra-saha/recipes-saha/homeassistant-bootstrap/files/saha-homeassistant-bootstrap.py" "$release/ha-bootstrap.py"
+  install -m 0755 "$source_dir/realtime_manager.py" "$release/realtime-manager.py"
+  install -m 0755 "$repo_root/saha-layers/meta-tegra-saha/recipes-saha/board-status/saha-board-status/saha-board-status.py" "$release/board-status.py"
+  python3 - "$release/board-status.py" "$wifi" <<'PY'
+from pathlib import Path
+import sys
+path=Path(sys.argv[1]); path.write_text(path.read_text().replace('device", "show", "wlan0"', 'device", "show", "'+sys.argv[2]+'"'))
+PY
+  printf '%s\n' "$wifi" >"$release/wifi-interface"
+  (cd "$release" && find . -type f -print0 | sort -z | xargs -0 sha256sum >SHA256SUMS)
+}
+
+seed_state() {
+  install -d -m 0755 "$state_dir" "$state_dir/workflow" "$state_dir/models/s2s" "$state_dir/model-config/s2s" "$state_dir/model-cache/s2s" "$state_dir/voiceprints" /var/lib/homeassistant /var/lib/matter-server/credentials /run/saha/board-status
+  install -d -m 0700 "$state_dir/homeassistant" "$etc_dir" /etc/roban
+  install -d -m 0750 -o root -g 999 "$etc_dir/s2s-secrets"
+  if [[ ! -f /var/lib/homeassistant/configuration.yaml ]]; then cp -a "$prefix/current/ha-template/." /var/lib/homeassistant/; fi
+  cp -a --update=none "$prefix/current/matter-paa/." /var/lib/matter-server/credentials/ || true
+  printf 'offline\n' >/var/lib/matter-server/credentials/.version
+  if [[ ! -s "$etc_dir/livekit.env" ]]; then
+    local secret; secret=$(python3 -c 'import secrets; print(secrets.token_urlsafe(48))')
+    write_secret_file "$etc_dir/livekit.env" "LIVEKIT_API_KEY=roban-local" "LIVEKIT_API_SECRET=$secret" "LIVEKIT_KEYS=roban-local: $secret"
+  fi
+  if [[ ! -s "$etc_dir/home-assistant-mcp-credentials.env" ]]; then
+    local token ip; token=$(python3 -c 'import secrets; print(secrets.token_urlsafe(32))'); ip=$(hostname -I | awk '{print $1}')
+    write_secret_file "$etc_dir/home-assistant-mcp-credentials.env" "MCP_ACCESS_TOKEN=$token" "MCP_PUBLIC_URL=http://$ip:8000/mcp"
+  fi
+  cat >"$etc_dir/home-assistant-mcp.env" <<EOF
+HA_URL=http://127.0.0.1:8123
+HA_TOKEN_FILE=/data/saha/homeassistant/app-credentials.json
+HA_TIMEOUT=10
+HA_READ_ONLY=false
+HA_ALLOWED_DOMAINS=light,switch,climate,cover,fan,media_player,scene,button,number,select,input_boolean,humidifier,remote,vacuum
+MCP_HOST=0.0.0.0
+MCP_PORT=8000
+MCP_PATH=/mcp
+EOF
+  chmod 0600 "$etc_dir"/*.env
+  if [[ ! -s /etc/roban/ble-device-ed25519.key ]]; then
+    if [[ -s $seed_dir/ble-device-ed25519.key ]]; then install -m 0600 "$seed_dir/ble-device-ed25519.key" /etc/roban/ble-device-ed25519.key; else install -m 0600 "$prefix/current/ble/development-ble-device-ed25519.key" /etc/roban/ble-device-ed25519.key; fi
+  fi
+  if [[ ! -s /etc/roban/ble-app-keyring.json ]]; then
+    if [[ -s $seed_dir/ble-app-keyring.json ]]; then install -m 0644 "$seed_dir/ble-app-keyring.json" /etc/roban/ble-app-keyring.json; else install -m 0644 "$prefix/current/ble/development-ble-app-keyring.json" /etc/roban/ble-app-keyring.json; fi
+  fi
+}
+
+copy_cloud_assets() {
+  if [[ -d $state_dir/models/s2s/kws && -s $state_dir/models/s2s/silero_vad.onnx && -s $etc_dir/s2s-secrets/dashscope-api-key && -s $state_dir/model-config/s2s/dashscope-workspace-id ]]; then
+    log "reusing installed KWS/VAD and Qwen credentials"
+    return 0
+  fi
+  log "installing checksummed KWS/VAD and Qwen credentials from seed directory"
+  local tmp=$seed_dir
+  test -d "$tmp/kws"
+  test -s "$tmp/silero_vad.onnx"
+  test -s "$tmp/dashscope-api-key"
+  test -s "$tmp/dashscope-workspace-id"
+  rm -rf "$state_dir/models/s2s/kws"
+  cp -a "$tmp/kws" "$state_dir/models/s2s/kws"
+  install -m 0644 "$tmp/silero_vad.onnx" "$state_dir/models/s2s/silero_vad.onnx"
+  install -m 0600 "$tmp/dashscope-api-key" "$etc_dir/s2s-secrets/dashscope-api-key"
+  install -m 0644 "$tmp/dashscope-workspace-id" "$state_dir/model-config/s2s/dashscope-workspace-id"
+  cat >"$state_dir/model-config/s2s/pipeline-mode.json" <<EOF
+{"version":2,"mode":"realtime","provider":"qwen","generation":1}
+EOF
+  cat >"$state_dir/model-config/s2s/realtime-settings.json" <<EOF
+{"version":1,"generation":1,"model":"qwen-audio-3.0-realtime-flash","turnMode":"smart_turn","threshold":0.5,"silenceDurationMs":800,"voice":"longanqian","enableSpeechEmotion":true,"maxHistoryTurns":20,"instructions":"请始终使用中文自然、简洁地回答用户。"}
+EOF
+  chmod 0755 "$state_dir/models" "$state_dir/models/s2s" "$state_dir/models/s2s/kws" "$state_dir/model-config" "$state_dir/model-config/s2s"
+  find "$state_dir/models/s2s" "$state_dir/model-config/s2s" -type f -exec chmod 0644 {} +
+  chown root:999 "$state_dir/model-config/s2s/dashscope-workspace-id"; chmod 0640 "$state_dir/model-config/s2s/dashscope-workspace-id"
+  chown -R 10002:999 "$state_dir/model-cache/s2s" "$state_dir/voiceprints"
+  chown root:999 "$etc_dir/s2s-secrets" "$etc_dir/s2s-secrets/dashscope-api-key"
+  chmod 0750 "$etc_dir/s2s-secrets"; chmod 0640 "$etc_dir/s2s-secrets/dashscope-api-key"
+  (cd "$state_dir/models/s2s" && find . -type f -print0 | sort -z | xargs -0 sha256sum >manifest.sha256)
+}
+
+install_units() {
+  install -d -m 0755 "$(dirname "$libexec")" "$unit_dir"
+  install -m 0755 "$source_dir/launcher.sh" "$libexec"
+  for unit in roban-data-layout.service roban-board-status.service roban-core.service roban-ha-bootstrap.service roban-edge.service roban-realtime-manager.service roban-bt-wifi-provision.service; do
+    install -m 0644 "$source_dir/$unit" "$unit_dir/$unit"
+  done
+  systemctl daemon-reload
+  systemctl enable roban-data-layout.service roban-board-status.service roban-core.service roban-ha-bootstrap.service roban-edge.service roban-realtime-manager.service roban-bt-wifi-provision.service >/dev/null
+}
+
+install_command() {
+  require_root; preflight
+  local wifi release_id release staging old_current
+  wifi=$(ip -4 route show default | awk '$5 !~ /^(docker|l4tbr)/ {print $5; exit}')
+  [[ -n $wifi ]] || { echo "no primary network interface" >&2; exit 1; }
+  local source_revision
+  source_revision=$({ sha256sum "$0"; find "$source_dir" -type f ! -path '*/__pycache__/*' -print0 | sort -z | xargs -0 sha256sum; } | sha256sum | cut -c1-12)
+  release_id="${image_tag}-${source_revision}"
+  release="$prefix/releases/$release_id"; staging="$release.staging"
+  if ((dry_run)); then log "would install $release using Wi-Fi $wifi"; return; fi
+  local images=(roban-s2s roban-ha-mcp home-assistant livekit-agent python-matter-server roban-workflow-api livekit-server)
+  declare -A values
+  for image in "${images[@]}"; do values[$image]=$(resolve_image "$image"); done
+  install -d -m 0755 "$prefix/releases"
+  old_current=$(readlink -f "$prefix/current" 2>/dev/null || true)
+  if [[ -d $release ]]; then
+    log "reusing existing release $release_id"
+  else
+    rm -rf "$staging"; install_assets "$staging" "$wifi"; mv "$staging" "$release"
+  fi
+  ln -sfn "$release" "$prefix/current.new"; mv -Tf "$prefix/current.new" "$prefix/current"
+  [[ -z $old_current ]] || ln -sfn "$old_current" "$prefix/previous"
+  seed_state
+  copy_cloud_assets
+  cat >"$etc_dir/images.env" <<EOF
+ROBAN_RELEASE_DIR=$prefix/current
+ROBAN_WIFI_INTERFACE=$wifi
+LIVEKIT_PUBLIC_URL=ws://$(ip -4 -brief address show "$wifi" | awk '{split($3,a,"/"); print a[1]}'):7880
+IMAGE_S2S=${values[roban-s2s]}
+IMAGE_HA_MCP=${values[roban-ha-mcp]}
+IMAGE_HOME_ASSISTANT=${values[home-assistant]}
+IMAGE_LIVEKIT_AGENT=${values[livekit-agent]}
+IMAGE_MATTER=${values[python-matter-server]}
+IMAGE_WORKFLOW=${values[roban-workflow-api]}
+IMAGE_LIVEKIT_SERVER=${values[livekit-server]}
+EOF
+  install_units
+  if ! systemctl start roban-data-layout.service roban-board-status.service roban-core.service roban-ha-bootstrap.service roban-edge.service roban-realtime-manager.service roban-bt-wifi-provision.service || ! "$libexec" verify; then
+    log "deployment verification failed"
+    systemctl stop roban-bt-wifi-provision roban-realtime-manager roban-edge roban-ha-bootstrap roban-core 2>/dev/null || true
+    if [[ -n $old_current ]]; then
+      ln -sfn "$old_current" "$prefix/current.new"; mv -Tf "$prefix/current.new" "$prefix/current"
+      systemctl start roban-core roban-ha-bootstrap roban-edge roban-realtime-manager roban-bt-wifi-provision || true
+    fi
+    return 1
+  fi
+  log "installed release $release_id"
+}
+
+case "$command_name" in
+  install) install_command ;;
+  status|verify|restart|stop|start) require_root; "$libexec" "$command_name" ;;
+  rollback) require_root; [[ -L $prefix/previous ]] || { echo "no previous release" >&2; exit 1; }; current=$(readlink -f "$prefix/current"); previous=$(readlink -f "$prefix/previous"); ln -sfn "$previous" "$prefix/current.new"; mv -Tf "$prefix/current.new" "$prefix/current"; ln -sfn "$current" "$prefix/previous"; systemctl restart roban-core roban-ha-bootstrap roban-edge roban-realtime-manager roban-bt-wifi-provision ;;
+  uninstall) require_root; systemctl disable --now roban-bt-wifi-provision roban-realtime-manager roban-edge roban-ha-bootstrap roban-core roban-board-status roban-data-layout 2>/dev/null || true; rm -f "$unit_dir"/roban-{bt-wifi-provision,realtime-manager,edge,ha-bootstrap,core,board-status,data-layout}.service "$libexec"; systemctl daemon-reload; log "uninstalled; data retained" ;;
+  *) echo "usage: $0 {install|verify|status|start|stop|restart|rollback|uninstall} [--dry-run] [--seed-dir path]" >&2; exit 2 ;;
+esac

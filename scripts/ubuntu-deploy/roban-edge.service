@@ -1,0 +1,15 @@
+[Unit]
+Description=Roban Ubuntu edge services
+After=roban-ha-bootstrap.service roban-core.service
+Requires=roban-ha-bootstrap.service roban-core.service
+
+[Service]
+Type=oneshot
+RemainAfterExit=yes
+ExecStart=/usr/local/libexec/roban-ubuntu edge-start
+ExecStop=/usr/local/libexec/roban-ubuntu edge-stop
+TimeoutStartSec=300
+TimeoutStopSec=90
+
+[Install]
+WantedBy=multi-user.target

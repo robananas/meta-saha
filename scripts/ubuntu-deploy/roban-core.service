@@ -1,0 +1,17 @@
+[Unit]
+Description=Roban Ubuntu core containers
+Wants=network-online.target
+After=network-online.target docker.service roban-data-layout.service
+Requires=docker.service roban-data-layout.service
+
+[Service]
+Type=oneshot
+RemainAfterExit=yes
+ExecStartPre=/usr/bin/docker info
+ExecStart=/usr/local/libexec/roban-ubuntu core-start
+ExecStop=/usr/local/libexec/roban-ubuntu core-stop
+TimeoutStartSec=600
+TimeoutStopSec=120
+
+[Install]
+WantedBy=multi-user.target
