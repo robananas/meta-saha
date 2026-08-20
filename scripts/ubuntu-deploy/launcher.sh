@@ -1,9 +1,11 @@
 #!/usr/bin/env bash
 set -euo pipefail
-prefix=/opt/roban-ubuntu
-etc_dir=/etc/roban-ubuntu
-state_dir=/var/lib/roban-ubuntu
-compose=(docker compose --project-name roban-ubuntu --env-file "$etc_dir/images.env" -f "$prefix/current/compose.yaml")
+prefix=${ROBAN_PREFIX:-/opt/roban-ubuntu}
+etc_dir=${ROBAN_ETC_DIR:-/etc/roban-ubuntu}
+state_dir=${ROBAN_STATE_DIR:-/var/lib/roban-ubuntu}
+compose_project=${ROBAN_COMPOSE_PROJECT:-roban-ubuntu}
+service_prefix=${ROBAN_SERVICE_PREFIX:-roban}
+compose=(docker compose --project-name "$compose_project" --env-file "$etc_dir/images.env" -f "$prefix/current/compose.yaml")
 
 wait_http() {
   local url=$1 timeout=${2:-180} elapsed=0
@@ -38,18 +40,18 @@ case "${1:-}" in
     ;;
   edge-stop) "${compose[@]}" stop roban-s2s homeassistant-mcp ;;
   manager)
-    exec env SAHA_MODEL_ROOT="$state_dir/models/s2s" SAHA_MODEL_SELECTION="$state_dir/model-config/s2s/selection.json" SAHA_PIPELINE_MODE="$state_dir/model-config/s2s/pipeline-mode.json" SAHA_REALTIME_SETTINGS="$state_dir/model-config/s2s/realtime-settings.json" SAHA_DASHSCOPE_API_KEY_PATH="$etc_dir/s2s-secrets/dashscope-api-key" SAHA_DASHSCOPE_WORKSPACE_ID_PATH="$state_dir/model-config/s2s/dashscope-workspace-id" SAHA_MODEL_MANAGER_HOST=0.0.0.0 SAHA_MODEL_MANAGER_PORT=11435 python3 "$prefix/current/realtime-manager.py"
+    exec env ROBAN_EDGE_SERVICE="$service_prefix-edge.service" SAHA_MODEL_ROOT="$state_dir/models/s2s" SAHA_MODEL_SELECTION="$state_dir/model-config/s2s/selection.json" SAHA_PIPELINE_MODE="$state_dir/model-config/s2s/pipeline-mode.json" SAHA_REALTIME_SETTINGS="$state_dir/model-config/s2s/realtime-settings.json" SAHA_DASHSCOPE_API_KEY_PATH="$etc_dir/s2s-secrets/dashscope-api-key" SAHA_DASHSCOPE_WORKSPACE_ID_PATH="$state_dir/model-config/s2s/dashscope-workspace-id" SAHA_MODEL_MANAGER_HOST=0.0.0.0 SAHA_MODEL_MANAGER_PORT=11435 python3 "$prefix/current/realtime-manager.py"
     ;;
   board-status) exec python3 "$prefix/current/board-status.py" daemon ;;
   ble)
     export PYTHONPATH="$prefix/current/ble"
     exec python3 "$prefix/current/ble/saha-bt-wifi-provision.py"
     ;;
-  start) systemctl start roban-data-layout roban-board-status roban-core roban-ha-bootstrap roban-edge roban-realtime-manager roban-bt-wifi-provision ;;
-  stop) systemctl stop roban-bt-wifi-provision roban-realtime-manager roban-edge roban-ha-bootstrap roban-core roban-board-status ;;
-  restart) systemctl restart roban-core roban-ha-bootstrap roban-edge roban-realtime-manager roban-bt-wifi-provision ;;
+  start) systemctl start "$service_prefix-data-layout" "$service_prefix-board-status" "$service_prefix-core" "$service_prefix-ha-bootstrap" "$service_prefix-edge" "$service_prefix-realtime-manager" "$service_prefix-bt-wifi-provision" ;;
+  stop) systemctl stop "$service_prefix-bt-wifi-provision" "$service_prefix-realtime-manager" "$service_prefix-edge" "$service_prefix-ha-bootstrap" "$service_prefix-core" "$service_prefix-board-status" ;;
+  restart) systemctl restart "$service_prefix-core" "$service_prefix-ha-bootstrap" "$service_prefix-edge" "$service_prefix-realtime-manager" "$service_prefix-bt-wifi-provision" ;;
   status)
-    systemctl --no-pager --full status roban-board-status roban-core roban-ha-bootstrap roban-edge roban-realtime-manager roban-bt-wifi-provision || true
+    systemctl --no-pager --full status "$service_prefix-board-status" "$service_prefix-core" "$service_prefix-ha-bootstrap" "$service_prefix-edge" "$service_prefix-realtime-manager" "$service_prefix-bt-wifi-provision" || true
     "${compose[@]}" ps
     ;;
   verify)

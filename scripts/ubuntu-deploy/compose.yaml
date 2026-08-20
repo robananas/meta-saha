@@ -54,7 +54,7 @@ services:
     restart: unless-stopped
     network_mode: host
     volumes:
-      - /var/lib/roban-ubuntu/workflow:/data
+      - ${ROBAN_STATE_DIR}/workflow:/data
       - /run/saha/board-status:/run/saha/board-status:ro
     environment:
       TZ: Asia/Shanghai
@@ -66,7 +66,7 @@ services:
     container_name: livekit-server
     restart: unless-stopped
     network_mode: host
-    env_file: [/etc/roban-ubuntu/livekit.env]
+    env_file: ["${ROBAN_ETC_DIR}/livekit.env"]
     command: ["--bind", "0.0.0.0", "--udp-port", "7882"]
 
   livekit-agent:
@@ -75,7 +75,7 @@ services:
     restart: unless-stopped
     network_mode: host
     depends_on: [livekit-server]
-    env_file: [/etc/roban-ubuntu/livekit.env]
+    env_file: ["${ROBAN_ETC_DIR}/livekit.env"]
     environment:
       LIVEKIT_URL: ws://127.0.0.1:7880
       LIVEKIT_PUBLIC_URL: ${LIVEKIT_PUBLIC_URL}
@@ -91,10 +91,10 @@ services:
       homeassistant:
         condition: service_started
     env_file:
-      - /etc/roban-ubuntu/home-assistant-mcp.env
-      - /etc/roban-ubuntu/home-assistant-mcp-credentials.env
+      - ${ROBAN_ETC_DIR}/home-assistant-mcp.env
+      - ${ROBAN_ETC_DIR}/home-assistant-mcp-credentials.env
     volumes:
-      - /var/lib/roban-ubuntu/homeassistant:/data/saha/homeassistant:ro
+      - ${ROBAN_STATE_DIR}/homeassistant:/data/saha/homeassistant:ro
     read_only: true
     tmpfs:
       - /tmp
@@ -127,11 +127,11 @@ services:
       HF_HUB_OFFLINE: "1"
       TRANSFORMERS_OFFLINE: "1"
     volumes:
-      - /var/lib/roban-ubuntu/models/s2s:/models:ro
-      - /var/lib/roban-ubuntu/model-config/s2s:/model-config:ro
-      - /etc/roban-ubuntu/s2s-secrets:/model-secrets:ro
-      - /var/lib/roban-ubuntu/model-cache/s2s:/var/cache/roban-s2s
-      - /var/lib/roban-ubuntu/voiceprints:/var/lib/roban-s2s/voiceprints
+      - ${ROBAN_STATE_DIR}/models/s2s:/models:ro
+      - ${ROBAN_STATE_DIR}/model-config/s2s:/model-config:ro
+      - ${ROBAN_ETC_DIR}/s2s-secrets:/model-secrets:ro
+      - ${ROBAN_STATE_DIR}/model-cache/s2s:/var/cache/roban-s2s
+      - ${ROBAN_STATE_DIR}/voiceprints:/var/lib/roban-s2s/voiceprints
     healthcheck:
       test: ["CMD", "python", "-c", "import urllib.request; urllib.request.urlopen('http://127.0.0.1:8765/health',timeout=5)"]
       interval: 15s

@@ -16,6 +16,7 @@ KEY = Path(os.environ.get("SAHA_DASHSCOPE_API_KEY_PATH", "/etc/roban-ubuntu/s2s-
 WORKSPACE = Path(os.environ.get("SAHA_DASHSCOPE_WORKSPACE_ID_PATH", "/var/lib/roban-ubuntu/model-config/s2s/dashscope-workspace-id"))
 HOST = os.environ.get("SAHA_MODEL_MANAGER_HOST", "0.0.0.0")
 PORT = int(os.environ.get("SAHA_MODEL_MANAGER_PORT", "11435"))
+EDGE_SERVICE = os.environ.get("ROBAN_EDGE_SERVICE", "roban-edge.service")
 
 
 def read_json(path: Path, default: dict[str, Any]) -> dict[str, Any]:
@@ -86,13 +87,13 @@ class Handler(BaseHTTPRequestHandler):
                 current = read_json(MODE, {"generation": 0})
                 value = {"mode": "realtime", "provider": "qwen", "generation": int(current.get("generation", 0)) + 1}
                 write_json(MODE, value)
-                subprocess.run(["systemctl", "restart", "roban-edge.service"], check=True, timeout=120)
+                subprocess.run(["systemctl", "restart", EDGE_SERVICE], check=True, timeout=120)
                 self.send_json(200, value)
                 return
             if self.path == "/v1/realtime/settings":
                 body["provider"] = "qwen"
                 write_json(SETTINGS, body)
-                subprocess.run(["systemctl", "restart", "roban-edge.service"], check=True, timeout=120)
+                subprocess.run(["systemctl", "restart", EDGE_SERVICE], check=True, timeout=120)
                 self.send_json(200, body)
                 return
             self.send_json(409, {"error": {"code": "cloud_only", "message": "Local models, speakers, and custom voices are not installed"}})

@@ -1,0 +1,88 @@
+#!/usr/bin/env bash
+set -euo pipefail
+
+repo_root="$(cd "$(dirname "$0")/.." && pwd)"
+source_dir="$repo_root/scripts/ubuntu-deploy"
+# shellcheck source=scripts/ubuntu-deploy/host-compat.sh
+source "$source_dir/host-compat.sh"
+command_name="${1:-status}"
+shift || true
+
+dry_run=0
+forwarded=()
+while (($#)); do
+  case "$1" in
+    --dry-run) dry_run=1; forwarded+=("$1") ;;
+    *) forwarded+=("$1"); if [[ $1 == --seed-dir || $1 == --registry || $1 == --image-tag ]]; then shift; forwarded+=("$1"); fi ;;
+  esac
+  shift
+done
+
+export ROBAN_EXPECTED_VERSION_ID=22.04
+export ROBAN_EXPECTED_CODENAME=jammy
+export ROBAN_REQUIRE_NVIDIA_RUNTIME=0
+export ROBAN_DEPLOYMENT_ID=jammy
+export ROBAN_SERVICE_PREFIX=roban-jammy
+export ROBAN_COMPOSE_PROJECT=roban-jammy
+export ROBAN_PREFIX=${ROBAN_PREFIX:-/opt/roban-jammy}
+export ROBAN_ETC_DIR=${ROBAN_ETC_DIR:-/etc/roban-jammy}
+export ROBAN_STATE_DIR=${ROBAN_STATE_DIR:-/var/lib/roban-jammy}
+export ROBAN_LIBEXEC=${ROBAN_LIBEXEC:-/usr/local/libexec/roban-jammy}
+export ROBAN_MIN_FREE_BYTES=${ROBAN_MIN_FREE_BYTES:-19327352832}
+export ROBAN_DRY_RUN=$dry_run
+
+case "$command_name" in
+  prepare-host)
+    roban_require_platform
+    roban_check_common_commands
+    if ((dry_run)); then
+      export ROBAN_ALLOW_DOCKER_INSTALL=1
+      roban_prepare_docker_ce_jammy
+      exit 0
+    fi
+    [[ ${EUID:-$(id -u)} -eq 0 ]] || { echo "run as root" >&2; exit 1; }
+    baseline=/var/tmp/roban-jammy-host-baseline-$(date -u +%Y%m%dT%H%M%SZ)
+    roban_capture_host_baseline "$baseline"
+    export ROBAN_ALLOW_DOCKER_INSTALL=1
+    roban_prepare_docker_ce_jammy
+    roban_verify_baseline_processes "$baseline"
+    printf 'Docker host preparation complete; baseline: %s\n' "$baseline"
+    ;;
+  install)
+    roban_require_platform
+    roban_check_common_commands
+    roban_check_disk_space
+    command -v docker >/dev/null || { echo "Docker is missing; review and run: $0 prepare-host --dry-run, then $0 prepare-host" >&2; exit 1; }
+    baseline=${ROBAN_HOST_BASELINE:-$(find /var/tmp -maxdepth 1 -type d -name 'roban-jammy-host-baseline-*' | sort | tail -1)}
+    [[ -n $baseline ]] || { echo "Jammy host baseline missing; run prepare-host first" >&2; exit 1; }
+    roban_verify_baseline_processes "$baseline"
+    "$repo_root/scripts/saha-ubuntu-deploy" install "${forwarded[@]}"
+    roban_verify_baseline_processes "$baseline"
+    ;;
+  deploy)
+    roban_require_platform
+    roban_check_common_commands
+    roban_check_disk_space
+    if ((dry_run)); then
+      export ROBAN_ALLOW_DOCKER_INSTALL=1 ROBAN_FORCE_DOCKER_MISSING=1
+      roban_prepare_docker_ce_jammy
+      echo "+ run shared cloud-only installer after Docker preparation"
+      exit 0
+    fi
+    [[ ${EUID:-$(id -u)} -eq 0 ]] || { echo "run as root" >&2; exit 1; }
+    baseline=/var/tmp/roban-jammy-host-baseline-$(date -u +%Y%m%dT%H%M%SZ)
+    roban_capture_host_baseline "$baseline"
+    export ROBAN_ALLOW_DOCKER_INSTALL=1
+    roban_prepare_docker_ce_jammy
+    roban_verify_baseline_processes "$baseline"
+    "$repo_root/scripts/saha-ubuntu-deploy" install "${forwarded[@]}"
+    roban_verify_baseline_processes "$baseline"
+    ;;
+  status|verify|start|stop|restart|rollback|uninstall)
+    exec "$repo_root/scripts/saha-ubuntu-deploy" "$command_name" "${forwarded[@]}"
+    ;;
+  *)
+    echo "usage: $0 {deploy|prepare-host|install|verify|status|start|stop|restart|rollback|uninstall} [--dry-run]" >&2
+    exit 2
+    ;;
+esac

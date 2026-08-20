@@ -11,8 +11,9 @@ assert_not_contains() { ! grep -Fiq -- "$2" "$1" || fail "$1 unexpectedly contai
 for file in "$entry" "$dir/launcher.sh"; do bash -n "$file"; done
 for file in "$dir"/*.py; do python3 -m py_compile "$file"; done
 
-assert_contains "$entry" 'Ubuntu 24.04 noble required'
-assert_contains "$entry" 'ARM64 required'
+assert_contains "$root/scripts/ubuntu-deploy/host-compat.sh" 'Ubuntu %s %s required'
+assert_contains "$entry" 'ROBAN_EXPECTED_VERSION_ID'
+assert_contains "$root/scripts/ubuntu-deploy/host-compat.sh" 'ARM64 required'
 assert_contains "$entry" 'docker pull --platform linux/arm64'
 assert_contains "$entry" 'RepoDigests'
 assert_contains "$entry" 'current.new'
