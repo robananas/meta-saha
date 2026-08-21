@@ -1,0 +1,11 @@
+[Unit]
+Description=Roban temporary App stack data layout
+Before=roban-temp-board-status.service roban-temp-core.service roban-temp-ha-bootstrap.service roban-temp-mcp.service roban-temp-bt-wifi-provision.service
+
+[Service]
+Type=oneshot
+ExecStart=/usr/local/libexec/roban-app-temp data-layout
+RemainAfterExit=yes
+
+[Install]
+WantedBy=multi-user.target

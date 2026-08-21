@@ -19,7 +19,8 @@ assert_contains "$entry" 'ROBAN_SERVICE_PREFIX=roban-jammy'
 assert_contains "$entry" 'ROBAN_COMPOSE_PROJECT=roban-jammy'
 assert_contains "$entry" '/opt/roban-jammy'
 assert_contains "$noble" 'ROBAN_EXPECTED_VERSION_ID:-24.04'
-assert_contains "$compat" 'download.docker.com/linux/ubuntu jammy stable'
+assert_contains "$compat" 'ROBAN_DOCKER_APT_BASE_URL:-https://download.docker.com/linux/ubuntu'
+assert_contains "$compat" '%s jammy stable'
 assert_contains "$compat" 'simulation=$("$apt_get" -s install docker-ce'
 assert_contains "$compat" 'Docker CE installation would remove, downgrade, or replace protected host packages'
 assert_contains "$compat" 'ROBAN_MIN_FREE_BYTES'
@@ -120,12 +121,12 @@ case " $* " in *" -s "*) echo 'Remv ros-humble-core [1.0]' ;; esac
 EOF
 chmod +x "$sandbox/bin/apt-get-safe" "$sandbox/bin/apt-get-unsafe"
 export ROBAN_APT_LOG="$sandbox/apt.log"
-ROBAN_FORCE_DOCKER_MISSING=1 ROBAN_ALLOW_DOCKER_INSTALL=1 ROBAN_SKIP_DOCKER_POSTCHECK=1 ROBAN_DPKG_ARCHITECTURE=arm64 ROBAN_APT_ROOT="$sandbox/apt" ROBAN_DOCKER_GPG_FILE="$sandbox/gpg" ROBAN_APT_GET="$sandbox/bin/apt-get-safe" bash -c 'source "$1"; roban_prepare_docker_ce_jammy' _ "$compat"
+ROBAN_FORCE_DOCKER_MISSING=1 ROBAN_ALLOW_DOCKER_INSTALL=1 ROBAN_SKIP_GPG_FINGERPRINT_CHECK=1 ROBAN_SKIP_DOCKER_POSTCHECK=1 ROBAN_DPKG_ARCHITECTURE=arm64 ROBAN_APT_ROOT="$sandbox/apt" ROBAN_DOCKER_GPG_FILE="$sandbox/gpg" ROBAN_APT_GET="$sandbox/bin/apt-get-safe" bash -c 'source "$1"; roban_prepare_docker_ce_jammy' _ "$compat"
 grep -q '^-s install docker-ce' "$sandbox/apt.log" || fail "Docker install did not simulate first"
 grep -q '^install -y --no-install-recommends docker-ce' "$sandbox/apt.log" || fail "Docker install did not execute after safe simulation"
 : >"$sandbox/apt.log"
 set +e
-ROBAN_FORCE_DOCKER_MISSING=1 ROBAN_ALLOW_DOCKER_INSTALL=1 ROBAN_SKIP_DOCKER_POSTCHECK=1 ROBAN_DPKG_ARCHITECTURE=arm64 ROBAN_APT_ROOT="$sandbox/apt-unsafe" ROBAN_DOCKER_GPG_FILE="$sandbox/gpg" ROBAN_APT_GET="$sandbox/bin/apt-get-unsafe" bash -c 'source "$1"; roban_prepare_docker_ce_jammy' _ "$compat" >/tmp/jammy-unsafe.out 2>&1
+ROBAN_FORCE_DOCKER_MISSING=1 ROBAN_ALLOW_DOCKER_INSTALL=1 ROBAN_SKIP_GPG_FINGERPRINT_CHECK=1 ROBAN_SKIP_DOCKER_POSTCHECK=1 ROBAN_DPKG_ARCHITECTURE=arm64 ROBAN_APT_ROOT="$sandbox/apt-unsafe" ROBAN_DOCKER_GPG_FILE="$sandbox/gpg" ROBAN_APT_GET="$sandbox/bin/apt-get-unsafe" bash -c 'source "$1"; roban_prepare_docker_ce_jammy' _ "$compat" >/tmp/jammy-unsafe.out 2>&1
 unsafe_rc=$?
 set -e
 ((unsafe_rc != 0)) || fail "Unsafe apt simulation was accepted"

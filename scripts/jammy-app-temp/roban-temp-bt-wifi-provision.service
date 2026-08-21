@@ -1,0 +1,23 @@
+[Unit]
+Description=Roban temporary BLE WiFi and HA credential provisioning
+After=bluetooth.service NetworkManager.service NetworkManager-wait-online.service roban-temp-ha-bootstrap.service
+Wants=NetworkManager-wait-online.service
+Requires=bluetooth.service roban-temp-ha-bootstrap.service
+BindsTo=bluetooth.service
+
+[Service]
+Type=simple
+Environment=PYTHONUNBUFFERED=1
+Environment=SAHA_BT_WIFI_LOCAL_NAME=Roban-Bluetooth
+Environment=ROBAN_DEVICE_IDENTITY_FILE=/home/nvidia/workspace/roban-app-temp/secrets/ble-device-ed25519.key
+Environment=ROBAN_APP_KEYRING_FILE=/home/nvidia/workspace/roban-app-temp/secrets/ble-app-keyring.json
+Environment=SAHA_MATTER_WIFI_CREDENTIALS=/home/nvidia/workspace/roban-app-temp/runtime/matter-wifi.json
+EnvironmentFile=-/home/nvidia/workspace/roban-app-temp/config/matter-wifi.env
+UMask=0077
+ExecStartPre=/bin/sh -c 'bluetoothctl power on >/dev/null 2>&1 || true'
+ExecStart=/usr/local/libexec/roban-app-temp ble
+Restart=on-failure
+RestartSec=10
+
+[Install]
+WantedBy=multi-user.target

@@ -1,0 +1,12 @@
+[Unit]
+Description=Roban temporary Home Assistant bootstrap
+After=roban-temp-core.service
+Requires=roban-temp-core.service
+
+[Service]
+Type=oneshot
+ExecStart=/usr/local/libexec/roban-app-temp bootstrap
+TimeoutStartSec=360
+
+[Install]
+WantedBy=multi-user.target

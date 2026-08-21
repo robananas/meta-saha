@@ -81,7 +81,7 @@ roban_verify_baseline_processes() {
   while IFS= read -r line; do
     pid=${line%% *}; command=${line#* }
     [[ $pid =~ ^[0-9]+$ ]] || continue
-    [[ $pid -eq $$ || $command =~ ^(ps|ssh|sshd|sudo|bash|sh)$ ]] && continue
+    [[ $pid -eq $$ || $command =~ ^(ps|ssh|sshd|sudo|bash|sh|ros2)$ ]] && continue
     if [[ -r /proc/$pid/comm ]]; then
       [[ $(cat "/proc/$pid/comm") == "$command" ]] || { echo "protected process changed: $pid $command" >&2; return 1; }
     else
@@ -114,6 +114,7 @@ roban_prepare_docker_ce_jammy() {
   local keyring="$apt_root/keyrings/docker.gpg"
   local source_file="$apt_root/sources.list.d/docker.list"
   local apt_get=${ROBAN_APT_GET:-apt-get}
+  local docker_apt_base=${ROBAN_DOCKER_APT_BASE_URL:-https://download.docker.com/linux/ubuntu}
   local architecture
   architecture=${ROBAN_DPKG_ARCHITECTURE:-$(dpkg --print-architecture)}
   [[ $architecture == arm64 ]] || { echo "Docker CE Jammy installation requires arm64" >&2; return 1; }
@@ -123,17 +124,23 @@ roban_prepare_docker_ce_jammy() {
   fi
   install -d -m 0755 "$apt_root/keyrings" "$apt_root/sources.list.d"
   local created_key=0 created_source=0
+  cleanup_created_repo() { ((created_source == 0)) || rm -f "$source_file"; ((created_key == 0)) || rm -f "$keyring"; }
+  if [[ -e $keyring && ! -s $keyring ]]; then rm -f "$keyring"; fi
   if [[ ! -e $keyring ]]; then
-    if [[ -n ${ROBAN_DOCKER_GPG_FILE:-} ]]; then cp "$ROBAN_DOCKER_GPG_FILE" "$keyring"; else curl -fsSL https://download.docker.com/linux/ubuntu/gpg | gpg --dearmor --yes -o "$keyring"; fi
+    if [[ -n ${ROBAN_DOCKER_GPG_FILE:-} ]]; then cp "$ROBAN_DOCKER_GPG_FILE" "$keyring"; else curl -fsSL "$docker_apt_base/gpg" | gpg --dearmor --yes -o "$keyring"; fi
     chmod 0644 "$keyring"; created_key=1
   fi
+  if [[ ${ROBAN_SKIP_GPG_FINGERPRINT_CHECK:-0} != 1 ]]; then
+    local fingerprint
+    fingerprint=$(gpg --show-keys --with-colons "$keyring" 2>/dev/null | awk -F: '$1=="fpr" {print $10; exit}')
+    [[ $fingerprint == 9DC858229FC7DD38854AE2D88D81803C0EBFCD88 ]] || { echo "unexpected Docker signing key fingerprint" >&2; cleanup_created_repo; return 1; }
+  fi
   if [[ ! -e $source_file ]]; then
-    printf 'deb [arch=%s signed-by=%s] https://download.docker.com/linux/ubuntu jammy stable\n' "$architecture" "$keyring" >"$source_file"; created_source=1
-  elif ! grep -Fq 'https://download.docker.com/linux/ubuntu jammy stable' "$source_file"; then
+    printf 'deb [arch=%s signed-by=%s] %s jammy stable\n' "$architecture" "$keyring" "$docker_apt_base" >"$source_file"; created_source=1
+  elif ! grep -Fq "$docker_apt_base jammy stable" "$source_file"; then
     echo "existing Docker apt source is not the expected official Jammy source: $source_file" >&2
     return 1
   fi
-  cleanup_created_repo() { ((created_source == 0)) || rm -f "$source_file"; ((created_key == 0)) || rm -f "$keyring"; }
   if ! "$apt_get" update; then cleanup_created_repo; return 1; fi
   local simulation
   simulation=$("$apt_get" -s install docker-ce docker-ce-cli containerd.io docker-buildx-plugin docker-compose-plugin)

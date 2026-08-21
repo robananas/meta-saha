@@ -1,0 +1,29 @@
+homeassistant:
+
+frontend:
+
+bluetooth:
+dhcp:
+ssdp:
+usb:
+webhook:
+zeroconf:
+
+history:
+logbook:
+
+recorder:
+  db_url: sqlite:////config/home-assistant_v2.db
+
+automation: !include automations.yaml
+script: !include scripts.yaml
+scene: !include scenes.yaml
+
+logger:
+  default: info
+  logs:
+    custom_components.xiaomi_home: info
+    custom_components.saha_matter: info
+
+saha_matter:
+  url: "ws://127.0.0.1:5580/ws"

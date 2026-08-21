@@ -1,0 +1,81 @@
+services:
+  matter-server:
+    image: ${IMAGE_MATTER}
+    container_name: roban-temp-matter-server
+    restart: unless-stopped
+    network_mode: host
+    security_opt:
+      - apparmor:unconfined
+    volumes:
+      - ${TEMP_STATE_DIR}/matter-server:/data
+      - /run/dbus:/run/dbus:ro
+      - ${TEMP_RELEASE_DIR}/saha-matter-server-offline.py:/opt/saha-matter-server-offline.py:ro
+    entrypoint: ["python3", "/opt/saha-matter-server-offline.py"]
+    extra_hosts:
+      - on.dcl.csa-iot.org=127.0.0.1
+      - on.test-net.dcl.csa-iot.org=127.0.0.1
+      - api.github.com=127.0.0.1
+      - raw.githubusercontent.com=127.0.0.1
+    command:
+      - --storage-path
+      - /data
+      - --paa-root-cert-dir
+      - /data/credentials
+      - --primary-interface
+      - ${TEMP_WIFI_INTERFACE}
+      - --bluetooth-adapter
+      - "0"
+    healthcheck:
+      test: ["CMD", "python3", "-c", "import socket; socket.create_connection(('127.0.0.1',5580),2).close()"]
+      interval: 3s
+      timeout: 3s
+      retries: 60
+
+  homeassistant:
+    image: ${IMAGE_HOME_ASSISTANT}
+    container_name: roban-temp-homeassistant
+    depends_on:
+      matter-server:
+        condition: service_healthy
+    restart: unless-stopped
+    network_mode: host
+    privileged: true
+    volumes:
+      - ${TEMP_STATE_DIR}/homeassistant-config:/config
+      - /etc/localtime:/etc/localtime:ro
+      - /run/dbus:/run/dbus:ro
+      - ${TEMP_RUNTIME_DIR}:/run/saha
+    environment:
+      TZ: Asia/Shanghai
+
+  workflow-api:
+    image: ${IMAGE_WORKFLOW}
+    container_name: roban-temp-workflow-api
+    restart: unless-stopped
+    network_mode: host
+    volumes:
+      - ${TEMP_STATE_DIR}/workflow:/data
+      - ${TEMP_RUNTIME_DIR}/board-status:/run/saha/board-status:ro
+    environment:
+      TZ: Asia/Shanghai
+      BOARD_STATUS_DIR: /run/saha/board-status
+      WORKFLOW_DATABASE_PATH: /data/workflows.db
+
+  homeassistant-mcp:
+    image: ${IMAGE_HA_MCP}
+    container_name: roban-temp-homeassistant-mcp
+    restart: unless-stopped
+    network_mode: host
+    depends_on:
+      homeassistant:
+        condition: service_started
+    env_file:
+      - ${TEMP_SECRETS_DIR}/home-assistant-mcp.env
+      - ${TEMP_SECRETS_DIR}/home-assistant-mcp-credentials.env
+    volumes:
+      - ${TEMP_STATE_DIR}/homeassistant-credentials:/data/saha/homeassistant:ro
+    read_only: true
+    tmpfs:
+      - /tmp
+    security_opt:
+      - no-new-privileges:true

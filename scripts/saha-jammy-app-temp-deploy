@@ -1,0 +1,299 @@
+#!/usr/bin/env bash
+set -euo pipefail
+
+repo_root="$(cd "$(dirname "$0")/.." && pwd)"
+assets="$repo_root/scripts/jammy-app-temp"
+# shellcheck source=scripts/ubuntu-deploy/host-compat.sh
+source "$repo_root/scripts/ubuntu-deploy/host-compat.sh"
+# shellcheck source=scripts/jammy-app-temp/temp-lib.sh
+source "$assets/temp-lib.sh"
+command_name=${1:-audit}
+shift || true
+
+target_ip=${ROBAN_TEMP_TARGET_IP:-10.30.0.41}
+workspace=${ROBAN_TEMP_WORKSPACE:-/home/nvidia/workspace/roban-app-temp}
+state="$workspace/state"
+secrets="$workspace/secrets"
+runtime="$workspace/runtime"
+releases="$workspace/releases"
+config="$workspace/config"
+docker_root="$workspace/docker"
+seed_dir=${ROBAN_TEMP_SEED_DIR:-/var/tmp/roban-app-temp-seed}
+registry_auth_file=${ROBAN_TEMP_REGISTRY_AUTH_FILE:-}
+matter_wifi_profile_uuid=${ROBAN_TEMP_MATTER_WIFI_PROFILE_UUID:-}
+registry=${ROBAN_REGISTRY:-registry.cn-beijing.aliyuncs.com/roban}
+image_tag=${ROBAN_IMAGE_TAG:-20260819-arm64}
+dry_run=0
+confirm_purge=0
+while (($#)); do
+  case "$1" in
+    --dry-run) dry_run=1 ;;
+    --seed-dir) seed_dir=$2; shift ;;
+    --registry-auth-file) registry_auth_file=$2; shift ;;
+    --matter-wifi-profile-uuid) matter_wifi_profile_uuid=$2; shift ;;
+    --confirm-purge) confirm_purge=1 ;;
+    *) echo "unknown option: $1" >&2; exit 2 ;;
+  esac
+  shift
+done
+
+export ROBAN_EXPECTED_VERSION_ID=22.04
+export ROBAN_EXPECTED_CODENAME=jammy
+export ROBAN_REQUIRE_NVIDIA_RUNTIME=0
+export ROBAN_DOCKER_APT_BASE_URL=${ROBAN_DOCKER_APT_BASE_URL:-https://mirrors.aliyun.com/docker-ce/linux/ubuntu}
+export ROBAN_REQUIRED_TCP_PORTS="5580 8000 8080 8123"
+export ROBAN_STORAGE_PATH=/home/nvidia/workspace
+export ROBAN_MIN_FREE_BYTES=${ROBAN_MIN_FREE_BYTES:-12884901888}
+export ROBAN_DRY_RUN=$dry_run
+
+log() { printf '[roban-app-temp] %s\n' "$*"; }
+require_root() { [[ ${EUID:-$(id -u)} -eq 0 ]] || { echo "run as root" >&2; exit 1; }; }
+
+primary_ip() {
+  ip -4 -brief address show scope global | awk '$1 !~ /^(docker|l4tbr|tailscale|br-)/ {split($3,a,"/"); print a[1]; exit}'
+}
+
+primary_wifi() {
+  ip -4 route show default | awk '$5 !~ /^(docker|l4tbr|tailscale|br-)/ {print $5; exit}'
+}
+
+check_target() {
+  roban_require_platform
+  roban_check_common_commands
+  local ip wifi
+  ip=$(primary_ip); wifi=$(primary_wifi)
+  [[ $ip == "$target_ip" ]] || { echo "temporary installer is restricted to $target_ip; detected $ip" >&2; return 1; }
+  [[ -n $wifi ]] || { echo "primary network interface not found" >&2; return 1; }
+  [[ -d $(dirname "$workspace") ]] || { echo "workspace parent is missing: $(dirname "$workspace")" >&2; return 1; }
+  roban_check_disk_space
+  if [[ ! -L $workspace/current ]]; then roban_check_target_ports; fi
+}
+
+print_audit() {
+  check_target
+  local available wifi
+  available=$(roban_available_bytes); wifi=$(primary_wifi)
+  cat <<EOF
+Target: $target_ip (Ubuntu 22.04 Jammy ARM64)
+Workspace: $workspace
+Primary WiFi: $wifi
+Free workspace bytes: $available
+Docker: $(command -v docker >/dev/null && echo installed || echo missing)
+Containers: Home Assistant, Matter Server, Workflow API, Home Assistant MCP
+TCP ports: 5580, 8000, 8080, 8123
+Will not deploy: LiveKit, S2S, realtime manager, Ollama, models, digital-human services
+Will create after confirmation: Docker CE apt source/keyring, /etc/docker/daemon.json, workspace data, workspace-only registry auth, roban-temp-* units
+EOF
+}
+
+image_ref() { printf '%s/%s:%s' "$registry" "$1" "$image_tag"; }
+resolve_image() {
+  local ref arch os digest
+  ref=$(image_ref "$1")
+  local attempt pulled=0
+  for attempt in 1 2 3 4 5; do
+    if DOCKER_CONFIG="$secrets/docker-config" docker pull --platform linux/arm64 "$ref" >/dev/null; then pulled=1; break; fi
+    sleep $((attempt * 3))
+  done
+  ((pulled == 1)) || { echo "failed to pull image after retries: $ref" >&2; return 1; }
+  arch=$(docker image inspect "$ref" --format '{{.Architecture}}')
+  os=$(docker image inspect "$ref" --format '{{.Os}}')
+  [[ $arch == arm64 && $os == linux ]] || { echo "invalid image platform: $ref $os/$arch" >&2; return 1; }
+  digest=$(docker image inspect "$ref" --format '{{index .RepoDigests 0}}')
+  [[ -n $digest ]] || { echo "missing RepoDigest: $ref" >&2; return 1; }
+  printf '%s' "$digest"
+}
+
+install_release() {
+  local release=$1 wifi=$2
+  install -d -m 0755 "$release" "$release/ble" "$release/ha-template/custom_components/saha_matter" "$release/matter-paa"
+  install -m 0644 "$assets/compose.yaml" "$release/compose.yaml"
+  install -m 0755 "$assets/launcher.sh" "$release/launcher.sh"
+  install -m 0644 "$repo_root/saha-layers/meta-tegra-saha/recipes-saha/docker-compose/saha-docker-compose/saha-matter-server-offline.py" "$release/"
+  cp -a "$repo_root/saha-layers/meta-tegra-saha/recipes-saha/docker-compose/saha-docker-compose/matter-paa/." "$release/matter-paa/"
+  local ha_src="$repo_root/saha-layers/meta-tegra-saha/recipes-saha/homeassistant-config/saha-homeassistant-config"
+  install -m 0644 "$assets/configuration.yaml" "$release/ha-template/configuration.yaml"
+  install -m 0644 "$ha_src/secrets.yaml" "$release/ha-template/secrets.yaml"
+  for file in automations.yaml scenes.yaml scripts.yaml; do : >"$release/ha-template/$file"; done
+  install -m 0644 "$ha_src/custom-components/saha_matter/__init__.py" "$release/ha-template/custom_components/saha_matter/__init__.py"
+  install -m 0644 "$ha_src/custom-components/saha_matter/manifest.json" "$release/ha-template/custom_components/saha_matter/manifest.json"
+  if [[ ! -d $state/homeassistant-config/custom_components/xiaomi_home ]]; then
+    local archive="$release/xiaomi-home.tar.gz" unpack="$release/.xiaomi-home"
+    curl -fsSL https://github.com/XiaoMi/ha_xiaomi_home/archive/001af5384a66dddb6e45f60bbeee6e536c236af4.tar.gz -o "$archive"
+    mkdir -p "$unpack" "$release/ha-template/custom_components/xiaomi_home"
+    tar -xzf "$archive" -C "$unpack" --strip-components=1
+    cp -a "$unpack/custom_components/xiaomi_home/." "$release/ha-template/custom_components/xiaomi_home/"
+    rm -rf "$archive" "$unpack"
+  fi
+  cp -a "$repo_root/saha-layers/meta-tegra-saha/recipes-saha/bt-wifi-provision/saha-bt-wifi-provision/." "$release/ble/"
+  install -m 0755 "$repo_root/saha-layers/meta-tegra-saha/recipes-saha/homeassistant-bootstrap/files/saha-homeassistant-bootstrap.py" "$release/ha-bootstrap.py"
+  install -m 0755 "$repo_root/saha-layers/meta-tegra-saha/recipes-saha/board-status/saha-board-status/saha-board-status.py" "$release/board-status.py"
+  python3 - "$release" "$state" "$runtime" "$wifi" <<'PY'
+from pathlib import Path
+import sys
+release,state,runtime,wifi=map(Path,sys.argv[1:])
+bootstrap=release/'ha-bootstrap.py'
+bootstrap.write_text(bootstrap.read_text().replace('Path("/data/saha/homeassistant")',f'Path("{state}/homeassistant-credentials")'))
+manager=release/'ble/ha_credential_manager.py'
+manager.write_text(manager.read_text().replace('Path("/data/saha/homeassistant/app-credentials.json")',f'Path("{state}/homeassistant-credentials/app-credentials.json")'))
+wifi_manager=release/'ble/wifi_manager.py'
+wifi_text=wifi_manager.read_text()
+sync_marker='def sync_matter_wifi_credentials() -> bool:\n'
+head, tail = wifi_text.split(sync_marker, 1)
+tail = tail.replace('    active = _active_connection()\n', '    override_uuid = os.environ.get("SAHA_MATTER_WIFI_PROFILE_UUID", "").strip()\n    active = {"uuid": override_uuid} if override_uuid else _active_connection()\n', 1)
+wifi_text = head + sync_marker + tail
+wifi_manager.write_text(wifi_text)
+gatt=release/'ble/gatt_server.py'
+gatt_text=gatt.read_text().replace('ADVERTISEMENT_CONTROL_PATH = "/run/saha/ble-advertisement-control.json"',f'ADVERTISEMENT_CONTROL_PATH = "{runtime}/ble-advertisement-control.json"')
+gatt_text=gatt_text.replace('ADVERTISEMENT_STATUS_PATH = "/run/saha/ble-advertisement-status.json"',f'ADVERTISEMENT_STATUS_PATH = "{runtime}/ble-advertisement-status.json"')
+gatt.write_text(gatt_text)
+board=release/'board-status.py'
+board.write_text(board.read_text().replace('device", "show", "wlan0"',f'device", "show", "{wifi}"'))
+PY
+  (cd "$release" && find . -type f -print0 | sort -z | xargs -0 sha256sum >SHA256SUMS)
+}
+
+seed_state() {
+  install -d -m 0755 "$workspace" "$state" "$state/homeassistant-config" "$state/matter-server/credentials" "$state/workflow" "$state/board-status" "$runtime" "$runtime/board-status" "$releases" "$config"
+  install -d -m 0700 "$state/homeassistant-credentials" "$secrets"
+  if [[ ! -f $state/homeassistant-config/configuration.yaml ]]; then cp -a "$workspace/current/ha-template/." "$state/homeassistant-config/"; fi
+  for certificate in "$workspace/current/matter-paa"/*; do [[ ! -f $certificate ]] || [[ -e $state/matter-server/credentials/$(basename "$certificate") ]] || cp "$certificate" "$state/matter-server/credentials/"; done
+  printf 'offline\n' >"$state/matter-server/credentials/.version"
+  [[ -s $secrets/ble-device-ed25519.key ]] || install -m 0600 "$seed_dir/ble-device-ed25519.key" "$secrets/ble-device-ed25519.key"
+  [[ -s $secrets/ble-app-keyring.json ]] || install -m 0644 "$seed_dir/ble-app-keyring.json" "$secrets/ble-app-keyring.json"
+  if [[ ! -s $secrets/home-assistant-mcp-credentials.env ]]; then
+    local token; token=$(python3 -c 'import secrets; print(secrets.token_urlsafe(32))')
+    umask 077
+    printf 'MCP_ACCESS_TOKEN=%s\nMCP_PUBLIC_URL=http://%s:8000/mcp\n' "$token" "$target_ip" >"$secrets/home-assistant-mcp-credentials.env"
+  fi
+  cat >"$secrets/home-assistant-mcp.env" <<EOF
+HA_URL=http://127.0.0.1:8123
+HA_TOKEN_FILE=/data/saha/homeassistant/app-credentials.json
+HA_TIMEOUT=10
+HA_READ_ONLY=false
+HA_ALLOWED_DOMAINS=light,switch,climate,cover,fan,media_player,scene,button,number,select,input_boolean,humidifier,remote,vacuum
+MCP_HOST=0.0.0.0
+MCP_PORT=8000
+MCP_PATH=/mcp
+EOF
+  chmod 0600 "$secrets"/*.env "$secrets/ble-device-ed25519.key"
+}
+
+install_units() {
+  install -d -m 0755 /usr/local/libexec /etc/systemd/system
+  install -m 0755 "$workspace/current/launcher.sh" /usr/local/libexec/roban-app-temp
+  local unit
+  for unit in "$assets"/roban-temp-*.service; do install -m 0644 "$unit" "/etc/systemd/system/$(basename "$unit")"; done
+  systemctl daemon-reload
+  systemctl enable roban-temp-data-layout roban-temp-board-status roban-temp-core roban-temp-ha-bootstrap roban-temp-mcp roban-temp-bt-wifi-provision >/dev/null
+}
+
+prepare_registry_auth() {
+  install -d -m 0700 "$secrets/docker-config"
+  if [[ -n $registry_auth_file ]]; then install -m 0600 "$registry_auth_file" "$secrets/docker-config/config.json"; fi
+  test -s "$secrets/docker-config/config.json" || { echo "private registry auth is required: --registry-auth-file <config.json>" >&2; return 1; }
+  python3 - "$secrets/docker-config/config.json" "$registry" <<'PY'
+import json,sys
+value=json.load(open(sys.argv[1])); host=sys.argv[2].split('/')[0]
+assert host in value.get('auths',{}), 'registry auth host missing'
+PY
+}
+
+prepare_docker() {
+  if command -v docker >/dev/null; then
+    docker info >/dev/null
+    local actual; actual=$(docker info --format '{{.DockerRootDir}}')
+    [[ $actual == "$docker_root" ]] || { echo "existing Docker data-root is $actual, expected $docker_root" >&2; return 1; }
+    return 0
+  fi
+  roban_temp_write_daemon_config "${ROBAN_DOCKER_DAEMON_JSON:-/etc/docker/daemon.json}" "$docker_root" "$assets/docker-daemon.json"
+  export ROBAN_ALLOW_DOCKER_INSTALL=1 ROBAN_REQUIRE_NVIDIA_RUNTIME=0
+  roban_prepare_docker_ce_jammy
+  [[ $(docker info --format '{{.DockerRootDir}}') == "$docker_root" ]]
+}
+
+deploy() {
+  require_root
+  check_target
+  [[ ! -e $workspace/current ]] || log "upgrading existing temporary stack"
+  local baseline="$workspace/baseline" wifi release_id release staging old_current success=0
+  trap '((success == 1)) || roban_temp_cleanup_failed_deploy' RETURN
+  install -d -m 0700 "$baseline"
+  roban_capture_host_baseline "$baseline"
+  prepare_docker
+  prepare_registry_auth
+  roban_verify_baseline_processes "$baseline"
+  systemctl is-active --quiet ruoban-device-agent ruoban-operator-panel robot-tf-bringup
+  wifi=$(primary_wifi)
+  local images=(home-assistant python-matter-server roban-workflow-api roban-ha-mcp)
+  declare -A resolved
+  local image
+  for image in "${images[@]}"; do resolved[$image]=$(resolve_image "$image"); done
+  release_id="$image_tag-$(sha256sum "$0" "$assets"/* | sha256sum | cut -c1-12)"
+  release="$releases/$release_id"; staging="$release.staging"
+  old_current=$(readlink -f "$workspace/current" 2>/dev/null || true)
+  if [[ ! -d $release ]]; then rm -rf "$staging"; install_release "$staging" "$wifi"; mv "$staging" "$release"; fi
+  ln -sfn "$release" "$workspace/current.new"; mv -Tf "$workspace/current.new" "$workspace/current"
+  [[ -z $old_current ]] || ln -sfn "$old_current" "$workspace/previous"
+  seed_state
+  if [[ -n $matter_wifi_profile_uuid ]]; then
+    [[ $matter_wifi_profile_uuid =~ ^[0-9a-fA-F-]{36}$ ]] || { echo "invalid Matter WiFi profile UUID" >&2; return 1; }
+    printf 'SAHA_MATTER_WIFI_PROFILE_UUID=%s\n' "$matter_wifi_profile_uuid" >"$config/matter-wifi.env"
+    chmod 0600 "$config/matter-wifi.env"
+  fi
+  cat >"$config/images.env" <<EOF
+TEMP_RELEASE_DIR=$workspace/current
+TEMP_STATE_DIR=$state
+TEMP_SECRETS_DIR=$secrets
+TEMP_RUNTIME_DIR=$runtime
+TEMP_WIFI_INTERFACE=$wifi
+IMAGE_HOME_ASSISTANT=${resolved[home-assistant]}
+IMAGE_MATTER=${resolved[python-matter-server]}
+IMAGE_WORKFLOW=${resolved[roban-workflow-api]}
+IMAGE_HA_MCP=${resolved[roban-ha-mcp]}
+EOF
+  install_units
+  if [[ -n $old_current ]]; then systemctl stop roban-temp-bt-wifi-provision roban-temp-mcp roban-temp-core roban-temp-board-status 2>/dev/null || true; fi
+  if ! systemctl start roban-temp-data-layout roban-temp-board-status roban-temp-core roban-temp-ha-bootstrap roban-temp-mcp roban-temp-bt-wifi-provision || ! /usr/local/libexec/roban-app-temp verify; then
+    systemctl stop roban-temp-bt-wifi-provision roban-temp-mcp roban-temp-core roban-temp-board-status 2>/dev/null || true
+    [[ -z $old_current ]] || { ln -sfn "$old_current" "$workspace/current.new"; mv -Tf "$workspace/current.new" "$workspace/current"; }
+    return 1
+  fi
+  for _ in $(seq 1 30); do bluetoothctl show | grep -q 'a0a0ff10-0000-1000-8000-00805f9b34fb' && break; sleep 1; done
+  bluetoothctl show | grep -q 'a0a0ff10-0000-1000-8000-00805f9b34fb'
+  roban_verify_baseline_processes "$baseline"
+  systemctl is-active --quiet ruoban-device-agent ruoban-operator-panel robot-tf-bringup
+  rm -rf "$seed_dir"
+  success=1
+  log "temporary stack installed: $release_id"
+}
+
+uninstall_stack() {
+  require_root
+  systemctl disable --now roban-temp-bt-wifi-provision roban-temp-mcp roban-temp-ha-bootstrap roban-temp-core roban-temp-board-status roban-temp-data-layout 2>/dev/null || true
+  [[ ! -x /usr/local/libexec/roban-app-temp ]] || /usr/local/libexec/roban-app-temp down || true
+  rm -f /etc/systemd/system/roban-temp-{bt-wifi-provision,mcp,ha-bootstrap,core,board-status,data-layout}.service /usr/local/libexec/roban-app-temp
+  systemctl daemon-reload
+  log "temporary units and containers removed; workspace data retained"
+}
+
+case "$command_name" in
+  audit) print_audit ;;
+  deploy) deploy ;;
+  status|verify|restart|start|stop) require_root; /usr/local/libexec/roban-app-temp "$command_name" ;;
+  rollback)
+    require_root
+    [[ -L $workspace/previous ]] || { echo "no previous temporary release" >&2; exit 1; }
+    current=$(readlink -f "$workspace/current"); previous=$(readlink -f "$workspace/previous")
+    ln -sfn "$previous" "$workspace/current.new"; mv -Tf "$workspace/current.new" "$workspace/current"; ln -sfn "$current" "$workspace/previous"
+    /usr/local/libexec/roban-app-temp restart
+    ;;
+  uninstall) uninstall_stack ;;
+  purge)
+    ((confirm_purge == 1)) || { echo "purge requires --confirm-purge" >&2; exit 2; }
+    uninstall_stack
+    rm -rf "$state" "$secrets" "$runtime" "$releases" "$config" "$workspace/current" "$workspace/previous" "$workspace/baseline"
+    log "temporary application data purged; Docker data-root and images retained"
+    ;;
+  *) echo "usage: $0 {audit|deploy|verify|status|start|stop|restart|rollback|uninstall|purge} [--seed-dir path] [--registry-auth-file config.json] [--matter-wifi-profile-uuid UUID] [--confirm-purge]" >&2; exit 2 ;;
+esac

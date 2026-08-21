@@ -1,0 +1,17 @@
+[Unit]
+Description=Roban temporary HA Matter Workflow stack
+Wants=network-online.target
+After=network-online.target docker.service roban-temp-data-layout.service roban-temp-board-status.service
+Requires=docker.service roban-temp-data-layout.service roban-temp-board-status.service
+
+[Service]
+Type=oneshot
+RemainAfterExit=yes
+ExecStartPre=/usr/bin/docker info
+ExecStart=/usr/local/libexec/roban-app-temp core-start
+ExecStop=/usr/local/libexec/roban-app-temp core-stop
+TimeoutStartSec=600
+TimeoutStopSec=120
+
+[Install]
+WantedBy=multi-user.target

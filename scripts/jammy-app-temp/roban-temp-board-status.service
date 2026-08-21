@@ -1,0 +1,15 @@
+[Unit]
+Description=Roban temporary board status
+After=roban-temp-data-layout.service
+Requires=roban-temp-data-layout.service
+Before=roban-temp-core.service roban-temp-bt-wifi-provision.service
+
+[Service]
+Type=simple
+Environment=PYTHONUNBUFFERED=1
+ExecStart=/usr/local/libexec/roban-app-temp board-status
+Restart=on-failure
+RestartSec=2
+
+[Install]
+WantedBy=multi-user.target
