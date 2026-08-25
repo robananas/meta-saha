@@ -23,6 +23,10 @@ registry_auth_file=${ROBAN_TEMP_REGISTRY_AUTH_FILE:-}
 matter_wifi_profile_uuid=${ROBAN_TEMP_MATTER_WIFI_PROFILE_UUID:-}
 registry=${ROBAN_REGISTRY:-registry.cn-beijing.aliyuncs.com/roban}
 image_tag=${ROBAN_IMAGE_TAG:-20260819-arm64}
+workflow_image_tag=${ROBAN_WORKFLOW_IMAGE_TAG:-20260825-arm64}
+workflow_mcp_image_tag=${ROBAN_WORKFLOW_MCP_IMAGE_TAG:-20260825-domain-arm64}
+s2s_image_tag=${ROBAN_S2S_IMAGE_TAG:-20260825-card-capabilities-barge-cpu-arm64}
+s2s_image_tag=${ROBAN_S2S_IMAGE_TAG:-$image_tag}
 dry_run=0
 confirm_purge=0
 while (($#)); do
@@ -41,7 +45,7 @@ export ROBAN_EXPECTED_VERSION_ID=22.04
 export ROBAN_EXPECTED_CODENAME=jammy
 export ROBAN_REQUIRE_NVIDIA_RUNTIME=0
 export ROBAN_DOCKER_APT_BASE_URL=${ROBAN_DOCKER_APT_BASE_URL:-https://mirrors.aliyun.com/docker-ce/linux/ubuntu}
-export ROBAN_REQUIRED_TCP_PORTS="5580 8000 8080 8123"
+export ROBAN_REQUIRED_TCP_PORTS="5580 8000 8001 8080 8123 8765"
 export ROBAN_STORAGE_PATH=/home/nvidia/workspace
 export ROBAN_MIN_FREE_BYTES=${ROBAN_MIN_FREE_BYTES:-12884901888}
 export ROBAN_DRY_RUN=$dry_run
@@ -79,14 +83,23 @@ Workspace: $workspace
 Primary WiFi: $wifi
 Free workspace bytes: $available
 Docker: $(command -v docker >/dev/null && echo installed || echo missing)
-Containers: Home Assistant, Matter Server, Workflow API, Home Assistant MCP
-TCP ports: 5580, 8000, 8080, 8123
-Will not deploy: LiveKit, S2S, realtime manager, Ollama, models, digital-human services
+Containers: Home Assistant, Matter Server, Workflow API, Home Assistant MCP, Workflow MCP, S2S
+TCP ports: 5580, 8000, 8001, 8080, 8123, 8765
+Will not deploy: LiveKit, realtime manager, Ollama, digital-human services
 Will create after confirmation: Docker CE apt source/keyring, /etc/docker/daemon.json, workspace data, workspace-only registry auth, roban-temp-* units
 EOF
 }
 
-image_ref() { printf '%s/%s:%s' "$registry" "$1" "$image_tag"; }
+image_ref() {
+  local name=$1 tag=$image_tag
+  case "$name" in
+    roban-workflow-api) tag=$workflow_image_tag ;;
+    roban-workflow-mcp) tag=$workflow_mcp_image_tag ;;
+    roban-s2s) tag=$s2s_image_tag ;;
+    roban-s2s) tag=$s2s_image_tag ;;
+  esac
+  printf '%s/%s:%s' "$registry" "$name" "$tag"
+}
 resolve_image() {
   local ref arch os digest
   ref=$(image_ref "$1")
@@ -155,7 +168,7 @@ PY
 
 seed_state() {
   install -d -m 0755 "$workspace" "$state" "$state/homeassistant-config" "$state/matter-server/credentials" "$state/workflow" "$state/board-status" "$runtime" "$runtime/board-status" "$releases" "$config"
-  install -d -m 0700 "$state/homeassistant-credentials" "$secrets"
+  install -d -m 0700 "$state/homeassistant-credentials" "$state/workflow-mcp" "$secrets"
   if [[ ! -f $state/homeassistant-config/configuration.yaml ]]; then cp -a "$workspace/current/ha-template/." "$state/homeassistant-config/"; fi
   for certificate in "$workspace/current/matter-paa"/*; do [[ ! -f $certificate ]] || [[ -e $state/matter-server/credentials/$(basename "$certificate") ]] || cp "$certificate" "$state/matter-server/credentials/"; done
   printf 'offline\n' >"$state/matter-server/credentials/.version"
@@ -166,6 +179,18 @@ seed_state() {
     umask 077
     printf 'MCP_ACCESS_TOKEN=%s\nMCP_PUBLIC_URL=http://%s:8000/mcp\n' "$token" "$target_ip" >"$secrets/home-assistant-mcp-credentials.env"
   fi
+  if [[ ! -s $secrets/workflow-mcp-credentials.env ]]; then
+    local workflow_token; workflow_token=$(python3 -c 'import secrets; print(secrets.token_urlsafe(32))')
+    umask 077
+    printf 'WORKFLOW_MCP_ACCESS_TOKEN=%s\n' "$workflow_token" >"$secrets/workflow-mcp-credentials.env"
+  fi
+  cat >"$secrets/workflow-mcp.env" <<EOF
+WORKFLOW_MCP_HOST=0.0.0.0
+WORKFLOW_MCP_PORT=8001
+WORKFLOW_MCP_PATH=/mcp
+WORKFLOW_MCP_PUBLIC_URL=http://$target_ip:8001/mcp
+WORKFLOW_API_TIMEOUT=10
+EOF
   cat >"$secrets/home-assistant-mcp.env" <<EOF
 HA_URL=http://127.0.0.1:8123
 HA_TOKEN_FILE=/data/saha/homeassistant/app-credentials.json
@@ -176,7 +201,10 @@ MCP_HOST=0.0.0.0
 MCP_PORT=8000
 MCP_PATH=/mcp
 EOF
-  chmod 0600 "$secrets"/*.env "$secrets/ble-device-ed25519.key"
+  chown root:999 "$secrets/home-assistant-mcp-credentials.env" "$secrets/workflow-mcp-credentials.env"
+  chmod 0640 "$secrets/home-assistant-mcp-credentials.env" "$secrets/workflow-mcp-credentials.env"
+  find "$secrets" -maxdepth 1 -type f -name '*.env' ! -name '*-mcp-credentials.env' -exec chmod 0600 {} +
+  chmod 0600 "$secrets/ble-device-ed25519.key"
 }
 
 install_units() {
@@ -225,7 +253,7 @@ deploy() {
   roban_verify_baseline_processes "$baseline"
   systemctl is-active --quiet ruoban-device-agent ruoban-operator-panel robot-tf-bringup
   wifi=$(primary_wifi)
-  local images=(home-assistant python-matter-server roban-workflow-api roban-ha-mcp)
+  local images=(home-assistant python-matter-server roban-workflow-api roban-ha-mcp roban-workflow-mcp roban-s2s)
   declare -A resolved
   local image
   for image in "${images[@]}"; do resolved[$image]=$(resolve_image "$image"); done
@@ -251,6 +279,8 @@ IMAGE_HOME_ASSISTANT=${resolved[home-assistant]}
 IMAGE_MATTER=${resolved[python-matter-server]}
 IMAGE_WORKFLOW=${resolved[roban-workflow-api]}
 IMAGE_HA_MCP=${resolved[roban-ha-mcp]}
+IMAGE_WORKFLOW_MCP=${resolved[roban-workflow-mcp]}
+IMAGE_S2S=${resolved[roban-s2s]}
 EOF
   install_units
   if [[ -n $old_current ]]; then systemctl stop roban-temp-bt-wifi-provision roban-temp-mcp roban-temp-core roban-temp-board-status 2>/dev/null || true; fi

@@ -24,6 +24,9 @@ SAHA_MATTER_SERVER_IMAGE="${SAHA_MATTER_SERVER_IMAGE:-ghcr.io/matter-js/python-m
 SAHA_MATTER_SERVER_IMAGE_TAR="${SAHA_MATTER_SERVER_IMAGE_TAR:-/data/preload/matter-server/image.tar}"
 SAHA_ROBAN_WORKFLOW_IMAGE="${SAHA_ROBAN_WORKFLOW_IMAGE:-roban-workflow-api:arm64}"
 SAHA_ROBAN_WORKFLOW_IMAGE_TAR="${SAHA_ROBAN_WORKFLOW_IMAGE_TAR:-/data/preload/roban-workflow-api/image.tar}"
+SAHA_WORKFLOW_MCP_IMAGE="${SAHA_WORKFLOW_MCP_IMAGE:-roban-workflow-mcp:arm64}"
+SAHA_WORKFLOW_MCP_IMAGE_TAR="${SAHA_WORKFLOW_MCP_IMAGE_TAR:-/data/preload/workflow-mcp/image.tar}"
+SAHA_WORKFLOW_MCP_CREDENTIALS_FILE="${SAHA_WORKFLOW_MCP_CREDENTIALS_FILE:-/data/saha/workflow-mcp/credentials.env}"
 SAHA_LIVEKIT_SERVER_IMAGE="${SAHA_LIVEKIT_SERVER_IMAGE:-livekit/livekit-server:v1.13.4}"
 SAHA_LIVEKIT_SERVER_IMAGE_TAR="${SAHA_LIVEKIT_SERVER_IMAGE_TAR:-/data/preload/livekit-server/image.tar}"
 SAHA_LIVEKIT_AGENT_IMAGE="${SAHA_LIVEKIT_AGENT_IMAGE:-livekit-agent:arm64}"
@@ -179,6 +182,7 @@ ensure_images() {
     load_tarball "$SAHA_HOMEASSISTANT_MCP_IMAGE" "$SAHA_HOMEASSISTANT_MCP_IMAGE_TAR"
     load_tarball "$SAHA_MATTER_SERVER_IMAGE" "$SAHA_MATTER_SERVER_IMAGE_TAR"
     load_tarball "$SAHA_ROBAN_WORKFLOW_IMAGE" "$SAHA_ROBAN_WORKFLOW_IMAGE_TAR"
+    load_tarball "$SAHA_WORKFLOW_MCP_IMAGE" "$SAHA_WORKFLOW_MCP_IMAGE_TAR"
     load_tarball "$SAHA_LIVEKIT_SERVER_IMAGE" "$SAHA_LIVEKIT_SERVER_IMAGE_TAR"
     load_tarball "$SAHA_LIVEKIT_AGENT_IMAGE" "$SAHA_LIVEKIT_AGENT_IMAGE_TAR"
 
@@ -262,13 +266,15 @@ seed_homeassistant_config() {
 
 start_stack() {
     mountpoint -q /data
-    mkdir -p /var/lib/homeassistant /var/lib/matter-server /data/saha/homeassistant-mcp
+    mkdir -p /var/lib/homeassistant /var/lib/matter-server /data/saha/homeassistant-mcp /data/saha/workflow-mcp
     test -s "$SAHA_HOMEASSISTANT_MCP_CREDENTIALS_FILE"
+    test -s "$SAHA_WORKFLOW_MCP_CREDENTIALS_FILE"
     seed_matter_certificates
     seed_homeassistant_config
     ensure_livekit_credentials
     export TZ="$SAHA_DOCKER_COMPOSE_TZ"
     export SAHA_HOMEASSISTANT_MCP_IMAGE SAHA_HOMEASSISTANT_MCP_CREDENTIALS_FILE
+    export SAHA_WORKFLOW_MCP_IMAGE SAHA_WORKFLOW_MCP_CREDENTIALS_FILE
     export SAHA_LIVEKIT_SERVER_IMAGE SAHA_LIVEKIT_AGENT_IMAGE
     export SAHA_LIVEKIT_AGENT_NAME="${SAHA_LIVEKIT_AGENT_NAME:-roban-agent}"
     export OPENAI_API_KEY="${OPENAI_API_KEY:-}"

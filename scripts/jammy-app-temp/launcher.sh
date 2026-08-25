@@ -30,8 +30,8 @@ wait_http() {
 
 case "${1:-}" in
   data-layout)
-    install -d -m 0755 "$root" "$state" "$state/homeassistant-config" "$state/matter-server/credentials" "$state/workflow" "$runtime" "$runtime/board-status" "$root/config"
-    install -d -m 0700 "$state/homeassistant-credentials" "$secrets"
+    install -d -m 0755 "$root" "$state" "$state/homeassistant-config" "$state/matter-server/credentials" "$state/workflow" "$state/models/s2s" "$state/model-config/s2s" "$state/model-cache/s2s" "$state/voiceprints" "$runtime" "$runtime/board-status" "$root/config"
+    install -d -m 0700 "$state/homeassistant-credentials" "$state/workflow-mcp" "$secrets"
     ;;
   core-start)
     "${compose[@]}" up -d --pull never matter-server homeassistant workflow-api
@@ -46,11 +46,15 @@ case "${1:-}" in
     ;;
   mcp-start)
     test -s "$state/homeassistant-credentials/app-credentials.json"
-    "${compose[@]}" up -d --pull never homeassistant-mcp
+    test -s "$secrets/workflow-mcp-credentials.env"
+    "${compose[@]}" up -d --pull never homeassistant-mcp workflow-mcp
     wait_tcp 127.0.0.1 8000 60
+    wait_tcp 127.0.0.1 8001 60
+    "${compose[@]}" up -d --pull never roban-s2s
+    wait_http http://127.0.0.1:8765/health 120
     ;;
   mcp-stop)
-    "${compose[@]}" stop homeassistant-mcp
+    "${compose[@]}" stop roban-s2s workflow-mcp homeassistant-mcp
     ;;
   board-status)
     exec env SAHA_BOARD_STATUS_DIR="$runtime/board-status" python3 "$release/board-status.py" daemon
@@ -77,6 +81,11 @@ case "${1:-}" in
     [[ $unauth == 401 ]]
     token=$(sed -n 's/^MCP_ACCESS_TOKEN=//p' "$secrets/home-assistant-mcp-credentials.env")
     auth_code=$(curl -sS -o /dev/null -w '%{http_code}' --max-time 3 -H "Authorization: Bearer $token" http://127.0.0.1:8000/mcp || true)
+    [[ $auth_code == 200 ]]
+    unauth=$(curl -sS -o /dev/null -w '%{http_code}' --max-time 3 http://127.0.0.1:8001/mcp || true)
+    [[ $unauth == 401 ]]
+    token=$(sed -n 's/^WORKFLOW_MCP_ACCESS_TOKEN=//p' "$secrets/workflow-mcp-credentials.env")
+    auth_code=$(curl -sS -o /dev/null -w '%{http_code}' --max-time 3 -H "Authorization: Bearer $token" http://127.0.0.1:8001/mcp || true)
     [[ $auth_code == 200 ]]
     python3 - <<'PY'
 import json, os, urllib.request

@@ -27,6 +27,18 @@ When an ARM64 container can be built natively on the local Apple Silicon Mac, pr
 - Require a reproducible Dockerfile and minimal complete context for every packaged image. Never package an image whose only provenance is a board-side `docker commit`.
 - Validate that the promoted archive contains only the intended tag/manifest and reports `arm64` before running the focused recipe or image packaging task.
 
+## Validated Container Publication and Deployment Sync
+
+After a container image passes target-board validation, publication and deployment synchronization are part of completing the task, not optional follow-up.
+
+- Push the exact board-tested image to `registry.cn-beijing.aliyuncs.com/roban` using an immutable dated/versioned tag; never reuse or overwrite a validated tag.
+- Record and verify the registry digest. The pushed image ID/platform must match the board-tested artifact; do not rebuild before publishing.
+- Keep the verified offline tar in the expected Yocto `downloads/` path and verify its SHA-256 after transfer.
+- Update the Yocto preload/tag/archive contract and the Ubuntu 22.04 and 24.04 one-click deployment scripts in the same change. Deployment scripts should resolve validated application images to immutable registry digests.
+- Run focused Yocto packaging plus Ubuntu 22/24 deployment contract tests after updating image references.
+- Never store registry passwords or auth JSON in the repository. Use the existing Docker credential store or an explicitly supplied external auth file.
+- Report the registry reference, registry digest, offline archive SHA-256, Yocto packaging result, and Ubuntu 22/24 script validation.
+
 ## Temporary Changes on a Test Board
 
 When testing a change directly on a Saha/Roban board, keep the deployed temporary change and the corresponding `meta-saha` source change identical.

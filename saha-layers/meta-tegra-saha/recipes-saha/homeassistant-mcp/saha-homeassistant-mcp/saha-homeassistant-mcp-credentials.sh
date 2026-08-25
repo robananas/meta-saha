@@ -15,4 +15,5 @@ if [ ! -s "$credentials_file" ]; then
         printf 'MCP_PUBLIC_URL=http://%s:8000/mcp\n' "$board_ip"
     } > "$credentials_file"
 fi
-chmod 0600 "$credentials_file"
+chown 0:999 "$credentials_file"
+chmod 0640 "$credentials_file"

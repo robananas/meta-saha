@@ -214,7 +214,8 @@ grep -Eq '^Before=.*systemd-journald\.service' "$DATA_LAYOUT_SERVICE" || fail "p
 ! grep -Eq '^(Before|After)=.*systemd-journald-(dev-log|audit)\.socket|^(Before|After)=.*systemd-journald\.socket' "$DATA_LAYOUT_SERVICE" || fail "DATA layout must not order against early journald sockets"
 ! grep -Eq '^Where=/var/log/journal[[:space:]]*$' "$JOURNAL_MOUNT" || fail "journal mount must not target a path beneath the /var/log symlink"
 ! grep -q '/var/volatile/log/journal' "$DATA_RECIPE" || fail "DATA layout must not populate the volatile root"
-! grep -q '/data/workflow-api' "$ROOT_DIR/saha-layers/meta-tegra-saha/recipes-saha/docker-compose/saha-docker-compose/compose.yaml" || fail "workflow API must not invent an application DATA volume"
+grep -q '/data/saha/workflow-api:/data' "$ROOT_DIR/saha-layers/meta-tegra-saha/recipes-saha/docker-compose/saha-docker-compose/compose.yaml" || fail "workflow API must persist server-owned definitions and runs on DATA"
+grep -q '/data/saha/homeassistant:/data/saha/homeassistant:ro' "$ROOT_DIR/saha-layers/meta-tegra-saha/recipes-saha/docker-compose/saha-docker-compose/compose.yaml" || fail "workflow API must mount board-owned HA credentials read-only"
 ! grep -Eq 'saha-(homeassistant|matter-server|livekit-server|livekit-agent|s2s)-container-image|roban-app' "$ROOT_DIR/saha-layers/meta-tegra-saha/recipes-saha/packagegroups/packagegroup-saha-docker-images.bb" || fail "APP packagegroup must not contain preload archives"
 grep -q 'max_used_kib=12582912' "$ROOT_DIR/saha-layers/meta-tegra-saha/recipes-saha/images/saha-image-common.inc" || fail "APP free-space check must avoid unsupported shell arithmetic expansion"
 grep -q 'saha-data-layout' "$ROOT_DIR/saha-layers/meta-tegra-saha/recipes-saha/packagegroups/packagegroup-saha-base.bb" || fail "all images must install DATA failure protection"
@@ -283,6 +284,8 @@ grep -q 'OLLAMA_MAX_LOADED_MODELS=1' "$OLLAMA_SERVICE" || fail "Ollama must boun
 grep -q 'rm -rf.*cuda_v12' "$OLLAMA_RECIPE" || fail "Ollama package must omit the unused CUDA 12 runner from fixed APP storage"
 grep -q '127.0.0.1:11434/v1' "$OLLAMA_MANAGER" || fail "unified selection must configure the Ollama OpenAI compatibility API"
 grep -q 'ollama.service' "$S2S_SERVICE" || fail "S2S must wait for Ollama"
+grep -q 'Requires=.*saha-homeassistant-mcp-credentials.service.*saha-workflow-mcp-credentials.service' "$S2S_SERVICE" || fail "S2S must require both MCP credential generators"
+grep -q 'After=.*saha-homeassistant-mcp-credentials.service.*saha-workflow-mcp-credentials.service' "$S2S_SERVICE" || fail "S2S must start after both MCP credential generators"
 ! grep -q 'saha-s2s-llm.service' "$S2S_SERVICE" || fail "S2S must not require the legacy llama.cpp service"
 ! grep -q 'saha-s2s-llm.service' "$S2S_RECIPE" || fail "S2S recipe must not install the legacy llama.cpp service"
 grep -q 'ALLOWED' "$OLLAMA_MANAGER" || fail "unified model manager must enforce an allowlist"
@@ -307,7 +310,13 @@ grep -q 'qwen-audio-3.0-realtime-flash' "$S2S_DATA_IMAGE" || fail "DATA image mu
 grep -q 'ROBAN_S2S_GROK_TOKEN_PATH: /model-secrets/sub2api.token' "$S2S_COMPOSE" || fail "S2S must read the operator-provisioned token file"
 grep -q 'ROBAN_S2S_DASHSCOPE_API_KEY_PATH: /model-secrets/dashscope-api-key' "$S2S_COMPOSE" || fail "S2S must receive only the DashScope key file path"
 grep -q 'ROBAN_S2S_DASHSCOPE_WORKSPACE_ID_PATH: /model-config/dashscope-workspace-id' "$S2S_COMPOSE" || fail "S2S must receive only the DashScope workspace file path"
-! grep -Eq 'ROBAN_S2S_(GROK_TOKEN|DASHSCOPE_API_KEY|DASHSCOPE_WORKSPACE_ID):[[:space:]]' "$S2S_COMPOSE" || fail "S2S must not receive provider credential contents through environment"
+grep -q 'ROBAN_S2S_HA_MCP_CREDENTIALS_PATH: /mcp-secrets/homeassistant.env' "$S2S_COMPOSE" || fail "S2S must receive the Home Assistant MCP credential file path"
+grep -q 'ROBAN_S2S_WORKFLOW_MCP_CREDENTIALS_PATH: /mcp-secrets/workflow.env' "$S2S_COMPOSE" || fail "S2S must receive the workflow MCP credential file path"
+grep -q '/data/saha/homeassistant-mcp/credentials.env:/mcp-secrets/homeassistant.env:ro' "$S2S_COMPOSE" || fail "S2S must mount Home Assistant MCP credentials read-only"
+grep -q '/data/saha/workflow-mcp/credentials.env:/mcp-secrets/workflow.env:ro' "$S2S_COMPOSE" || fail "S2S must mount workflow MCP credentials separately and read-only"
+grep -q 'ROBAN_S2S_HA_MCP_URL: http://127.0.0.1:8000/mcp' "$S2S_COMPOSE" || fail "S2S must use the host-local Home Assistant MCP endpoint"
+grep -q 'ROBAN_S2S_WORKFLOW_MCP_URL: http://127.0.0.1:8001/mcp' "$S2S_COMPOSE" || fail "S2S must use the host-local workflow MCP endpoint"
+! grep -Eq 'ROBAN_S2S_(GROK_TOKEN|DASHSCOPE_API_KEY|DASHSCOPE_WORKSPACE_ID|HA_MCP_TOKEN|WORKFLOW_MCP_TOKEN):[[:space:]]' "$S2S_COMPOSE" || fail "S2S must not receive credential contents through environment"
 ! grep -q '/data/model-config/s2s/ollama.env' "$S2S_LAUNCHER" || fail "S2S launcher must not consume the legacy Ollama-only selection"
 ! grep -q 'SAHA_OLLAMA_DEFAULT_CONFIG' "$OLLAMA_RECIPE" || fail "factory image must not package a default LLM selection"
 FRPC_RECIPE="$ROOT_DIR/saha-layers/meta-tegra-saha/recipes-saha/frpc/frpc_0.70.1.bb"
@@ -328,7 +337,7 @@ grep -q 'saha-s2s' \
 grep -q 'packagegroup-saha-nvidia-containers' "$S2S_PACKAGEGROUP" || fail "S2S packagegroup must opt into GPU support"
 ! grep -q 'saha-s2s-container-image' "$S2S_PACKAGEGROUP" || fail "S2S preload archive must be exclusive to DATA image"
 grep -q 'saha-s2s' "$S2S_PACKAGEGROUP" || fail "S2S packagegroup must install its runtime"
-grep -q 'S2S_IMAGE ?= "roban-s2s:arm64"' "$S2S_IMAGE_RECIPE" || fail "S2S image tag must match the backend contract"
+grep -q 'S2S_IMAGE ?= "roban-s2s:realtime-cpu-arm64"' "$S2S_IMAGE_RECIPE" || fail "S2S image tag must use the space-saving CPU realtime contract"
 grep -q 'do_fetch_image\[network\] = "0"' "$S2S_IMAGE_RECIPE" || fail "S2S image recipe must remain local-only"
 grep -q 'do_fetch_image\[nostamp\] = "1"' "$S2S_IMAGE_RECIPE" || fail "S2S image recipe must revalidate its mutable archive"
 grep -q 'validate_archive' "$S2S_FETCH" || fail "S2S image archive must be validated"
@@ -349,8 +358,9 @@ for provider in STT TTS; do
   grep -q "ROBAN_S2S_${provider}_PROVIDER=cuda" "$S2S_ENV" || fail "S2S ${provider} must default to CUDA"
   grep -q "ROBAN_S2S_${provider}_PROVIDER" "$S2S_LAUNCHER" || fail "S2S launcher must export ${provider} provider"
 done
-grep -q 'network_mode: host' "$S2S_COMPOSE" || fail "aiortc WebRTC must expose dynamic ICE UDP sockets"
-grep -q 'runtime: nvidia' "$S2S_COMPOSE" || fail "only the S2S container must explicitly request NVIDIA runtime"
+grep -q 'network_mode: host' "$S2S_COMPOSE" || fail "aiortc WebRTC and local MCP endpoints require host networking"
+! grep -A62 '^  roban-s2s:' "$S2S_COMPOSE" | grep -Eq 'runtime: nvidia|NVIDIA_VISIBLE_DEVICES|CUDA_VISIBLE_DEVICES' || fail "CPU realtime S2S must not request NVIDIA runtime or CUDA"
+grep -A62 '^  roban-s2s:' "$S2S_COMPOSE" | grep -q 'ROBAN_S2S_IMAGE_PROFILE: realtime-cpu' || fail "Yocto S2S must declare the CPU realtime profile"
 grep -q 'restart: "no"' "$S2S_COMPOSE" || fail "Docker must not bypass systemd S2S lifecycle policy"
 grep -q '/proc/stat:/host/proc/stat:ro' "$S2S_COMPOSE" || fail "S2S metrics must read host CPU ticks through a read-only mount"
 grep -q '/data/models/s2s:/models:ro' "$S2S_COMPOSE" || fail "S2S DATA models must mount read-only"
@@ -489,6 +499,41 @@ grep -q '/run/saha/board-status:/run/saha/board-status:ro' \
 grep -q 'roban-workflow-api.tar' \
   "$ROOT_DIR/saha-layers/meta-tegra-saha/recipes-saha/roban-app/roban-app/fetch-image.sh" ||
   fail "roban-app fetch script must support local tarball cache"
+WORKFLOW_MCP_RECIPE="$ROOT_DIR/saha-layers/meta-tegra-saha/recipes-saha/workflow-mcp/saha-workflow-mcp.bb"
+WORKFLOW_MCP_ENV="$ROOT_DIR/saha-layers/meta-tegra-saha/recipes-saha/workflow-mcp/saha-workflow-mcp/workflow-mcp.env"
+WORKFLOW_MCP_CREDENTIALS="$ROOT_DIR/saha-layers/meta-tegra-saha/recipes-saha/workflow-mcp/saha-workflow-mcp/saha-workflow-mcp-credentials.sh"
+WORKFLOW_MCP_SERVICE="$ROOT_DIR/saha-layers/meta-tegra-saha/recipes-saha/workflow-mcp/saha-workflow-mcp/saha-workflow-mcp-credentials.service"
+WORKFLOW_MCP_IMAGE_RECIPE="$ROOT_DIR/saha-layers/meta-tegra-saha/recipes-saha/workflow-mcp-container/saha-workflow-mcp-container-image.bb"
+WORKFLOW_MCP_FETCH="$ROOT_DIR/saha-layers/meta-tegra-saha/recipes-saha/workflow-mcp-container/saha-workflow-mcp-container-image/fetch-image.sh"
+for workflow_mcp_file in "$WORKFLOW_MCP_RECIPE" "$WORKFLOW_MCP_ENV" "$WORKFLOW_MCP_CREDENTIALS" "$WORKFLOW_MCP_SERVICE" "$WORKFLOW_MCP_IMAGE_RECIPE" "$WORKFLOW_MCP_FETCH"; do
+  [ -f "$workflow_mcp_file" ] || fail "workflow MCP integration file missing: $workflow_mcp_file"
+done
+! grep -q '^WORKFLOW_API_URL=' "$WORKFLOW_MCP_ENV" || fail "workflow MCP upstream must not be configurable"
+grep -q '^WORKFLOW_MCP_PORT=8001$' "$WORKFLOW_MCP_ENV" || fail "workflow MCP must listen on port 8001"
+grep -q 'WORKFLOW_MCP_ACCESS_TOKEN=' "$WORKFLOW_MCP_CREDENTIALS" || fail "workflow MCP must write its dedicated token variable"
+grep -q 'secrets.token_urlsafe(32)' "$WORKFLOW_MCP_CREDENTIALS" || fail "workflow MCP must generate an independent access token"
+grep -q '/data/saha/workflow-mcp' "$WORKFLOW_MCP_CREDENTIALS" || fail "workflow MCP credentials must persist on DATA"
+grep -q 'chown 0:999.*credentials_file' "$WORKFLOW_MCP_CREDENTIALS" || fail "workflow MCP credentials must be readable by the S2S service group"
+grep -q 'chmod 0640.*credentials_file' "$WORKFLOW_MCP_CREDENTIALS" || fail "workflow MCP credentials must remain group-readable and private"
+grep -q 'chown 0:999.*credentials_file' "$ROOT_DIR/saha-layers/meta-tegra-saha/recipes-saha/homeassistant-mcp/saha-homeassistant-mcp/saha-homeassistant-mcp-credentials.sh" || fail "Home Assistant MCP credentials must be readable by the S2S service group"
+grep -q 'saha-workflow-mcp-credentials.service' "$ROOT_DIR/saha-layers/meta-tegra-saha/recipes-saha/docker-compose/saha-docker-compose/saha-docker-compose.service" || fail "compose must wait for workflow MCP credentials"
+grep -q 'workflow-mcp:' "$ROOT_DIR/saha-layers/meta-tegra-saha/recipes-saha/docker-compose/saha-docker-compose/compose.yaml" || fail "compose stack must start workflow MCP"
+grep -q 'roban-workflow-mcp:arm64' "$ROOT_DIR/saha-layers/meta-tegra-saha/recipes-saha/docker-compose/saha-docker-compose/compose.yaml" || fail "workflow MCP image tag must match the backend contract"
+grep -q 'condition: service_started' "$ROOT_DIR/saha-layers/meta-tegra-saha/recipes-saha/docker-compose/saha-docker-compose/compose.yaml" || fail "workflow MCP must wait for workflow API"
+grep -q 'SAHA_WORKFLOW_MCP_CREDENTIALS_FILE' "$ROOT_DIR/saha-layers/meta-tegra-saha/recipes-saha/docker-compose/saha-docker-compose/saha-docker-compose.sh" || fail "compose launcher must export workflow MCP credentials"
+grep -q 'read_only: true' "$ROOT_DIR/saha-layers/meta-tegra-saha/recipes-saha/docker-compose/saha-docker-compose/compose.yaml" || fail "MCP containers must use read-only roots"
+grep -q 'no-new-privileges:true' "$ROOT_DIR/saha-layers/meta-tegra-saha/recipes-saha/docker-compose/saha-docker-compose/compose.yaml" || fail "MCP containers must drop privilege escalation"
+! grep -A20 '^  workflow-mcp:' "$ROOT_DIR/saha-layers/meta-tegra-saha/recipes-saha/docker-compose/saha-docker-compose/compose.yaml" | grep -Eq 'workflows\.db|workflow-api:/data|/data/workflow' || fail "workflow MCP must not mount a workflow database"
+grep -q 'saha-workflow-mcp-container-image' "$ROOT_DIR/saha-layers/meta-tegra-saha/recipes-saha/packagegroups/packagegroup-saha-container-preloads.bb" || fail "DATA image must preload workflow MCP"
+grep -q 'saha-workflow-mcp' "$ROOT_DIR/saha-layers/meta-tegra-saha/recipes-saha/packagegroups/packagegroup-saha-docker-images.bb" || fail "APP image must install workflow MCP runtime configuration"
+grep -q 'workflow-mcp' "$DATA_IMAGE" || fail "DATA image must promote workflow MCP preload"
+grep -q 'for name in homeassistant homeassistant-mcp workflow-api workflow-mcp' "$ROOT_DIR/saha-layers/meta-tegra-saha/recipes-saha/saha-data-layout/saha-data-layout/saha-data-layout.sh" || fail "DATA layout must persist workflow API data, workflow MCP credentials, and legacy symlinks"
+grep -q 'WORKFLOW_MCP_IMAGE ?= "roban-workflow-mcp:arm64"' "$WORKFLOW_MCP_IMAGE_RECIPE" || fail "workflow MCP preload must require the expected tag"
+grep -q 'WORKFLOW_MCP_LOCAL_TAR ?= "${DL_DIR}/roban-workflow-mcp.tar"' "$WORKFLOW_MCP_IMAGE_RECIPE" || fail "workflow MCP preload must consume the offline DL_DIR archive"
+grep -q 'do_fetch_image\[network\] = "0"' "$WORKFLOW_MCP_IMAGE_RECIPE" || fail "workflow MCP preload must forbid network fetches"
+grep -q 'do_fetch_image\[nostamp\] = "1"' "$WORKFLOW_MCP_IMAGE_RECIPE" || fail "workflow MCP preload must revalidate mutable local archives"
+grep -q 'validate_archive' "$WORKFLOW_MCP_FETCH" || fail "workflow MCP archive must be validated"
+grep -q 'config.get("architecture")' "$WORKFLOW_MCP_FETCH" || fail "workflow MCP archive must reject wrong architectures"
 for fetch_script in \
   "$ROOT_DIR/saha-layers/meta-tegra-saha/recipes-saha/homeassistant-container/saha-homeassistant-container-image/fetch-image.sh" \
   "$ROOT_DIR/saha-layers/meta-tegra-saha/recipes-saha/matter-server-container/saha-matter-server-container-image/fetch-image.sh" \
@@ -659,9 +704,9 @@ grep -q 'HA_TOKEN_FILE=/data/saha/homeassistant/app-credentials.json' \
 grep -q 'persistent="/data/saha/\$name"' \
   "$ROOT_DIR/saha-layers/meta-tegra-saha/recipes-saha/saha-data-layout/saha-data-layout/saha-data-layout.sh" ||
   fail "DATA layout must use persistent Saha state directories"
-grep -q 'for name in homeassistant homeassistant-mcp' \
+grep -q 'for name in homeassistant homeassistant-mcp workflow-api workflow-mcp' \
   "$ROOT_DIR/saha-layers/meta-tegra-saha/recipes-saha/saha-data-layout/saha-data-layout/saha-data-layout.sh" ||
-  fail "DATA layout must persist Home Assistant and MCP credentials"
+  fail "DATA layout must persist Home Assistant, workflow API, and MCP state"
 grep -q 'saha-homeassistant-mcp-credentials.service' \
   "$ROOT_DIR/saha-layers/meta-tegra-saha/recipes-saha/docker-compose/saha-docker-compose/saha-docker-compose.service" ||
   fail "compose must wait for MCP access credential generation"

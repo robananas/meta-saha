@@ -18,7 +18,8 @@ wait_http() {
 case "${1:-}" in
   data-layout)
     install -d -m 0755 /run/saha/board-status /data/saha "$state_dir" "$state_dir/workflow" "$state_dir/models/s2s" "$state_dir/model-config/s2s" "$state_dir/model-cache/s2s" "$state_dir/voiceprints" /var/lib/homeassistant /var/lib/matter-server
-    install -d -m 0700 "$state_dir/homeassistant"
+    install -d -m 0700 "$state_dir/homeassistant" "$state_dir/workflow-mcp"
+    ln -sfn "$state_dir/workflow-mcp" /data/saha/workflow-mcp
     install -d -m 0750 -o root -g 999 "$etc_dir/s2s-secrets"
     test ! -f "$etc_dir/s2s-secrets/dashscope-api-key" || { chown root:999 "$etc_dir/s2s-secrets/dashscope-api-key"; chmod 0640 "$etc_dir/s2s-secrets/dashscope-api-key"; }
     ln -sfn "$state_dir/homeassistant" /data/saha/homeassistant
@@ -35,10 +36,10 @@ case "${1:-}" in
     ;;
   edge-start)
     test -s "$state_dir/homeassistant/app-credentials.json"
-    "${compose[@]}" up -d --pull never homeassistant-mcp roban-s2s
+    "${compose[@]}" up -d --pull never homeassistant-mcp workflow-mcp roban-s2s
     wait_http http://127.0.0.1:8765/ready 120
     ;;
-  edge-stop) "${compose[@]}" stop roban-s2s homeassistant-mcp ;;
+  edge-stop) "${compose[@]}" stop roban-s2s workflow-mcp homeassistant-mcp ;;
   manager)
     exec env ROBAN_EDGE_SERVICE="$service_prefix-edge.service" SAHA_MODEL_ROOT="$state_dir/models/s2s" SAHA_MODEL_SELECTION="$state_dir/model-config/s2s/selection.json" SAHA_PIPELINE_MODE="$state_dir/model-config/s2s/pipeline-mode.json" SAHA_REALTIME_SETTINGS="$state_dir/model-config/s2s/realtime-settings.json" SAHA_DASHSCOPE_API_KEY_PATH="$etc_dir/s2s-secrets/dashscope-api-key" SAHA_DASHSCOPE_WORKSPACE_ID_PATH="$state_dir/model-config/s2s/dashscope-workspace-id" SAHA_MODEL_MANAGER_HOST=0.0.0.0 SAHA_MODEL_MANAGER_PORT=11435 python3 "$prefix/current/realtime-manager.py"
     ;;

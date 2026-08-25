@@ -15,9 +15,11 @@ contains "$entry" '/home/nvidia/workspace/roban-app-temp'
 contains "$entry" 'data-root'
 contains "$entry" 'roban-temp-'
 contains "$entry" 'home-assistant python-matter-server roban-workflow-api roban-ha-mcp'
+contains "$entry" 'roban-s2s'
+contains "$entry" 'IMAGE_S2S=${resolved[roban-s2s]}'
 contains "$entry" 'roban_temp_cleanup_failed_deploy'
 contains "$entry" 'systemctl stop roban-temp-bt-wifi-provision roban-temp-mcp roban-temp-core roban-temp-board-status'
-contains "$entry" 'ROBAN_REQUIRED_TCP_PORTS="5580 8000 8080 8123"'
+contains "$entry" 'ROBAN_REQUIRED_TCP_PORTS="5580 8000 8001 8080 8123 8765"'
 contains "$entry" 'https://mirrors.aliyun.com/docker-ce/linux/ubuntu'
 contains "$root/scripts/ubuntu-deploy/host-compat.sh" '9DC858229FC7DD38854AE2D88D81803C0EBFCD88'
 contains "$entry" '--registry-auth-file'
@@ -31,8 +33,16 @@ contains "$dir/compose.yaml" 'matter-server:'
 contains "$dir/compose.yaml" 'homeassistant:'
 contains "$dir/compose.yaml" 'workflow-api:'
 contains "$dir/compose.yaml" 'homeassistant-mcp:'
+contains "$dir/compose.yaml" 'roban-s2s:'
+contains "$dir/compose.yaml" 'ROBAN_S2S_HA_MCP_CREDENTIALS_PATH: /mcp-secrets/homeassistant.env'
+contains "$dir/compose.yaml" 'ROBAN_S2S_WORKFLOW_MCP_CREDENTIALS_PATH: /mcp-secrets/workflow.env'
+contains "$dir/compose.yaml" '${TEMP_SECRETS_DIR}/home-assistant-mcp-credentials.env:/mcp-secrets/homeassistant.env:ro'
+contains "$dir/compose.yaml" '${TEMP_SECRETS_DIR}/workflow-mcp-credentials.env:/mcp-secrets/workflow.env:ro'
+contains "$dir/compose.yaml" 'ROBAN_S2S_HA_MCP_URL: http://127.0.0.1:8000/mcp'
+contains "$dir/compose.yaml" 'ROBAN_S2S_WORKFLOW_MCP_URL: http://127.0.0.1:8001/mcp'
+not_contains "$dir/compose.yaml" 'ROBAN_S2S_HA_MCP_TOKEN:'
+not_contains "$dir/compose.yaml" 'ROBAN_S2S_WORKFLOW_MCP_TOKEN:'
 not_contains "$dir/compose.yaml" 'livekit'
-not_contains "$dir/compose.yaml" 's2s'
 not_contains "$dir/compose.yaml" 'ollama'
 not_contains "$dir/compose.yaml" 'cosyvoice'
 not_contains "$entry" 'rm -rf /data'
@@ -81,7 +91,7 @@ chmod +x "$sandbox/bin"/*
 before=$(find "$sandbox/root" -mindepth 1 -print | sort)
 output=$(PATH="$sandbox/bin:$PATH" ROBAN_SKIP_PYTHON_MODULE_CHECK=1 ROBAN_OS_RELEASE_FILE="$sandbox/os-release" ROBAN_TEMP_WORKSPACE="$sandbox/root/temp" ROBAN_STORAGE_PATH="$sandbox/workspace" "$entry" audit)
 [[ $output == *'Target: 10.30.0.41'* ]] || fail "audit target missing"
-[[ $output == *'Home Assistant, Matter Server, Workflow API, Home Assistant MCP'* ]] || fail "audit service list missing"
+[[ $output == *'Home Assistant, Matter Server, Workflow API, Home Assistant MCP, Workflow MCP, S2S'* ]] || fail "audit service list missing"
 after=$(find "$sandbox/root" -mindepth 1 -print | sort)
 [[ $before == "$after" ]] || fail "audit modified filesystem"
 
@@ -134,6 +144,8 @@ rm -f /tmp/temp-daemon.out
 mkdir -p "$sandbox/secrets" "$sandbox/state" "$sandbox/runtime" "$sandbox/release"
 : >"$sandbox/secrets/home-assistant-mcp.env"
 : >"$sandbox/secrets/home-assistant-mcp-credentials.env"
+: >"$sandbox/secrets/workflow-mcp.env"
+: >"$sandbox/secrets/workflow-mcp-credentials.env"
 cat >"$sandbox/images.env" <<EOF
 TEMP_RELEASE_DIR=$sandbox/release
 TEMP_STATE_DIR=$sandbox/state
@@ -144,8 +156,21 @@ IMAGE_HOME_ASSISTANT=x/ha@sha256:aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa
 IMAGE_MATTER=x/matter@sha256:bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb
 IMAGE_WORKFLOW=x/workflow@sha256:cccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccc
 IMAGE_HA_MCP=x/mcp@sha256:dddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddd
+IMAGE_WORKFLOW_MCP=x/workflow-mcp@sha256:eeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeee
+IMAGE_S2S=x/s2s@sha256:ffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffff
 EOF
 docker compose --env-file "$sandbox/images.env" -f "$dir/compose.yaml" config --quiet
+python3 - "$dir/compose.yaml" <<'PY'
+import sys
+text=open(sys.argv[1]).read()
+app=text.split('\n  roban-s2s:\n',1)[1]
+depends=app.split('\n    depends_on:\n',1)[1].split('\n    init:',1)[0]
+environment=app.split('\n    environment:\n',1)[1].split('\n    volumes:',1)[0]
+assert 'network_mode: host' in app
+assert 'homeassistant-mcp:' in depends and 'workflow-mcp:' in depends
+assert depends.count('condition: service_started') == 2
+assert 'TOKEN:' not in environment and 'ACCESS_TOKEN:' not in environment
+PY
 
 python3 - <<'PY'
 import ast

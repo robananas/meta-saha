@@ -55,11 +55,30 @@ services:
     network_mode: host
     volumes:
       - ${ROBAN_STATE_DIR}/workflow:/data
+      - ${ROBAN_STATE_DIR}/homeassistant:/data/saha/homeassistant:ro
       - /run/saha/board-status:/run/saha/board-status:ro
     environment:
       TZ: Asia/Shanghai
       BOARD_STATUS_DIR: /run/saha/board-status
       WORKFLOW_DATABASE_PATH: /data/workflows.db
+      HOME_ASSISTANT_WS_URL: ws://127.0.0.1:8123/api/websocket
+      HOME_ASSISTANT_CREDENTIALS_PATH: /data/saha/homeassistant/app-credentials.json
+
+  workflow-mcp:
+    image: ${IMAGE_WORKFLOW_MCP}
+    container_name: workflow-mcp
+    restart: unless-stopped
+    network_mode: host
+    depends_on:
+      roban-workflow-api:
+        condition: service_started
+    env_file:
+      - ${ROBAN_ETC_DIR}/workflow-mcp.env
+      - ${ROBAN_ETC_DIR}/workflow-mcp-credentials.env
+    read_only: true
+    tmpfs:
+      - /tmp
+    security_opt: [no-new-privileges:true]
 
   livekit-server:
     image: ${IMAGE_LIVEKIT_SERVER}
@@ -105,6 +124,11 @@ services:
     container_name: saha-s2s
     restart: unless-stopped
     network_mode: host
+    depends_on:
+      homeassistant-mcp:
+        condition: service_started
+      workflow-mcp:
+        condition: service_started
     init: true
     environment:
       ROBAN_S2S_IMAGE_PROFILE: realtime-cpu
@@ -124,12 +148,18 @@ services:
       ROBAN_S2S_VAD_PROVIDER: cpu
       ROBAN_S2S_ICE_SERVERS: "[]"
       ROBAN_S2S_MAX_SESSIONS: "1"
+      ROBAN_S2S_HA_MCP_URL: http://127.0.0.1:8000/mcp
+      ROBAN_S2S_WORKFLOW_MCP_URL: http://127.0.0.1:8001/mcp
+      ROBAN_S2S_HA_MCP_CREDENTIALS_PATH: /mcp-secrets/homeassistant.env
+      ROBAN_S2S_WORKFLOW_MCP_CREDENTIALS_PATH: /mcp-secrets/workflow.env
       HF_HUB_OFFLINE: "1"
       TRANSFORMERS_OFFLINE: "1"
     volumes:
       - ${ROBAN_STATE_DIR}/models/s2s:/models:ro
       - ${ROBAN_STATE_DIR}/model-config/s2s:/model-config:ro
       - ${ROBAN_ETC_DIR}/s2s-secrets:/model-secrets:ro
+      - ${ROBAN_ETC_DIR}/home-assistant-mcp-credentials.env:/mcp-secrets/homeassistant.env:ro
+      - ${ROBAN_ETC_DIR}/workflow-mcp-credentials.env:/mcp-secrets/workflow.env:ro
       - ${ROBAN_STATE_DIR}/model-cache/s2s:/var/cache/roban-s2s
       - ${ROBAN_STATE_DIR}/voiceprints:/var/lib/roban-s2s/voiceprints
     healthcheck:

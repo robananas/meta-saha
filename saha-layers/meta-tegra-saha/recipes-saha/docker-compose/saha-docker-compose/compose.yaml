@@ -83,9 +83,31 @@ services:
     network_mode: host
     volumes:
       - /run/saha/board-status:/run/saha/board-status:ro
+      - /data/saha/homeassistant:/data/saha/homeassistant:ro
+      - /data/saha/workflow-api:/data
     environment:
       TZ: ${TZ:-Asia/Shanghai}
       BOARD_STATUS_DIR: /run/saha/board-status
+      WORKFLOW_DATABASE_PATH: /data/workflows.db
+      HOME_ASSISTANT_WS_URL: ws://127.0.0.1:8123/api/websocket
+      HOME_ASSISTANT_CREDENTIALS_PATH: /data/saha/homeassistant/app-credentials.json
+
+  workflow-mcp:
+    container_name: workflow-mcp
+    image: ${SAHA_WORKFLOW_MCP_IMAGE:-roban-workflow-mcp:arm64}
+    restart: on-failure:5
+    network_mode: host
+    depends_on:
+      roban-workflow-api:
+        condition: service_started
+    env_file:
+      - /etc/default/workflow-mcp
+      - ${SAHA_WORKFLOW_MCP_CREDENTIALS_FILE:-/data/saha/workflow-mcp/credentials.env}
+    read_only: true
+    tmpfs:
+      - /tmp:size=16m,mode=1777
+    security_opt:
+      - no-new-privileges:true
 
   livekit-server:
     container_name: livekit-server

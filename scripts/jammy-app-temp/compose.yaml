@@ -55,11 +55,31 @@ services:
     network_mode: host
     volumes:
       - ${TEMP_STATE_DIR}/workflow:/data
+      - ${TEMP_STATE_DIR}/homeassistant-credentials:/data/saha/homeassistant:ro
       - ${TEMP_RUNTIME_DIR}/board-status:/run/saha/board-status:ro
     environment:
       TZ: Asia/Shanghai
       BOARD_STATUS_DIR: /run/saha/board-status
       WORKFLOW_DATABASE_PATH: /data/workflows.db
+      HOME_ASSISTANT_WS_URL: ws://127.0.0.1:8123/api/websocket
+      HOME_ASSISTANT_CREDENTIALS_PATH: /data/saha/homeassistant/app-credentials.json
+
+  workflow-mcp:
+    image: ${IMAGE_WORKFLOW_MCP}
+    container_name: roban-temp-workflow-mcp
+    restart: unless-stopped
+    network_mode: host
+    depends_on:
+      workflow-api:
+        condition: service_started
+    env_file:
+      - ${TEMP_SECRETS_DIR}/workflow-mcp.env
+      - ${TEMP_SECRETS_DIR}/workflow-mcp-credentials.env
+    read_only: true
+    tmpfs:
+      - /tmp
+    security_opt:
+      - no-new-privileges:true
 
   homeassistant-mcp:
     image: ${IMAGE_HA_MCP}
@@ -79,3 +99,46 @@ services:
       - /tmp
     security_opt:
       - no-new-privileges:true
+
+  roban-s2s:
+    image: ${IMAGE_S2S}
+    container_name: roban-temp-s2s
+    restart: unless-stopped
+    network_mode: host
+    depends_on:
+      homeassistant-mcp:
+        condition: service_started
+      workflow-mcp:
+        condition: service_started
+    init: true
+    environment:
+      ROBAN_S2S_IMAGE_PROFILE: realtime-cpu
+      ROBAN_S2S_HOST: 0.0.0.0
+      ROBAN_S2S_PORT: "8765"
+      ROBAN_S2S_MODEL_ROOT: /models
+      ROBAN_S2S_CACHE_DIR: /var/cache/roban-s2s
+      ROBAN_S2S_SELECTION_PATH: /model-config/selection.json
+      ROBAN_S2S_MODE_PATH: /model-config/pipeline-mode.json
+      ROBAN_S2S_REALTIME_SETTINGS_PATH: /model-config/realtime-settings.json
+      ROBAN_S2S_HA_MCP_URL: http://127.0.0.1:8000/mcp
+      ROBAN_S2S_WORKFLOW_MCP_URL: http://127.0.0.1:8001/mcp
+      ROBAN_S2S_HA_MCP_CREDENTIALS_PATH: /mcp-secrets/homeassistant.env
+      ROBAN_S2S_WORKFLOW_MCP_CREDENTIALS_PATH: /mcp-secrets/workflow.env
+      ROBAN_S2S_KWS_PROVIDER: cpu
+      ROBAN_S2S_VAD_PROVIDER: cpu
+      ROBAN_S2S_ICE_SERVERS: "[]"
+      ROBAN_S2S_MAX_SESSIONS: "1"
+      HF_HUB_OFFLINE: "1"
+      TRANSFORMERS_OFFLINE: "1"
+    volumes:
+      - ${TEMP_STATE_DIR}/models/s2s:/models:ro
+      - ${TEMP_STATE_DIR}/model-config/s2s:/model-config:ro
+      - ${TEMP_SECRETS_DIR}/home-assistant-mcp-credentials.env:/mcp-secrets/homeassistant.env:ro
+      - ${TEMP_SECRETS_DIR}/workflow-mcp-credentials.env:/mcp-secrets/workflow.env:ro
+      - ${TEMP_STATE_DIR}/model-cache/s2s:/var/cache/roban-s2s
+      - ${TEMP_STATE_DIR}/voiceprints:/var/lib/roban-s2s/voiceprints
+    healthcheck:
+      test: ["CMD", "python", "-c", "import urllib.request; urllib.request.urlopen('http://127.0.0.1:8765/health',timeout=5)"]
+      interval: 15s
+      timeout: 8s
+      retries: 5

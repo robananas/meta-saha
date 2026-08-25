@@ -28,6 +28,9 @@ unit_ble="$service_prefix-bt-wifi-provision.service"
 dry_run=0
 seed_dir="${ROBAN_SEED_DIR:-/var/tmp/roban-ubuntu-seed}"
 image_tag="${ROBAN_IMAGE_TAG:-20260819-arm64}"
+workflow_image_tag="${ROBAN_WORKFLOW_IMAGE_TAG:-20260825-arm64}"
+workflow_mcp_image_tag="${ROBAN_WORKFLOW_MCP_IMAGE_TAG:-20260825-domain-arm64}"
+s2s_image_tag="${ROBAN_S2S_IMAGE_TAG:-20260825-card-capabilities-barge-cpu-arm64}"
 registry="${ROBAN_REGISTRY:-registry.cn-beijing.aliyuncs.com/roban}"
 
 while (($#)); do
@@ -53,7 +56,15 @@ preflight() {
   if [[ ! -L $prefix/current && ${ROBAN_SKIP_PORT_CHECK:-0} != 1 ]]; then roban_check_target_ports; fi
 }
 
-image_ref() { printf '%s/%s:%s' "$registry" "$1" "$image_tag"; }
+image_ref() {
+  local name=$1 tag=$image_tag
+  case "$name" in
+    roban-workflow-api) tag=$workflow_image_tag ;;
+    roban-workflow-mcp) tag=$workflow_mcp_image_tag ;;
+    roban-s2s) tag=$s2s_image_tag ;;
+  esac
+  printf '%s/%s:%s' "$registry" "$name" "$tag"
+}
 resolve_image() {
   local name=$1 ref
   ref=$(image_ref "$name")
@@ -123,6 +134,17 @@ seed_state() {
     local token ip; token=$(python3 -c 'import secrets; print(secrets.token_urlsafe(32))'); ip=$(hostname -I | awk '{print $1}')
     write_secret_file "$etc_dir/home-assistant-mcp-credentials.env" "MCP_ACCESS_TOKEN=$token" "MCP_PUBLIC_URL=http://$ip:8000/mcp"
   fi
+  if [[ ! -s "$etc_dir/workflow-mcp-credentials.env" ]]; then
+    local workflow_token; workflow_token=$(python3 -c 'import secrets; print(secrets.token_urlsafe(32))')
+    write_secret_file "$etc_dir/workflow-mcp-credentials.env" "WORKFLOW_MCP_ACCESS_TOKEN=$workflow_token"
+  fi
+  cat >"$etc_dir/workflow-mcp.env" <<EOF
+WORKFLOW_MCP_HOST=0.0.0.0
+WORKFLOW_MCP_PORT=8001
+WORKFLOW_MCP_PATH=/mcp
+WORKFLOW_MCP_PUBLIC_URL=http://127.0.0.1:8001/mcp
+WORKFLOW_API_TIMEOUT=10
+EOF
   cat >"$etc_dir/home-assistant-mcp.env" <<EOF
 HA_URL=http://127.0.0.1:8123
 HA_TOKEN_FILE=/data/saha/homeassistant/app-credentials.json
@@ -133,7 +155,9 @@ MCP_HOST=0.0.0.0
 MCP_PORT=8000
 MCP_PATH=/mcp
 EOF
-  chmod 0600 "$etc_dir"/*.env
+  chown root:999 "$etc_dir/home-assistant-mcp-credentials.env" "$etc_dir/workflow-mcp-credentials.env"
+  chmod 0640 "$etc_dir/home-assistant-mcp-credentials.env" "$etc_dir/workflow-mcp-credentials.env"
+  find "$etc_dir" -maxdepth 1 -type f -name '*.env' ! -name '*-mcp-credentials.env' -exec chmod 0600 {} +
   if [[ ! -s /etc/roban/ble-device-ed25519.key ]]; then
     if [[ -s $seed_dir/ble-device-ed25519.key ]]; then install -m 0600 "$seed_dir/ble-device-ed25519.key" /etc/roban/ble-device-ed25519.key; else install -m 0600 "$prefix/current/ble/development-ble-device-ed25519.key" /etc/roban/ble-device-ed25519.key; fi
   fi
@@ -199,7 +223,7 @@ install_command() {
   release_id="${image_tag}-${source_revision}"
   release="$prefix/releases/$release_id"; staging="$release.staging"
   if ((dry_run)); then log "would install $release using Wi-Fi $wifi"; return; fi
-  local images=(roban-s2s roban-ha-mcp home-assistant livekit-agent python-matter-server roban-workflow-api livekit-server)
+  local images=(roban-s2s roban-ha-mcp roban-workflow-mcp home-assistant livekit-agent python-matter-server roban-workflow-api livekit-server)
   declare -A values
   for image in "${images[@]}"; do values[$image]=$(resolve_image "$image"); done
   install -d -m 0755 "$prefix/releases"
@@ -224,6 +248,7 @@ ROBAN_WIFI_INTERFACE=$wifi
 LIVEKIT_PUBLIC_URL=ws://$(ip -4 -brief address show "$wifi" | awk '{split($3,a,"/"); print a[1]}'):7880
 IMAGE_S2S=${values[roban-s2s]}
 IMAGE_HA_MCP=${values[roban-ha-mcp]}
+IMAGE_WORKFLOW_MCP=${values[roban-workflow-mcp]}
 IMAGE_HOME_ASSISTANT=${values[home-assistant]}
 IMAGE_LIVEKIT_AGENT=${values[livekit-agent]}
 IMAGE_MATTER=${values[python-matter-server]}

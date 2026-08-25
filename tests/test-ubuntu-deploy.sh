@@ -22,8 +22,34 @@ assert_contains "$entry" '--dry-run'
 assert_contains "$dir/launcher.sh" '--pull never'
 assert_contains "$dir/launcher.sh" 'board-status.py" daemon'
 assert_contains "$dir/compose.yaml" 'WORKFLOW_DATABASE_PATH: /data/workflows.db'
+assert_contains "$dir/compose.yaml" 'workflow-mcp:'
+assert_contains "$dir/compose.yaml" '${IMAGE_WORKFLOW_MCP}'
+assert_contains "$entry" 'WORKFLOW_MCP_ACCESS_TOKEN='
+assert_contains "$entry" 'WORKFLOW_MCP_PORT=8001'
+assert_contains "$entry" 'ROBAN_WORKFLOW_IMAGE_TAG:-20260825-arm64'
+assert_contains "$entry" 'ROBAN_WORKFLOW_MCP_IMAGE_TAG:-20260825-domain-arm64'
+assert_contains "$entry" 'ROBAN_S2S_IMAGE_TAG:-20260825-card-capabilities-barge-cpu-arm64'
 assert_contains "$dir/compose.yaml" 'ROBAN_S2S_IMAGE_PROFILE: realtime-cpu'
 assert_contains "$dir/compose.yaml" 'ROBAN_S2S_KWS_PROVIDER: cpu'
+assert_contains "$dir/compose.yaml" 'ROBAN_S2S_HA_MCP_CREDENTIALS_PATH: /mcp-secrets/homeassistant.env'
+assert_contains "$dir/compose.yaml" 'ROBAN_S2S_WORKFLOW_MCP_CREDENTIALS_PATH: /mcp-secrets/workflow.env'
+assert_contains "$dir/compose.yaml" '${ROBAN_ETC_DIR}/home-assistant-mcp-credentials.env:/mcp-secrets/homeassistant.env:ro'
+assert_contains "$dir/compose.yaml" '${ROBAN_ETC_DIR}/workflow-mcp-credentials.env:/mcp-secrets/workflow.env:ro'
+assert_contains "$dir/compose.yaml" 'ROBAN_S2S_HA_MCP_URL: http://127.0.0.1:8000/mcp'
+assert_contains "$dir/compose.yaml" 'ROBAN_S2S_WORKFLOW_MCP_URL: http://127.0.0.1:8001/mcp'
+python3 - "$dir/compose.yaml" <<'PY'
+import sys
+text=open(sys.argv[1]).read()
+app=text.split('\n  roban-s2s:\n',1)[1]
+depends=app.split('\n    depends_on:\n',1)[1].split('\n    init:',1)[0]
+environment=app.split('\n    environment:\n',1)[1].split('\n    volumes:',1)[0]
+assert 'network_mode: host' in app
+assert 'homeassistant-mcp:' in depends and 'workflow-mcp:' in depends
+assert depends.count('condition: service_started') == 2
+assert 'TOKEN:' not in environment and 'ACCESS_TOKEN:' not in environment
+PY
+assert_not_contains "$dir/compose.yaml" 'ROBAN_S2S_HA_MCP_TOKEN:'
+assert_not_contains "$dir/compose.yaml" 'ROBAN_S2S_WORKFLOW_MCP_TOKEN:'
 assert_contains "$dir/compose.yaml" '${ROBAN_WIFI_INTERFACE}'
 assert_not_contains "$dir/compose.yaml" 'ollama'
 assert_not_contains "$dir/compose.yaml" 'llama.cpp'

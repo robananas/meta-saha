@@ -25,7 +25,7 @@ python() {
 
 saha_prepare_data_image() {
     install -d -m 0755 ${IMAGE_ROOTFS}/preload
-    for name in homeassistant homeassistant-mcp matter-server roban-workflow-api livekit-server livekit-agent s2s; do
+    for name in homeassistant homeassistant-mcp workflow-mcp matter-server roban-workflow-api livekit-server livekit-agent s2s; do
         src="${IMAGE_ROOTFS}${datadir}/saha/$name/image.tar"
         dst="${IMAGE_ROOTFS}/preload/$name"
         test -s "$src" || bbfatal "DATA preload archive missing: $name"

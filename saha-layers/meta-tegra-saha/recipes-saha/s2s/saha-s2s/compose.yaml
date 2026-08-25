@@ -1,17 +1,14 @@
 services:
   roban-s2s:
-    image: ${SAHA_S2S_IMAGE:-roban-s2s:arm64}
+    image: ${SAHA_S2S_IMAGE:-roban-s2s:realtime-cpu-arm64}
     container_name: saha-s2s
-    runtime: nvidia
     network_mode: host
     restart: "no"
     init: true
     group_add:
       - "999"
     environment:
-      NVIDIA_VISIBLE_DEVICES: all
-      NVIDIA_DRIVER_CAPABILITIES: compute,utility
-      CUDA_VISIBLE_DEVICES: "0"
+      ROBAN_S2S_IMAGE_PROFILE: realtime-cpu
       HF_ENDPOINT: ${HF_ENDPOINT:-https://hf-mirror.com}
       PIP_INDEX_URL: ${PIP_INDEX_URL:-https://pypi.tuna.tsinghua.edu.cn/simple}
       HF_HUB_OFFLINE: "1"
@@ -40,12 +37,18 @@ services:
       ROBAN_S2S_PIPELINE_FACTORY: roban_voice_s2s.production_pipeline:create_pipeline
       ROBAN_S2S_ICE_SERVERS: ${ROBAN_S2S_ICE_SERVERS:-[]}
       ROBAN_S2S_MAX_SESSIONS: "1"
+      ROBAN_S2S_HA_MCP_URL: http://127.0.0.1:8000/mcp
+      ROBAN_S2S_WORKFLOW_MCP_URL: http://127.0.0.1:8001/mcp
+      ROBAN_S2S_HA_MCP_CREDENTIALS_PATH: /mcp-secrets/homeassistant.env
+      ROBAN_S2S_WORKFLOW_MCP_CREDENTIALS_PATH: /mcp-secrets/workflow.env
     volumes:
       - /proc/stat:/host/proc/stat:ro
       - /proc/meminfo:/host/proc/meminfo:ro
       - /data/models/s2s:/models:ro
       - /data/model-config/s2s:/model-config:ro
       - /data/model-secrets/s2s:/model-secrets:ro
+      - /data/saha/homeassistant-mcp/credentials.env:/mcp-secrets/homeassistant.env:ro
+      - /data/saha/workflow-mcp/credentials.env:/mcp-secrets/workflow.env:ro
       - /data/model-cache/s2s:/var/cache/roban-s2s
       - /data/voiceprints/s2s:/var/lib/roban-s2s/voiceprints:rw
       - /data/model-config/s2s/voice-temp:/voice-temp:rw

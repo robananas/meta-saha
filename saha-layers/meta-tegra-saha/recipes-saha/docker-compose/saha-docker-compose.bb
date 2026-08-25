@@ -1,7 +1,7 @@
 SUMMARY = "Docker Compose launcher for Saha application containers"
 DESCRIPTION = "Installs compose.yaml and a systemd-managed wrapper that loads \
 prebuilt container images and starts Home Assistant, Matter Server, and the \
-Roban workflow API with docker compose."
+Roban workflow API and independent workflow control MCP with docker compose."
 LICENSE = "MIT"
 LIC_FILES_CHKSUM = "file://${COMMON_LICENSE_DIR}/MIT;md5=0835ade698e0bcf8506ecda2f7b4f302"
 

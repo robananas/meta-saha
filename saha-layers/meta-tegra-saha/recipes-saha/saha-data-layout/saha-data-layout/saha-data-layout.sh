@@ -3,7 +3,7 @@ set -eu
 mountpoint -q /data || exit 1
 [ "$(cat /data/.saha-data-layout-version 2>/dev/null || true)" = 1 ] || exit 1
 install -d -m 0700 /data/docker /data/containerd /data/swap /data/saha
-for name in homeassistant homeassistant-mcp; do
+for name in homeassistant homeassistant-mcp workflow-api workflow-mcp; do
     persistent="/data/saha/$name"
     legacy="/var/lib/saha/$name"
     install -d -m 0700 /var/lib/saha

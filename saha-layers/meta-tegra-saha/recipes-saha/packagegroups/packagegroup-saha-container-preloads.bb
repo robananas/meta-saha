@@ -5,6 +5,7 @@ inherit packagegroup
 RDEPENDS:${PN} = " \
     saha-homeassistant-container-image \
     saha-homeassistant-mcp-container-image \
+    saha-workflow-mcp-container-image \
     saha-matter-server-container-image \
     roban-app \
     saha-livekit-server-container-image \
