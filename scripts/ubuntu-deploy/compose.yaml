@@ -139,6 +139,7 @@ services:
       ROBAN_S2S_SELECTION_PATH: /model-config/selection.json
       ROBAN_S2S_MODE_PATH: /model-config/pipeline-mode.json
       ROBAN_S2S_REALTIME_SETTINGS_PATH: /model-config/realtime-settings.json
+      ROBAN_S2S_TOOL_PLUGIN_ROOT: /app/roban_voice_s2s/tool_plugins
       ROBAN_S2S_DASHSCOPE_API_KEY_PATH: /model-secrets/dashscope-api-key
       ROBAN_S2S_DASHSCOPE_WORKSPACE_ID_PATH: /model-config/dashscope-workspace-id
       ROBAN_S2S_GROK_TOKEN_PATH: /model-secrets/sub2api.token

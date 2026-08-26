@@ -25,8 +25,7 @@ registry=${ROBAN_REGISTRY:-registry.cn-beijing.aliyuncs.com/roban}
 image_tag=${ROBAN_IMAGE_TAG:-20260819-arm64}
 workflow_image_tag=${ROBAN_WORKFLOW_IMAGE_TAG:-20260825-arm64}
 workflow_mcp_image_tag=${ROBAN_WORKFLOW_MCP_IMAGE_TAG:-20260825-domain-arm64}
-s2s_image_tag=${ROBAN_S2S_IMAGE_TAG:-20260826-catalog-permission-cpu-arm64}
-s2s_image_tag=${ROBAN_S2S_IMAGE_TAG:-$image_tag}
+s2s_image_tag=${ROBAN_S2S_IMAGE_TAG:-20260826-json-tool-plugins-cpu-arm64}
 dry_run=0
 confirm_purge=0
 while (($#)); do
@@ -95,7 +94,6 @@ image_ref() {
   case "$name" in
     roban-workflow-api) tag=$workflow_image_tag ;;
     roban-workflow-mcp) tag=$workflow_mcp_image_tag ;;
-    roban-s2s) tag=$s2s_image_tag ;;
     roban-s2s) tag=$s2s_image_tag ;;
   esac
   printf '%s/%s:%s' "$registry" "$name" "$tag"
