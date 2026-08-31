@@ -596,9 +596,9 @@ grep -q 'ui-lovelace.yaml' \
 grep -q 'hitachi_ac_rm4' \
   "$ROOT_DIR/saha-layers/meta-tegra-saha/recipes-saha/homeassistant-config/saha-homeassistant-config/configuration.yaml" ||
   fail "default homeassistant config must include SmartIR climate device"
-grep -q 'meeting_room_tv_02' \
+! grep -q 'meeting_room_tv_02' \
   "$ROOT_DIR/saha-layers/meta-tegra-saha/recipes-saha/homeassistant-config/saha-homeassistant-config/configuration.yaml" ||
-  fail "default homeassistant config must include SmartIR media_player device"
+  fail "default homeassistant config must not seed a demonstration TV"
 grep -q 'saha_matter:' \
   "$ROOT_DIR/saha-layers/meta-tegra-saha/recipes-saha/homeassistant-config/saha-homeassistant-config/configuration.yaml" ||
   fail "default homeassistant config must bootstrap Matter"
@@ -615,8 +615,8 @@ grep -q 'keep_matter_wifi_credentials_synchronized' \
   fail "WiFi provisioning must continuously publish active Matter credentials"
 grep -q '1084.json' "$HA_CONFIG_RECIPE" ||
   fail "homeassistant config recipe must bundle SmartIR climate code 1084"
-grep -q '1380.json' "$HA_CONFIG_RECIPE" ||
-  fail "homeassistant config recipe must bundle SmartIR media_player code 1380"
+! grep -q '1380.json' "$HA_CONFIG_RECIPE" ||
+  fail "homeassistant config recipe must not bundle the demonstration TV code"
 grep -q 'seed_homeassistant_config' \
   "$ROOT_DIR/saha-layers/meta-tegra-saha/recipes-saha/docker-compose/saha-docker-compose/saha-docker-compose.sh" ||
   fail "docker compose launcher must seed homeassistant config on first boot"

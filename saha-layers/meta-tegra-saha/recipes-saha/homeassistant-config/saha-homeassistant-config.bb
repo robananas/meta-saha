@@ -27,11 +27,9 @@ SRC_URI = " \
     file://scenes.yaml \
     file://scripts.yaml \
     file://secrets.yaml \
-    file://packages/tv_power.yaml \
     file://custom-components/saha_matter/__init__.py \
     file://custom-components/saha_matter/manifest.json \
     file://smartir-codes/climate/1084.json \
-    file://smartir-codes/media_player/1380.json \
     file://install-custom-components.sh \
 "
 
@@ -53,7 +51,6 @@ do_install() {
     install -m 0644 ${UNPACKDIR}/scenes.yaml ${config_dir}/scenes.yaml
     install -m 0644 ${UNPACKDIR}/scripts.yaml ${config_dir}/scripts.yaml
     install -m 0644 ${UNPACKDIR}/secrets.yaml ${config_dir}/secrets.yaml
-    install -m 0644 ${UNPACKDIR}/packages/tv_power.yaml ${config_dir}/packages/tv_power.yaml
 
     install -d ${config_dir}/custom_components
     sh ${UNPACKDIR}/install-custom-components.sh \

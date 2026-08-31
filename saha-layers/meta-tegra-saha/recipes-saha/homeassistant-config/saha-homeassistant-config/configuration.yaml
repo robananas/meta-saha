@@ -37,13 +37,6 @@ climate:
     device_code: 1084
     controller_data: remote.rm4_mini_01
 
-media_player:
-  - platform: smartir
-    name: Meeting room TV-02
-    unique_id: meeting_room_tv_02
-    device_code: 1380
-    controller_data: remote.rm4_mini_01
-
 lovelace:
   resource_mode: yaml
   dashboards:
