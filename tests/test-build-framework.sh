@@ -647,9 +647,14 @@ grep -q 'python3-threading' \
 grep -q 'python3-subprocess' \
   "$BT_WIFI_PROVISION" &&
   fail "saha-bt-wifi-provision must not depend on python3-subprocess on wrynose; subprocess is in python3-core"
-grep -q 'setup_dbus_main_loop' \
-  "$ROOT_DIR/saha-layers/meta-tegra-saha/recipes-saha/bt-wifi-provision/saha-bt-wifi-provision/gatt_server.py" ||
+GATT_SERVER="$ROOT_DIR/saha-layers/meta-tegra-saha/recipes-saha/bt-wifi-provision/saha-bt-wifi-provision/gatt_server.py"
+grep -q 'setup_dbus_main_loop' "$GATT_SERVER" ||
   fail "gatt server must install a dbus main loop before exporting objects"
+grep -q 'ADVERTISEMENT_MIN_INTERVAL_MS = 100' "$GATT_SERVER" &&
+  grep -q 'ADVERTISEMENT_MAX_INTERVAL_MS = 150' "$GATT_SERVER" ||
+  fail "BLE provisioning must use a short bounded advertising interval for reliable discovery"
+grep -q 'SAHA_BT_WIFI_APPEND_MAC_SUFFIX' "$GATT_SERVER" ||
+  fail "BLE provisioning names must append a stable adapter suffix for multi-board discovery"
 if grep -Eq 'RegisterAgent|NoInputNoOutput|encrypt-(read|write)' \
   "$ROOT_DIR/saha-layers/meta-tegra-saha/recipes-saha/bt-wifi-provision/saha-bt-wifi-provision/gatt_server.py"; then
   fail "Secure Protocol v2 must not depend on BlueZ pairing or encrypted flags"

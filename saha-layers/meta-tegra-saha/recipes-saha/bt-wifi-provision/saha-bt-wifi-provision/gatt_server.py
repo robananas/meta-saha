@@ -74,6 +74,8 @@ ADVERTISEMENT_CONTROL_PATH = "/run/saha/ble-advertisement-control.json"
 ADVERTISEMENT_STATUS_PATH = "/run/saha/ble-advertisement-status.json"
 MIN_ADVERTISEMENT_LEASE_SECONDS = 5.0
 MAX_ADVERTISEMENT_LEASE_SECONDS = 120.0
+ADVERTISEMENT_MIN_INTERVAL_MS = 100
+ADVERTISEMENT_MAX_INTERVAL_MS = 150
 logger = logging.getLogger("saha-bt-wifi-provision")
 
 
@@ -177,7 +179,14 @@ class Advertisement(dbus.service.Object):
         return dbus.ObjectPath(self.path)
 
     def _properties(self) -> dict[str, Any]:
-        return {"Type": "peripheral", "ServiceUUIDs": dbus.Array([SERVICE_UUID], signature="s"), "LocalName": self.local_name, "IncludeTxPower": False}
+        return {
+            "Type": "peripheral",
+            "ServiceUUIDs": dbus.Array([SERVICE_UUID], signature="s"),
+            "LocalName": self.local_name,
+            "IncludeTxPower": False,
+            "MinInterval": dbus.UInt32(ADVERTISEMENT_MIN_INTERVAL_MS),
+            "MaxInterval": dbus.UInt32(ADVERTISEMENT_MAX_INTERVAL_MS),
+        }
 
     @dbus.service.method(DBUS_PROP_IFACE, in_signature="s", out_signature="a{sv}")
     def GetAll(self, interface: str) -> dict[str, Any]:
@@ -522,6 +531,15 @@ class GattProvisioner:
                 iterate_main_loop(self.bus, self._loop_mode)
         raise RuntimeError("timed out waiting for BLE adapter")
 
+    def _resolved_local_name(self, props: Any) -> str:
+        if os.environ.get("SAHA_BT_WIFI_APPEND_MAC_SUFFIX", "1").strip().lower() in {"0", "false", "no"}:
+            return self.local_name
+        address = str(props.Get(ADAPTER_IFACE, "Address"))
+        suffix = "".join(address.split(":")[-2:]).upper()
+        if not suffix or self.local_name.upper().endswith(f"-{suffix}"):
+            return self.local_name
+        return f"{self.local_name}-{suffix}"
+
     def _register_error(self, label: str) -> Callable[[Any], None]:
         def handler(error: Any) -> None:
             logger.error("%s registration failed: %s", label, error)
@@ -632,7 +650,9 @@ class GattProvisioner:
     def run(self) -> None:
         self._loop_mode = setup_dbus_main_loop(); self.bus = dbus.SystemBus(); self.adapter_path = self._wait_for_adapter()
         props = dbus.Interface(self.bus.get_object(BLUEZ_SERVICE_NAME, self.adapter_path), DBUS_PROP_IFACE)
+        self.local_name = self._resolved_local_name(props)
         props.Set(ADAPTER_IFACE, "Powered", dbus.Boolean(True)); props.Set(ADAPTER_IFACE, "Discoverable", dbus.Boolean(False)); props.Set(ADAPTER_IFACE, "Pairable", dbus.Boolean(False)); props.Set(ADAPTER_IFACE, "Alias", self.local_name)
+        logger.info("advertising as %s at %d-%d ms", self.local_name, ADVERTISEMENT_MIN_INTERVAL_MS, ADVERTISEMENT_MAX_INTERVAL_MS)
         self.bus.add_signal_receiver(self._properties_changed, dbus_interface=DBUS_PROP_IFACE, signal_name="PropertiesChanged", path_keyword="path")
         self._register()
         try:

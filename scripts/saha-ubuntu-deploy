@@ -198,7 +198,10 @@ EOF
 }
 
 install_units() {
-  install -d -m 0755 "$(dirname "$libexec")" "$unit_dir"
+  install -d -m 0755 "$(dirname "$libexec")" "$unit_dir" "$unit_dir/bluetooth.service.d"
+  install -m 0644 "$source_dir/roban-bluetooth.conf" "$etc_dir/bluetooth.conf"
+  install -m 0644 "$source_dir/roban-bluetooth-config.conf" "$unit_dir/bluetooth.service.d/roban-config.conf"
+  rm -f "$unit_dir/bluetooth.service.d/roban-experimental.conf"
   sed -e "s|^prefix=.*|prefix=$prefix|" -e "s|^etc_dir=.*|etc_dir=$etc_dir|" -e "s|^state_dir=.*|state_dir=$state_dir|" -e "s|^compose_project=.*|compose_project=$compose_project|" -e "s|^service_prefix=.*|service_prefix=$service_prefix|" "$source_dir/launcher.sh" >"$libexec"
   chmod 0755 "$libexec"
   install_unit() { local template=$1 target=$2; sed -e "s|/usr/local/libexec/roban-ubuntu|$libexec|g" -e "s|roban-data-layout.service|$unit_data|g" -e "s|roban-board-status.service|$unit_board|g" -e "s|roban-core.service|$unit_core|g" -e "s|roban-ha-bootstrap.service|$unit_bootstrap|g" -e "s|roban-edge.service|$unit_edge|g" "$source_dir/$template" >"$unit_dir/$target"; chmod 0644 "$unit_dir/$target"; }
@@ -210,6 +213,7 @@ install_units() {
   install_unit roban-realtime-manager.service "$unit_manager"
   install_unit roban-bt-wifi-provision.service "$unit_ble"
   systemctl daemon-reload
+  systemctl try-restart bluetooth.service
   systemctl enable "$unit_data" "$unit_board" "$unit_core" "$unit_bootstrap" "$unit_edge" "$unit_manager" "$unit_ble" >/dev/null
 }
 
@@ -227,7 +231,8 @@ install_command() {
   declare -A values
   for image in "${images[@]}"; do values[$image]=$(resolve_image "$image"); done
   install -d -m 0755 "$prefix/releases"
-  old_current=$(readlink -f "$prefix/current" 2>/dev/null || true)
+  old_current=
+  if [[ -L $prefix/current ]]; then old_current=$(readlink -f "$prefix/current" 2>/dev/null || true); fi
   if [[ -d $release ]]; then
     log "reusing existing release $release_id"
   else
@@ -272,6 +277,6 @@ case "$command_name" in
   install) install_command ;;
   status|verify|restart|stop|start) require_root; "$libexec" "$command_name" ;;
   rollback) require_root; [[ -L $prefix/previous ]] || { echo "no previous release" >&2; exit 1; }; current=$(readlink -f "$prefix/current"); previous=$(readlink -f "$prefix/previous"); ln -sfn "$previous" "$prefix/current.new"; mv -Tf "$prefix/current.new" "$prefix/current"; ln -sfn "$current" "$prefix/previous"; systemctl restart "$unit_core" "$unit_bootstrap" "$unit_edge" "$unit_manager" "$unit_ble" ;;
-  uninstall) require_root; systemctl disable --now "$unit_ble" "$unit_manager" "$unit_edge" "$unit_bootstrap" "$unit_core" "$unit_board" "$unit_data" 2>/dev/null || true; rm -f "$unit_dir/$unit_ble" "$unit_dir/$unit_manager" "$unit_dir/$unit_edge" "$unit_dir/$unit_bootstrap" "$unit_dir/$unit_core" "$unit_dir/$unit_board" "$unit_dir/$unit_data" "$libexec"; systemctl daemon-reload; log "uninstalled; data retained" ;;
+  uninstall) require_root; systemctl disable --now "$unit_ble" "$unit_manager" "$unit_edge" "$unit_bootstrap" "$unit_core" "$unit_board" "$unit_data" 2>/dev/null || true; rm -f "$unit_dir/$unit_ble" "$unit_dir/$unit_manager" "$unit_dir/$unit_edge" "$unit_dir/$unit_bootstrap" "$unit_dir/$unit_core" "$unit_dir/$unit_board" "$unit_dir/$unit_data" "$unit_dir/bluetooth.service.d/roban-config.conf" "$unit_dir/bluetooth.service.d/roban-experimental.conf" "$etc_dir/bluetooth.conf" "$libexec"; systemctl daemon-reload; systemctl try-restart bluetooth.service; log "uninstalled; data retained" ;;
   *) echo "usage: $0 {install|verify|status|start|stop|restart|rollback|uninstall} [--dry-run] [--seed-dir path]" >&2; exit 2 ;;
 esac
