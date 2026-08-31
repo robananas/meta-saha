@@ -41,6 +41,60 @@ def s2s_ready() -> dict[str, Any]:
         return {"ready": False, "status": "unavailable"}
 
 
+def qwen_configured() -> bool:
+    return KEY.is_file() and KEY.stat().st_size > 0 and WORKSPACE.is_file() and WORKSPACE.stat().st_size > 0
+
+
+def pipeline_mode_response() -> dict[str, Any]:
+    configured = read_json(MODE, {"mode": "realtime", "provider": "qwen", "generation": 1})
+    readiness = s2s_ready()
+    ready = readiness.get("ready") is True
+    effective_mode = readiness.get("effectiveMode") if ready else None
+    effective_provider = readiness.get("effectiveProvider") if ready else None
+    effective_generation = readiness.get("effectiveGeneration") if ready else None
+    return {
+        "mode": configured.get("mode", "realtime"),
+        "provider": configured.get("provider", "qwen"),
+        "effectiveMode": effective_mode,
+        "effectiveProvider": effective_provider,
+        "generation": int(configured.get("generation", 0)),
+        "effectiveGeneration": effective_generation,
+        "providers": {
+            "qwen": {
+                "available": True,
+                "configured": qwen_configured(),
+                "reason": None if qwen_configured() else "credentials_missing",
+                "model": "qwen-audio-3.0-realtime-flash",
+                "region": "cn-beijing",
+                "label": "Qwen Audio Realtime",
+            },
+            "grok": {
+                "available": False,
+                "configured": False,
+                "reason": "not_installed",
+                "model": "grok-voice-latest",
+                "region": "global",
+                "label": "Grok Realtime",
+            },
+        },
+        "status": "ready" if ready else "not_ready",
+        "error": None if ready else {"code": "s2s_not_ready", "message": "S2S runtime is not ready"},
+    }
+
+
+def realtime_settings_response() -> dict[str, Any]:
+    settings = read_json(SETTINGS, {})
+    readiness = s2s_ready()
+    ready = readiness.get("ready") is True
+    return {
+        **settings,
+        "effectiveGeneration": readiness.get("effectiveRealtimeGeneration") if ready else None,
+        "effectiveModel": readiness.get("effectiveRealtimeModel") if ready else None,
+        "status": "ready" if ready else "not_ready",
+        "error": None if ready else {"code": "s2s_not_ready", "message": "S2S runtime is not ready"},
+    }
+
+
 class Handler(BaseHTTPRequestHandler):
     def send_json(self, status: int, value: Any) -> None:
         body = json.dumps(value, ensure_ascii=False, separators=(",", ":")).encode()
@@ -58,20 +112,17 @@ class Handler(BaseHTTPRequestHandler):
         return value
 
     def do_GET(self) -> None:
-        mode = read_json(MODE, {"mode": "realtime", "provider": "qwen", "generation": 1})
-        settings = read_json(SETTINGS, {})
-        configured = KEY.is_file() and KEY.stat().st_size > 0
         routes: dict[str, Any] = {
             "/health": {"status": "ok", "mode": "cloud-only"},
             "/v1/catalog": {"models": [], "cloudOnly": True},
             "/v1/models/status": {"models": [], "cloudOnly": True},
             "/v1/pipeline/readiness": s2s_ready(),
-            "/v1/pipeline/mode": mode,
-            "/v1/realtime/settings": settings,
+            "/v1/pipeline/mode": pipeline_mode_response(),
+            "/v1/realtime/settings": realtime_settings_response(),
             "/v1/network/status": {"online": True, "hostname": socket.gethostname()},
             "/v1/voices": {"voices": [], "cloudOnly": True},
             "/v1/speaker/status": {"enabled": False, "cloudOnly": True},
-            "/v1/providers": {"qwen": {"available": True, "configured": configured, "workspaceConfigured": WORKSPACE.is_file()}},
+            "/v1/providers": {"qwen": {"available": True, "configured": qwen_configured(), "workspaceConfigured": WORKSPACE.is_file()}},
         }
         self.send_json(200, routes[self.path]) if self.path in routes else self.send_json(404, {"error": "not found"})
 
@@ -85,16 +136,17 @@ class Handler(BaseHTTPRequestHandler):
                     self.send_json(409, {"error": {"code": "cloud_only", "message": "Only Qwen Realtime is installed"}})
                     return
                 current = read_json(MODE, {"generation": 0})
-                value = {"mode": "realtime", "provider": "qwen", "generation": int(current.get("generation", 0)) + 1}
+                value = {"version": 2, "mode": "realtime", "provider": "qwen", "generation": int(current.get("generation", 0)) + 1}
                 write_json(MODE, value)
                 subprocess.run(["systemctl", "restart", EDGE_SERVICE], check=True, timeout=120)
-                self.send_json(200, value)
+                self.send_json(200, pipeline_mode_response())
                 return
             if self.path == "/v1/realtime/settings":
-                body["provider"] = "qwen"
-                write_json(SETTINGS, body)
+                current = read_json(SETTINGS, {"generation": 0})
+                value = {"version": 1, **body, "generation": int(current.get("generation", 0)) + 1}
+                write_json(SETTINGS, value)
                 subprocess.run(["systemctl", "restart", EDGE_SERVICE], check=True, timeout=120)
-                self.send_json(200, body)
+                self.send_json(200, realtime_settings_response())
                 return
             self.send_json(409, {"error": {"code": "cloud_only", "message": "Local models, speakers, and custom voices are not installed"}})
         except (ValueError, OSError, subprocess.SubprocessError) as error:
