@@ -18,7 +18,7 @@ services:
 
   homeassistant-mcp:
     container_name: homeassistant-mcp
-    image: ${SAHA_HOMEASSISTANT_MCP_IMAGE:-roban-ha-mcp:arm64}
+    image: ${SAHA_HOMEASSISTANT_MCP_IMAGE:-roban-ha-mcp:20260831-token-cache-fix-arm64}
     restart: on-failure:5
     network_mode: host
     depends_on:

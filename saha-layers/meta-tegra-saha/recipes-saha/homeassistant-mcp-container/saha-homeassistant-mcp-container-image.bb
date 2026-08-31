@@ -1,10 +1,10 @@
 SUMMARY = "Preloaded Home Assistant MCP container image"
-DESCRIPTION = "Packages a validated local roban-ha-mcp:arm64 Docker archive for offline first boot."
+DESCRIPTION = "Packages the validated local roban-ha-mcp:20260831-token-cache-fix-arm64 Docker archive for offline first boot."
 LICENSE = "MIT"
 LIC_FILES_CHKSUM = "file://${COMMON_LICENSE_DIR}/MIT;md5=0835ade698e0bcf8506ecda2f7b4f302"
 
 PV = "1.0"
-MCP_IMAGE ?= "roban-ha-mcp:arm64"
+MCP_IMAGE ?= "roban-ha-mcp:20260831-token-cache-fix-arm64"
 MCP_IMAGE_ARCH ?= "arm64"
 MCP_LOCAL_TAR ?= "${DL_DIR}/roban-ha-mcp.tar"
 
