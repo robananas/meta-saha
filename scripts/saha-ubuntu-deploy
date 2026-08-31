@@ -27,6 +27,7 @@ unit_manager="$service_prefix-realtime-manager.service"
 unit_ble="$service_prefix-bt-wifi-provision.service"
 dry_run=0
 seed_dir="${ROBAN_SEED_DIR:-/var/tmp/roban-ubuntu-seed}"
+ha_mcp_port="${ROBAN_HA_MCP_PORT:-8000}"
 image_tag="${ROBAN_IMAGE_TAG:-20260819-arm64}"
 workflow_image_tag="${ROBAN_WORKFLOW_IMAGE_TAG:-20260825-arm64}"
 workflow_mcp_image_tag="${ROBAN_WORKFLOW_MCP_IMAGE_TAG:-20260825-domain-arm64}"
@@ -53,7 +54,10 @@ preflight() {
   roban_check_common_commands
   roban_check_docker_runtime
   roban_check_disk_space
-  if [[ ! -L $prefix/current && ${ROBAN_SKIP_PORT_CHECK:-0} != 1 ]]; then roban_check_target_ports; fi
+  [[ $ha_mcp_port =~ ^[0-9]+$ ]] && ((ha_mcp_port >= 1024 && ha_mcp_port <= 65535)) || { echo "invalid HA MCP port: $ha_mcp_port" >&2; return 1; }
+  if [[ ! -L $prefix/current && ${ROBAN_SKIP_PORT_CHECK:-0} != 1 ]]; then
+    ROBAN_REQUIRED_TCP_PORTS="5580 7880 7881 7883 $ha_mcp_port 8080 8123 8765 11435" roban_check_target_ports
+  fi
 }
 
 image_ref() {
@@ -131,8 +135,10 @@ seed_state() {
     write_secret_file "$etc_dir/livekit.env" "LIVEKIT_API_KEY=roban-local" "LIVEKIT_API_SECRET=$secret" "LIVEKIT_KEYS=roban-local: $secret"
   fi
   if [[ ! -s "$etc_dir/home-assistant-mcp-credentials.env" ]]; then
-    local token ip; token=$(python3 -c 'import secrets; print(secrets.token_urlsafe(32))'); ip=$(hostname -I | awk '{print $1}')
-    write_secret_file "$etc_dir/home-assistant-mcp-credentials.env" "MCP_ACCESS_TOKEN=$token" "MCP_PUBLIC_URL=http://$ip:8000/mcp"
+    local token ip; token=$(python3 -c 'import secrets; print(secrets.token_urlsafe(32))')
+    ip=$(ip -4 route get 1.1.1.1 | awk '{for (field = 1; field <= NF; field++) if ($field == "src") {print $(field + 1); exit}}')
+    [[ -n $ip ]] || { echo "unable to determine primary IPv4 address" >&2; return 1; }
+    write_secret_file "$etc_dir/home-assistant-mcp-credentials.env" "MCP_ACCESS_TOKEN=$token" "MCP_PUBLIC_URL=http://$ip:$ha_mcp_port/mcp"
   fi
   if [[ ! -s "$etc_dir/workflow-mcp-credentials.env" ]]; then
     local workflow_token; workflow_token=$(python3 -c 'import secrets; print(secrets.token_urlsafe(32))')
@@ -152,7 +158,7 @@ HA_TIMEOUT=10
 HA_READ_ONLY=false
 HA_ALLOWED_DOMAINS=light,switch,climate,cover,fan,media_player,scene,button,number,select,input_boolean,humidifier,remote,vacuum
 MCP_HOST=0.0.0.0
-MCP_PORT=8000
+MCP_PORT=$ha_mcp_port
 MCP_PATH=/mcp
 EOF
   chown root:999 "$etc_dir/home-assistant-mcp-credentials.env" "$etc_dir/workflow-mcp-credentials.env"
@@ -259,6 +265,7 @@ IMAGE_LIVEKIT_AGENT=${values[livekit-agent]}
 IMAGE_MATTER=${values[python-matter-server]}
 IMAGE_WORKFLOW=${values[roban-workflow-api]}
 IMAGE_LIVEKIT_SERVER=${values[livekit-server]}
+ROBAN_HA_MCP_PORT=$ha_mcp_port
 EOF
   install_units
   if ! systemctl start "$unit_data" "$unit_board" "$unit_core" "$unit_bootstrap" "$unit_edge" "$unit_manager" "$unit_ble" || ! "$libexec" verify; then

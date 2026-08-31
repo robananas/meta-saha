@@ -41,7 +41,10 @@ assert_contains "$dir/compose.yaml" 'ROBAN_S2S_HA_MCP_CREDENTIALS_PATH: /mcp-sec
 assert_contains "$dir/compose.yaml" 'ROBAN_S2S_WORKFLOW_MCP_CREDENTIALS_PATH: /mcp-secrets/workflow.env'
 assert_contains "$dir/compose.yaml" '${ROBAN_ETC_DIR}/home-assistant-mcp-credentials.env:/mcp-secrets/homeassistant.env:ro'
 assert_contains "$dir/compose.yaml" '${ROBAN_ETC_DIR}/workflow-mcp-credentials.env:/mcp-secrets/workflow.env:ro'
-assert_contains "$dir/compose.yaml" 'ROBAN_S2S_HA_MCP_URL: http://127.0.0.1:8000/mcp'
+assert_contains "$dir/compose.yaml" 'ROBAN_S2S_HA_MCP_URL: http://127.0.0.1:${ROBAN_HA_MCP_PORT:-8000}/mcp'
+assert_contains "$entry" 'ROBAN_HA_MCP_PORT'
+assert_contains "$entry" 'MCP_PORT=$ha_mcp_port'
+assert_contains "$entry" 'ip -4 route get 1.1.1.1'
 assert_contains "$dir/compose.yaml" 'ROBAN_S2S_WORKFLOW_MCP_URL: http://127.0.0.1:8001/mcp'
 python3 - "$dir/compose.yaml" <<'PY'
 import sys
