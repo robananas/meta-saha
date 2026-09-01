@@ -32,7 +32,7 @@ image_tag="${ROBAN_IMAGE_TAG:-20260819-arm64}"
 workflow_image_tag="${ROBAN_WORKFLOW_IMAGE_TAG:-20260825-arm64}"
 workflow_mcp_image_tag="${ROBAN_WORKFLOW_MCP_IMAGE_TAG:-20260825-domain-arm64}"
 ha_mcp_image_tag="${ROBAN_HA_MCP_IMAGE_TAG:-20260831-token-cache-fix-arm64}"
-s2s_image_tag="${ROBAN_S2S_IMAGE_TAG:-20260831-media-verification-fix-arm64}"
+s2s_image_tag="${ROBAN_S2S_IMAGE_TAG:-20260901-new-device-routes-fix-arm64}"
 registry="${ROBAN_REGISTRY:-registry.cn-beijing.aliyuncs.com/roban}"
 
 while (($#)); do
