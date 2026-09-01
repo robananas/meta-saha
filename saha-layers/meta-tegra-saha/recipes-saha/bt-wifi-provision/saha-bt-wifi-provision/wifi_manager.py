@@ -93,8 +93,8 @@ def _active_connection() -> dict[str, str]:
         if len(parts) < 4:
             continue
         name, uuid, conn_type, device = parts[0], parts[1], parts[2], parts[3]
-        if conn_type == "802-11-wireless" and device:
-            return {"name": name, "uuid": uuid, "device": device}
+        if conn_type in {"802-11-wireless", "802-3-ethernet"} and device:
+            return {"name": name, "uuid": uuid, "type": conn_type, "device": device}
     return {}
 
 
@@ -121,43 +121,34 @@ def _ipv4_fields(device: str) -> dict[str, str]:
 
 
 def get_wifi_status() -> dict[str, Any]:
-    device = _wifi_device()
-    if not device:
-        return {
-            "connected": False,
-            "ssid": "",
-            "interface": "",
-            "ip": "",
-            "gateway": "",
-            "dns": [],
-            "signal": 0,
-            "security": "",
-        }
-
+    wifi_device = _wifi_device()
     active = _active_connection()
-    connected = active.get("device") == device
-    ssid = active.get("name", "") if connected else ""
+    device = active.get("device") if active else wifi_device
+    connected = bool(active.get("device"))
+    connection_type = active.get("type", "")
+    ssid = active.get("name", "") if connection_type == "802-11-wireless" else ""
     signal = 0
     security = ""
 
-    wifi_output = _run_nmcli(["-t", "-f", "ACTIVE,SSID,SIGNAL,SECURITY", "dev", "wifi"])
-    for line in wifi_output.splitlines():
-        parts = _split_terse(line)
-        if len(parts) < 4:
-            continue
-        is_active, line_ssid, line_signal, line_security = parts[0], parts[1], parts[2], parts[3]
-        if is_active == "yes" or (connected and line_ssid == ssid):
-            ssid = line_ssid or ssid
-            signal = _signal_percent(line_signal)
-            security = line_security
-            connected = True
-            break
+    if connection_type == "802-11-wireless":
+        wifi_output = _run_nmcli(["-t", "-f", "ACTIVE,SSID,SIGNAL,SECURITY", "dev", "wifi"])
+        for line in wifi_output.splitlines():
+            parts = _split_terse(line)
+            if len(parts) < 4:
+                continue
+            is_active, line_ssid, line_signal, line_security = parts[0], parts[1], parts[2], parts[3]
+            if is_active == "yes":
+                ssid = line_ssid or ssid
+                signal = _signal_percent(line_signal)
+                security = line_security
+                break
 
-    ipv4 = _ipv4_fields(device) if connected else {"ip": "", "gateway": "", "dns": [], "addresses": []}
+    ipv4 = _ipv4_fields(device) if connected and device else {"ip": "", "gateway": "", "dns": [], "addresses": []}
     return {
         "connected": connected,
+        "connection_type": connection_type,
         "ssid": ssid,
-        "interface": device,
+        "interface": device or "",
         "ip": ipv4["ip"],
         "addresses": ipv4["addresses"],
         "gateway": ipv4["gateway"],
