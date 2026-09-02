@@ -1,11 +1,11 @@
 SUMMARY = "Preloaded local Roban S2S container image"
-DESCRIPTION = "Packages the validated local roban-s2s:20260901-new-device-routes-fix-arm64 Docker archive for offline first boot."
+DESCRIPTION = "Packages the validated local roban-s2s:20260902-catalog-primary-fix-arm64 Docker archive for offline first boot."
 LICENSE = "MIT"
 LIC_FILES_CHKSUM = "file://${COMMON_LICENSE_DIR}/MIT;md5=0835ade698e0bcf8506ecda2f7b4f302"
 
 PV = "1.0"
 
-S2S_IMAGE ?= "roban-s2s:20260901-new-device-routes-fix-arm64"
+S2S_IMAGE ?= "roban-s2s:20260902-catalog-primary-fix-arm64"
 S2S_IMAGE_ARCH ?= "arm64"
 S2S_LOCAL_TAR ?= "${DL_DIR}/roban-s2s.tar"
 

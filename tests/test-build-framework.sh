@@ -337,7 +337,7 @@ grep -q 'saha-s2s' \
 grep -q 'packagegroup-saha-nvidia-containers' "$S2S_PACKAGEGROUP" || fail "S2S packagegroup must opt into GPU support"
 ! grep -q 'saha-s2s-container-image' "$S2S_PACKAGEGROUP" || fail "S2S preload archive must be exclusive to DATA image"
 grep -q 'saha-s2s' "$S2S_PACKAGEGROUP" || fail "S2S packagegroup must install its runtime"
-grep -q 'S2S_IMAGE ?= "roban-s2s:20260901-new-device-routes-fix-arm64"' "$S2S_IMAGE_RECIPE" || fail "S2S image tag must use the validated MCP URL fix contract"
+grep -q 'S2S_IMAGE ?= "roban-s2s:20260902-catalog-primary-fix-arm64"' "$S2S_IMAGE_RECIPE" || fail "S2S image tag must use the validated MCP URL fix contract"
 grep -q 'do_fetch_image\[network\] = "0"' "$S2S_IMAGE_RECIPE" || fail "S2S image recipe must remain local-only"
 grep -q 'do_fetch_image\[nostamp\] = "1"' "$S2S_IMAGE_RECIPE" || fail "S2S image recipe must revalidate its mutable archive"
 grep -q 'validate_archive' "$S2S_FETCH" || fail "S2S image archive must be validated"

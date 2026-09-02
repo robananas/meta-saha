@@ -1,6 +1,6 @@
 services:
   roban-s2s:
-    image: ${SAHA_S2S_IMAGE:-roban-s2s:20260901-new-device-routes-fix-arm64}
+    image: ${SAHA_S2S_IMAGE:-roban-s2s:20260902-catalog-primary-fix-arm64}
     container_name: saha-s2s
     network_mode: host
     restart: "no"
