@@ -12,7 +12,7 @@ if [ ! -s "$credentials_file" ]; then
     [ -n "$board_ip" ] || board_ip=127.0.0.1
     {
         printf 'MCP_ACCESS_TOKEN=%s\n' "$token"
-        printf 'MCP_PUBLIC_URL=http://%s:8000/mcp\n' "$board_ip"
+        printf 'MCP_PUBLIC_URL=http://%s:8888/mcp\n' "$board_ip"
     } > "$credentials_file"
 fi
 chown 0:999 "$credentials_file"

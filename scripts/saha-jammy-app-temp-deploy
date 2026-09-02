@@ -26,7 +26,7 @@ image_tag=${ROBAN_IMAGE_TAG:-20260819-arm64}
 workflow_image_tag=${ROBAN_WORKFLOW_IMAGE_TAG:-20260902-ha-refresh-arm64}
 workflow_mcp_image_tag=${ROBAN_WORKFLOW_MCP_IMAGE_TAG:-20260825-domain-arm64}
 ha_mcp_image_tag=${ROBAN_HA_MCP_IMAGE_TAG:-20260831-token-cache-fix-arm64}
-s2s_image_tag=${ROBAN_S2S_IMAGE_TAG:-20260902-catalog-primary-fix-arm64}
+s2s_image_tag=${ROBAN_S2S_IMAGE_TAG:-20260902-mcp-policy-final2-arm64}
 dry_run=0
 confirm_purge=0
 while (($#)); do
@@ -45,7 +45,7 @@ export ROBAN_EXPECTED_VERSION_ID=22.04
 export ROBAN_EXPECTED_CODENAME=jammy
 export ROBAN_REQUIRE_NVIDIA_RUNTIME=0
 export ROBAN_DOCKER_APT_BASE_URL=${ROBAN_DOCKER_APT_BASE_URL:-https://mirrors.aliyun.com/docker-ce/linux/ubuntu}
-export ROBAN_REQUIRED_TCP_PORTS="5580 8000 8001 8080 8123 8765"
+export ROBAN_REQUIRED_TCP_PORTS="5580 8001 8080 8123 8765 8888"
 export ROBAN_STORAGE_PATH=/home/nvidia/workspace
 export ROBAN_MIN_FREE_BYTES=${ROBAN_MIN_FREE_BYTES:-12884901888}
 export ROBAN_DRY_RUN=$dry_run
@@ -84,7 +84,7 @@ Primary WiFi: $wifi
 Free workspace bytes: $available
 Docker: $(command -v docker >/dev/null && echo installed || echo missing)
 Containers: Home Assistant, Matter Server, Workflow API, Home Assistant MCP, Workflow MCP, S2S
-TCP ports: 5580, 8000, 8001, 8080, 8123, 8765
+TCP ports: 5580, 8001, 8080, 8123, 8765, 8888
 Will not deploy: LiveKit, realtime manager, Ollama, digital-human services
 Will create after confirmation: Docker CE apt source/keyring, /etc/docker/daemon.json, workspace data, workspace-only registry auth, roban-temp-* units
 EOF
@@ -177,7 +177,7 @@ seed_state() {
   if [[ ! -s $secrets/home-assistant-mcp-credentials.env ]]; then
     local token; token=$(python3 -c 'import secrets; print(secrets.token_urlsafe(32))')
     umask 077
-    printf 'MCP_ACCESS_TOKEN=%s\nMCP_PUBLIC_URL=http://%s:8000/mcp\n' "$token" "$target_ip" >"$secrets/home-assistant-mcp-credentials.env"
+    printf 'MCP_ACCESS_TOKEN=%s\nMCP_PUBLIC_URL=http://%s:8888/mcp\n' "$token" "$target_ip" >"$secrets/home-assistant-mcp-credentials.env"
   fi
   if [[ ! -s $secrets/workflow-mcp-credentials.env ]]; then
     local workflow_token; workflow_token=$(python3 -c 'import secrets; print(secrets.token_urlsafe(32))')
@@ -198,7 +198,7 @@ HA_TIMEOUT=10
 HA_READ_ONLY=false
 HA_ALLOWED_DOMAINS=light,switch,climate,cover,fan,media_player,scene,button,number,select,input_boolean,humidifier,remote,vacuum
 MCP_HOST=0.0.0.0
-MCP_PORT=8000
+MCP_PORT=8888
 MCP_PATH=/mcp
 EOF
   chown root:999 "$secrets/home-assistant-mcp-credentials.env" "$secrets/workflow-mcp-credentials.env"

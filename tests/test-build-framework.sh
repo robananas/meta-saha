@@ -314,7 +314,7 @@ grep -q 'ROBAN_S2S_HA_MCP_CREDENTIALS_PATH: /mcp-secrets/homeassistant.env' "$S2
 grep -q 'ROBAN_S2S_WORKFLOW_MCP_CREDENTIALS_PATH: /mcp-secrets/workflow.env' "$S2S_COMPOSE" || fail "S2S must receive the workflow MCP credential file path"
 grep -q '/data/saha/homeassistant-mcp/credentials.env:/mcp-secrets/homeassistant.env:ro' "$S2S_COMPOSE" || fail "S2S must mount Home Assistant MCP credentials read-only"
 grep -q '/data/saha/workflow-mcp/credentials.env:/mcp-secrets/workflow.env:ro' "$S2S_COMPOSE" || fail "S2S must mount workflow MCP credentials separately and read-only"
-grep -q 'ROBAN_S2S_HA_MCP_URL: http://127.0.0.1:8000/mcp' "$S2S_COMPOSE" || fail "S2S must use the host-local Home Assistant MCP endpoint"
+grep -q 'ROBAN_S2S_HA_MCP_URL: http://127.0.0.1:8888/mcp' "$S2S_COMPOSE" || fail "S2S must use the host-local Home Assistant MCP endpoint"
 grep -q 'ROBAN_S2S_WORKFLOW_MCP_URL: http://127.0.0.1:8001/mcp' "$S2S_COMPOSE" || fail "S2S must use the host-local workflow MCP endpoint"
 ! grep -Eq 'ROBAN_S2S_(GROK_TOKEN|DASHSCOPE_API_KEY|DASHSCOPE_WORKSPACE_ID|HA_MCP_TOKEN|WORKFLOW_MCP_TOKEN):[[:space:]]' "$S2S_COMPOSE" || fail "S2S must not receive credential contents through environment"
 ! grep -q '/data/model-config/s2s/ollama.env' "$S2S_LAUNCHER" || fail "S2S launcher must not consume the legacy Ollama-only selection"

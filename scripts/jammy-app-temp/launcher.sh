@@ -77,10 +77,10 @@ case "${1:-}" in
     unauth=
     token=
     auth_code=
-    unauth=$(curl -sS -o /dev/null -w '%{http_code}' --max-time 3 http://127.0.0.1:8000/mcp || true)
+    unauth=$(curl -sS -o /dev/null -w '%{http_code}' --max-time 3 http://127.0.0.1:8888/mcp || true)
     [[ $unauth == 401 ]]
     token=$(sed -n 's/^MCP_ACCESS_TOKEN=//p' "$secrets/home-assistant-mcp-credentials.env")
-    auth_code=$(curl -sS -o /dev/null -w '%{http_code}' --max-time 3 -H "Authorization: Bearer $token" http://127.0.0.1:8000/mcp || true)
+    auth_code=$(curl -sS -o /dev/null -w '%{http_code}' --max-time 3 -H "Authorization: Bearer $token" http://127.0.0.1:8888/mcp || true)
     [[ $auth_code == 200 ]]
     unauth=$(curl -sS -o /dev/null -w '%{http_code}' --max-time 3 http://127.0.0.1:8001/mcp || true)
     [[ $unauth == 401 ]]
