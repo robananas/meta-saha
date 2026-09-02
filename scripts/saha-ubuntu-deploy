@@ -103,8 +103,6 @@ install_assets() {
   install -d "$release/ha-template/custom_components"
   if [[ -d "$release/ha-template/custom-components/saha_matter" ]]; then mv "$release/ha-template/custom-components/saha_matter" "$release/ha-template/custom_components/"; fi
   rm -rf "$release/ha-template/custom-components"
-  install -d "$release/ha-template/custom_components/smartir/codes/climate"
-  cp "$release/ha-template/smartir-codes/climate/1084.json" "$release/ha-template/custom_components/smartir/codes/climate/"
   fetch_component() { local repo=$1 commit=$2 name=$3 subdir=${4:-custom_components/$3}; local archive="$release/$name.tar.gz" unpack="$release/.unpack-$name"; curl -fsSL "https://github.com/$repo/archive/$commit.tar.gz" -o "$archive"; mkdir -p "$unpack" "$release/ha-template/custom_components/$name"; tar -xzf "$archive" -C "$unpack" --strip-components=1; cp -a "$unpack/$subdir/." "$release/ha-template/custom_components/$name/"; rm -rf "$archive" "$unpack"; }
   if [[ ! -f /var/lib/homeassistant/configuration.yaml ]]; then
     fetch_component smartHomeHub/SmartIR 878df57d82cca1a458fab2de491de3dd6e670771 smartir custom_components/smartir

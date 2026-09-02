@@ -30,13 +30,6 @@ logger:
 smartir:
   check_updates: false
 
-climate:
-  - platform: smartir
-    name: 日立空调1084
-    unique_id: hitachi_ac_rm4
-    device_code: 1084
-    controller_data: remote.rm4_mini_01
-
 lovelace:
   resource_mode: yaml
   dashboards:

@@ -29,7 +29,6 @@ SRC_URI = " \
     file://secrets.yaml \
     file://custom-components/saha_matter/__init__.py \
     file://custom-components/saha_matter/manifest.json \
-    file://smartir-codes/climate/1084.json \
     file://install-custom-components.sh \
 "
 

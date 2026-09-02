@@ -587,15 +587,15 @@ grep -q 'SRCREV_FORMAT = "smartir_xiaomi_hacs"' "$HA_CONFIG_RECIPE" ||
 grep -q 'hacs' \
   "$ROOT_DIR/saha-layers/meta-tegra-saha/recipes-saha/homeassistant-config/saha-homeassistant-config/install-custom-components.sh" ||
   fail "homeassistant config install script must install HACS"
-grep -q 'packages/tv_power.yaml' \
+! grep -q 'packages/tv_power.yaml' \
   "$ROOT_DIR/saha-layers/meta-tegra-saha/recipes-saha/homeassistant-config/saha-homeassistant-config.bb" ||
-  fail "homeassistant config recipe must install tv_power package"
+  fail "homeassistant config recipe must not install the demonstration TV package"
 grep -q 'ui-lovelace.yaml' \
   "$ROOT_DIR/saha-layers/meta-tegra-saha/recipes-saha/homeassistant-config/saha-homeassistant-config.bb" ||
   fail "homeassistant config recipe must install ui-lovelace.yaml"
-grep -q 'hitachi_ac_rm4' \
+! grep -q 'hitachi_ac_rm4' \
   "$ROOT_DIR/saha-layers/meta-tegra-saha/recipes-saha/homeassistant-config/saha-homeassistant-config/configuration.yaml" ||
-  fail "default homeassistant config must include SmartIR climate device"
+  fail "default homeassistant config must not seed the demonstration Hitachi climate device"
 ! grep -q 'meeting_room_tv_02' \
   "$ROOT_DIR/saha-layers/meta-tegra-saha/recipes-saha/homeassistant-config/saha-homeassistant-config/configuration.yaml" ||
   fail "default homeassistant config must not seed a demonstration TV"
@@ -613,8 +613,8 @@ grep -q 'keep_wifi_credentials_synchronized' \
 grep -q 'keep_matter_wifi_credentials_synchronized' \
   "$ROOT_DIR/saha-layers/meta-tegra-saha/recipes-saha/bt-wifi-provision/saha-bt-wifi-provision/saha-bt-wifi-provision.py" ||
   fail "WiFi provisioning must continuously publish active Matter credentials"
-grep -q '1084.json' "$HA_CONFIG_RECIPE" ||
-  fail "homeassistant config recipe must bundle SmartIR climate code 1084"
+! grep -q '1084.json' "$HA_CONFIG_RECIPE" ||
+  fail "homeassistant config recipe must not bundle the demonstration Hitachi climate code"
 ! grep -q '1380.json' "$HA_CONFIG_RECIPE" ||
   fail "homeassistant config recipe must not bundle the demonstration TV code"
 grep -q 'seed_homeassistant_config' \
