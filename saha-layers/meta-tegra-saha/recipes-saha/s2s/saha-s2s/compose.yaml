@@ -39,7 +39,7 @@ services:
       ROBAN_S2S_ICE_SERVERS: ${ROBAN_S2S_ICE_SERVERS:-[]}
       ROBAN_S2S_MAX_SESSIONS: "1"
       ROBAN_S2S_HA_MCP_URL: http://127.0.0.1:8888/mcp
-      ROBAN_S2S_WORKFLOW_MCP_URL: http://127.0.0.1:8001/mcp
+      ROBAN_S2S_WORKFLOW_MCP_URL: http://127.0.0.1:8889/mcp
       ROBAN_S2S_HA_MCP_CREDENTIALS_PATH: /mcp-secrets/homeassistant.env
       ROBAN_S2S_WORKFLOW_MCP_CREDENTIALS_PATH: /mcp-secrets/workflow.env
     volumes:

@@ -31,7 +31,7 @@ assert_contains "$dir/compose.yaml" 'WORKFLOW_DATABASE_PATH: /data/workflows.db'
 assert_contains "$dir/compose.yaml" 'workflow-mcp:'
 assert_contains "$dir/compose.yaml" '${IMAGE_WORKFLOW_MCP}'
 assert_contains "$entry" 'WORKFLOW_MCP_ACCESS_TOKEN='
-assert_contains "$entry" 'WORKFLOW_MCP_PORT=8001'
+assert_contains "$entry" 'WORKFLOW_MCP_PORT=$workflow_mcp_port'
 assert_contains "$entry" 'ROBAN_WORKFLOW_IMAGE_TAG:-20260902-ha-refresh-arm64'
 assert_contains "$entry" 'ROBAN_WORKFLOW_MCP_IMAGE_TAG:-20260825-domain-arm64'
 assert_contains "$entry" 'ROBAN_HA_MCP_IMAGE_TAG:-20260831-token-cache-fix-arm64'
@@ -46,7 +46,7 @@ assert_contains "$dir/compose.yaml" 'ROBAN_S2S_HA_MCP_URL: http://127.0.0.1:${RO
 assert_contains "$entry" 'ROBAN_HA_MCP_PORT:-8888'
 assert_contains "$entry" 'MCP_PORT=$ha_mcp_port'
 assert_contains "$entry" 'ip -4 route get 1.1.1.1'
-assert_contains "$dir/compose.yaml" 'ROBAN_S2S_WORKFLOW_MCP_URL: http://127.0.0.1:8001/mcp'
+assert_contains "$dir/compose.yaml" 'ROBAN_S2S_WORKFLOW_MCP_URL: http://127.0.0.1:${ROBAN_WORKFLOW_MCP_PORT:-8889}/mcp'
 python3 - "$dir/compose.yaml" <<'PY'
 import sys
 text=open(sys.argv[1]).read()

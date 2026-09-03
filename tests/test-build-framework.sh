@@ -315,7 +315,7 @@ grep -q 'ROBAN_S2S_WORKFLOW_MCP_CREDENTIALS_PATH: /mcp-secrets/workflow.env' "$S
 grep -q '/data/saha/homeassistant-mcp/credentials.env:/mcp-secrets/homeassistant.env:ro' "$S2S_COMPOSE" || fail "S2S must mount Home Assistant MCP credentials read-only"
 grep -q '/data/saha/workflow-mcp/credentials.env:/mcp-secrets/workflow.env:ro' "$S2S_COMPOSE" || fail "S2S must mount workflow MCP credentials separately and read-only"
 grep -q 'ROBAN_S2S_HA_MCP_URL: http://127.0.0.1:8888/mcp' "$S2S_COMPOSE" || fail "S2S must use the host-local Home Assistant MCP endpoint"
-grep -q 'ROBAN_S2S_WORKFLOW_MCP_URL: http://127.0.0.1:8001/mcp' "$S2S_COMPOSE" || fail "S2S must use the host-local workflow MCP endpoint"
+grep -q 'ROBAN_S2S_WORKFLOW_MCP_URL: http://127.0.0.1:8889/mcp' "$S2S_COMPOSE" || fail "S2S must use the host-local workflow MCP endpoint"
 ! grep -Eq 'ROBAN_S2S_(GROK_TOKEN|DASHSCOPE_API_KEY|DASHSCOPE_WORKSPACE_ID|HA_MCP_TOKEN|WORKFLOW_MCP_TOKEN):[[:space:]]' "$S2S_COMPOSE" || fail "S2S must not receive credential contents through environment"
 ! grep -q '/data/model-config/s2s/ollama.env' "$S2S_LAUNCHER" || fail "S2S launcher must not consume the legacy Ollama-only selection"
 ! grep -q 'SAHA_OLLAMA_DEFAULT_CONFIG' "$OLLAMA_RECIPE" || fail "factory image must not package a default LLM selection"
@@ -509,7 +509,7 @@ for workflow_mcp_file in "$WORKFLOW_MCP_RECIPE" "$WORKFLOW_MCP_ENV" "$WORKFLOW_M
   [ -f "$workflow_mcp_file" ] || fail "workflow MCP integration file missing: $workflow_mcp_file"
 done
 ! grep -q '^WORKFLOW_API_URL=' "$WORKFLOW_MCP_ENV" || fail "workflow MCP upstream must not be configurable"
-grep -q '^WORKFLOW_MCP_PORT=8001$' "$WORKFLOW_MCP_ENV" || fail "workflow MCP must listen on port 8001"
+grep -q '^WORKFLOW_MCP_PORT=8889$' "$WORKFLOW_MCP_ENV" || fail "workflow MCP must listen on port 8889"
 grep -q 'WORKFLOW_MCP_ACCESS_TOKEN=' "$WORKFLOW_MCP_CREDENTIALS" || fail "workflow MCP must write its dedicated token variable"
 grep -q 'secrets.token_urlsafe(32)' "$WORKFLOW_MCP_CREDENTIALS" || fail "workflow MCP must generate an independent access token"
 grep -q '/data/saha/workflow-mcp' "$WORKFLOW_MCP_CREDENTIALS" || fail "workflow MCP credentials must persist on DATA"

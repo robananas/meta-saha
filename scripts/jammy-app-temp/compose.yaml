@@ -122,7 +122,7 @@ services:
       ROBAN_S2S_REALTIME_SETTINGS_PATH: /model-config/realtime-settings.json
       ROBAN_S2S_TOOL_PLUGIN_ROOT: /app/roban_voice_s2s/tool_plugins
       ROBAN_S2S_HA_MCP_URL: http://127.0.0.1:8888/mcp
-      ROBAN_S2S_WORKFLOW_MCP_URL: http://127.0.0.1:8001/mcp
+      ROBAN_S2S_WORKFLOW_MCP_URL: http://127.0.0.1:8889/mcp
       ROBAN_S2S_HA_MCP_CREDENTIALS_PATH: /mcp-secrets/homeassistant.env
       ROBAN_S2S_WORKFLOW_MCP_CREDENTIALS_PATH: /mcp-secrets/workflow.env
       ROBAN_S2S_KWS_PROVIDER: cpu
