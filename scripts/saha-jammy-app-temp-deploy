@@ -119,7 +119,9 @@ resolve_image() {
 
 install_release() {
   local release=$1 wifi=$2
-  install -d -m 0755 "$release" "$release/ble" "$release/ha-template/custom_components/saha_matter" "$release/matter-paa"
+  install -d -m 0755 "$release" "$release/ble" \
+    "$release/ha-template/custom_components/saha_matter" \
+    "$release/ha-template/custom_components/gree_cloud" "$release/matter-paa"
   install -m 0644 "$assets/compose.yaml" "$release/compose.yaml"
   install -m 0755 "$assets/launcher.sh" "$release/launcher.sh"
   install -m 0644 "$repo_root/saha-layers/meta-tegra-saha/recipes-saha/docker-compose/saha-docker-compose/saha-matter-server-offline.py" "$release/"
@@ -130,6 +132,7 @@ install_release() {
   for file in automations.yaml scenes.yaml scripts.yaml; do : >"$release/ha-template/$file"; done
   install -m 0644 "$ha_src/custom-components/saha_matter/__init__.py" "$release/ha-template/custom_components/saha_matter/__init__.py"
   install -m 0644 "$ha_src/custom-components/saha_matter/manifest.json" "$release/ha-template/custom_components/saha_matter/manifest.json"
+  cp -a "$ha_src/custom-components/gree_cloud/." "$release/ha-template/custom_components/gree_cloud/"
   if [[ ! -d $state/homeassistant-config/custom_components/xiaomi_home ]]; then
     local archive="$release/xiaomi-home.tar.gz" unpack="$release/.xiaomi-home"
     curl -fsSL https://github.com/XiaoMi/ha_xiaomi_home/archive/001af5384a66dddb6e45f60bbeee6e536c236af4.tar.gz -o "$archive"
@@ -169,7 +172,17 @@ PY
 seed_state() {
   install -d -m 0755 "$workspace" "$state" "$state/homeassistant-config" "$state/matter-server/credentials" "$state/workflow" "$state/board-status" "$runtime" "$runtime/board-status" "$releases" "$config"
   install -d -m 0700 "$state/homeassistant-credentials" "$state/workflow-mcp" "$secrets"
-  if [[ ! -f $state/homeassistant-config/configuration.yaml ]]; then cp -a "$workspace/current/ha-template/." "$state/homeassistant-config/"; fi
+  if [[ ! -f $state/homeassistant-config/configuration.yaml ]]; then
+    cp -a "$workspace/current/ha-template/." "$state/homeassistant-config/"
+  fi
+  for component in saha_matter gree_cloud; do
+    if [[ -d $workspace/current/ha-template/custom_components/$component ]]; then
+      rm -rf "$state/homeassistant-config/custom_components/$component"
+      install -d "$state/homeassistant-config/custom_components/$component"
+      cp -a "$workspace/current/ha-template/custom_components/$component/." \
+        "$state/homeassistant-config/custom_components/$component/"
+    fi
+  done
   for certificate in "$workspace/current/matter-paa"/*; do [[ ! -f $certificate ]] || [[ -e $state/matter-server/credentials/$(basename "$certificate") ]] || cp "$certificate" "$state/matter-server/credentials/"; done
   printf 'offline\n' >"$state/matter-server/credentials/.version"
   [[ -s $secrets/ble-device-ed25519.key ]] || install -m 0600 "$seed_dir/ble-device-ed25519.key" "$secrets/ble-device-ed25519.key"

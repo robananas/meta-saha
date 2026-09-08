@@ -104,7 +104,11 @@ install_assets() {
   cp -a "$repo_root/saha-layers/meta-tegra-saha/recipes-saha/homeassistant-config/saha-homeassistant-config/." "$release/ha-template/"
   for file in automations.yaml scenes.yaml scripts.yaml; do : >"$release/ha-template/$file"; done
   install -d "$release/ha-template/custom_components"
-  if [[ -d "$release/ha-template/custom-components/saha_matter" ]]; then mv "$release/ha-template/custom-components/saha_matter" "$release/ha-template/custom_components/"; fi
+  for component in saha_matter gree_cloud; do
+    if [[ -d "$release/ha-template/custom-components/$component" ]]; then
+      mv "$release/ha-template/custom-components/$component" "$release/ha-template/custom_components/"
+    fi
+  done
   rm -rf "$release/ha-template/custom-components"
   fetch_component() { local repo=$1 commit=$2 name=$3 subdir=${4:-custom_components/$3}; local archive="$release/$name.tar.gz" unpack="$release/.unpack-$name"; curl -fsSL "https://github.com/$repo/archive/$commit.tar.gz" -o "$archive"; mkdir -p "$unpack" "$release/ha-template/custom_components/$name"; tar -xzf "$archive" -C "$unpack" --strip-components=1; cp -a "$unpack/$subdir/." "$release/ha-template/custom_components/$name/"; rm -rf "$archive" "$unpack"; }
   if [[ ! -f /var/lib/homeassistant/configuration.yaml ]]; then
@@ -129,7 +133,19 @@ seed_state() {
   install -d -m 0755 "$state_dir" "$state_dir/workflow" "$state_dir/models/s2s" "$state_dir/model-config/s2s" "$state_dir/model-cache/s2s" "$state_dir/voiceprints" /var/lib/homeassistant /var/lib/matter-server/credentials /run/saha/board-status
   install -d -m 0700 "$state_dir/homeassistant" "$etc_dir" /etc/roban
   install -d -m 0750 -o root -g 999 "$etc_dir/s2s-secrets"
-  if [[ ! -f /var/lib/homeassistant/configuration.yaml ]]; then cp -a "$prefix/current/ha-template/." /var/lib/homeassistant/; fi
+  if [[ ! -f /var/lib/homeassistant/configuration.yaml ]]; then
+    cp -a "$prefix/current/ha-template/." /var/lib/homeassistant/
+  fi
+  # Managed integrations are refreshed on upgrade while user configuration and
+  # config entries remain untouched in the persistent Home Assistant directory.
+  for component in saha_matter gree_cloud; do
+    if [[ -d "$prefix/current/ha-template/custom_components/$component" ]]; then
+      rm -rf "/var/lib/homeassistant/custom_components/$component"
+      install -d "/var/lib/homeassistant/custom_components/$component"
+      cp -a "$prefix/current/ha-template/custom_components/$component/." \
+        "/var/lib/homeassistant/custom_components/$component/"
+    fi
+  done
   cp -a --update=none "$prefix/current/matter-paa/." /var/lib/matter-server/credentials/ || true
   printf 'offline\n' >/var/lib/matter-server/credentials/.version
   if [[ ! -s "$etc_dir/livekit.env" ]]; then

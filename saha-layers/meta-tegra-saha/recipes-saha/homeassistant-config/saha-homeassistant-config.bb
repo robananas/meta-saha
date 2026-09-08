@@ -1,6 +1,6 @@
 SUMMARY = "Default Home Assistant configuration for Saha devices"
-DESCRIPTION = "Installs a first-boot Home Assistant config template with \
-SmartIR, Xiaomi Home, and HACS custom components plus Matter integration defaults."
+DESCRIPTION = "Installs a Home Assistant config template with SmartIR, Xiaomi Home, \
+Gree Cloud, and HACS custom components plus Matter integration defaults."
 LICENSE = "MIT & Apache-2.0"
 LIC_FILES_CHKSUM = " \
     file://${COMMON_LICENSE_DIR}/MIT;md5=0835ade698e0bcf8506ecda2f7b4f302 \
@@ -29,6 +29,7 @@ SRC_URI = " \
     file://secrets.yaml \
     file://custom-components/saha_matter/__init__.py \
     file://custom-components/saha_matter/manifest.json \
+    file://custom-components/gree_cloud/ \
     file://install-custom-components.sh \
 "
 
@@ -61,6 +62,12 @@ do_install() {
         ${config_dir}/custom_components/saha_matter/__init__.py
     install -m 0644 ${UNPACKDIR}/custom-components/saha_matter/manifest.json \
         ${config_dir}/custom_components/saha_matter/manifest.json
+    install -d ${config_dir}/custom_components/gree_cloud
+    cp -R --no-preserve=ownership \
+        ${UNPACKDIR}/custom-components/gree_cloud/. \
+        ${config_dir}/custom_components/gree_cloud/
+    find ${config_dir}/custom_components/gree_cloud -type d -name __pycache__ \
+        -exec rm -rf {} + 2>/dev/null || true
 }
 
 FILES:${PN} = " \

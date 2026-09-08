@@ -53,6 +53,8 @@ assert_contains "$root/scripts/saha-jammy-app-temp-deploy" 'ROBAN_HA_MCP_IMAGE_T
 assert_contains "$root/scripts/saha-jammy-app-temp-deploy" 'ROBAN_S2S_IMAGE_TAG:-20260907-door-sensor-arm64'
 assert_contains "$root/scripts/jammy-app-temp/compose.yaml" '${IMAGE_WORKFLOW_MCP}'
 assert_contains "$root/scripts/jammy-app-temp/launcher.sh" 'WORKFLOW_MCP_ACCESS_TOKEN='
+assert_contains "$root/scripts/saha-jammy-app-temp-deploy" 'custom_components/gree_cloud'
+assert_contains "$root/scripts/saha-jammy-app-temp-deploy" 'for component in saha_matter gree_cloud'
 assert_contains "$dir/launcher.sh" 'service_prefix=${ROBAN_SERVICE_PREFIX'
 assert_not_contains "$dir/compose.yaml" 'ollama'
 assert_not_contains "$dir/compose.yaml" 'cosyvoice'

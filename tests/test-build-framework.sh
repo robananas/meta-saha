@@ -607,6 +607,20 @@ grep -q 'ws://127.0.0.1:5580/ws' \
   fail "Matter bootstrap must use the board-local Matter Server"
 grep -q 'custom-components/saha_matter/__init__.py' "$HA_CONFIG_RECIPE" ||
   fail "homeassistant config recipe must install the Matter bootstrap integration"
+GREE_COMPONENT="$ROOT_DIR/saha-layers/meta-tegra-saha/recipes-saha/homeassistant-config/saha-homeassistant-config/custom-components/gree_cloud"
+grep -q 'custom-components/gree_cloud/' "$HA_CONFIG_RECIPE" ||
+  fail "homeassistant config recipe must install the Gree Cloud integration"
+grep -q 'TOWER_FAN_SPEED_COUNT = 12' "$GREE_COMPONENT/const.py" ||
+  fail "Gree Cloud integration must model the U-T710 tower fan as 12-speed fan"
+grep -q 'attempts = 3' "$GREE_COMPONENT/greeclimate_cloud/cloud_device.py" ||
+  fail "Gree Cloud integration must retry unconfirmed idempotent commands"
+grep -q 'Command confirmed by' "$GREE_COMPONENT/greeclimate_cloud/cloud_device.py" ||
+  fail "Gree Cloud integration must require matching device confirmation"
+[ -f "$GREE_COMPONENT/aiomqtt/client.py" ] ||
+  fail "Gree Cloud MQTT dependency must be vendored for offline deployment"
+grep -q 'for component in saha_matter gree_cloud' \
+  "$ROOT_DIR/saha-layers/meta-tegra-saha/recipes-saha/docker-compose/saha-docker-compose/saha-docker-compose.sh" ||
+  fail "existing Home Assistant state must receive managed Gree component upgrades"
 grep -q 'keep_wifi_credentials_synchronized' \
   "$ROOT_DIR/saha-layers/meta-tegra-saha/recipes-saha/homeassistant-config/saha-homeassistant-config/custom-components/saha_matter/__init__.py" ||
   fail "Matter bootstrap must restore WiFi credentials after Matter Server restarts"

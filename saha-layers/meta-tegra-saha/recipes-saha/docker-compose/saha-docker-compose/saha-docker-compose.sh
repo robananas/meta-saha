@@ -250,18 +250,25 @@ seed_homeassistant_config() {
     template="${SAHA_HOMEASSISTANT_CONFIG_TEMPLATE:-/usr/share/saha/homeassistant/config-default}"
     config_dir="/var/lib/homeassistant"
 
-    if [ -f "${config_dir}/configuration.yaml" ]; then
-        return 0
-    fi
-
     if [ ! -d "$template" ]; then
         log "homeassistant config template missing: ${template}"
         return 0
     fi
 
-    log "seeding homeassistant config from ${template} to ${config_dir}"
     mkdir -p "$config_dir"
-    cp -a "${template}/." "${config_dir}/"
+    if [ ! -f "${config_dir}/configuration.yaml" ]; then
+        log "seeding homeassistant config from ${template} to ${config_dir}"
+        cp -a "${template}/." "${config_dir}/"
+    fi
+
+    for component in saha_matter gree_cloud; do
+        component_template="${template}/custom_components/${component}"
+        [ -d "$component_template" ] || continue
+        log "refreshing managed Home Assistant component ${component}"
+        rm -rf "${config_dir}/custom_components/${component}"
+        mkdir -p "${config_dir}/custom_components/${component}"
+        cp -a "${component_template}/." "${config_dir}/custom_components/${component}/"
+    done
 }
 
 start_stack() {
