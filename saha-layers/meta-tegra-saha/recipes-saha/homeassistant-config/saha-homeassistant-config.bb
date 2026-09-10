@@ -1,6 +1,6 @@
 SUMMARY = "Default Home Assistant configuration for Saha devices"
 DESCRIPTION = "Installs a Home Assistant config template with SmartIR, Xiaomi Home, \
-Gree Cloud, and HACS custom components plus Matter integration defaults."
+Gree Cloud, Midea Smart Home, and HACS custom components plus Matter integration defaults."
 LICENSE = "MIT & Apache-2.0"
 LIC_FILES_CHKSUM = " \
     file://${COMMON_LICENSE_DIR}/MIT;md5=0835ade698e0bcf8506ecda2f7b4f302 \
@@ -30,6 +30,9 @@ SRC_URI = " \
     file://custom-components/saha_matter/__init__.py \
     file://custom-components/saha_matter/manifest.json \
     file://custom-components/gree_cloud/ \
+    file://custom-components/midea_smart_home/ \
+    file://deps/ \
+    file://python-wheels/lupa-2.8-cp314-cp314-manylinux2014_aarch64.manylinux_2_17_aarch64.manylinux_2_28_aarch64.whl \
     file://install-custom-components.sh \
 "
 
@@ -68,6 +71,19 @@ do_install() {
         ${config_dir}/custom_components/gree_cloud/
     find ${config_dir}/custom_components/gree_cloud -type d -name __pycache__ \
         -exec rm -rf {} + 2>/dev/null || true
+    install -d ${config_dir}/custom_components/midea_smart_home
+    cp -R --no-preserve=ownership \
+        ${UNPACKDIR}/custom-components/midea_smart_home/. \
+        ${config_dir}/custom_components/midea_smart_home/
+    find ${config_dir}/custom_components/midea_smart_home -type d -name __pycache__ \
+        -exec rm -rf {} + 2>/dev/null || true
+
+    # Seed the ARM64 lupa wheel into /config/deps for offline Midea Smart Home.
+    install -d ${config_dir}/deps ${config_dir}/python-wheels
+    cp -R --no-preserve=ownership ${UNPACKDIR}/deps/. ${config_dir}/deps/
+    install -m 0644 \
+        ${UNPACKDIR}/python-wheels/lupa-2.8-cp314-cp314-manylinux2014_aarch64.manylinux_2_17_aarch64.manylinux_2_28_aarch64.whl \
+        ${config_dir}/python-wheels/
 }
 
 FILES:${PN} = " \

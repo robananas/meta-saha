@@ -618,9 +618,28 @@ grep -q 'Command confirmed by' "$GREE_COMPONENT/greeclimate_cloud/cloud_device.p
   fail "Gree Cloud integration must require matching device confirmation"
 [ -f "$GREE_COMPONENT/aiomqtt/client.py" ] ||
   fail "Gree Cloud MQTT dependency must be vendored for offline deployment"
-grep -q 'for component in saha_matter gree_cloud' \
+MIDEA_COMPONENT="$ROOT_DIR/saha-layers/meta-tegra-saha/recipes-saha/homeassistant-config/saha-homeassistant-config/custom-components/midea_smart_home"
+MIDEA_DEPS="$ROOT_DIR/saha-layers/meta-tegra-saha/recipes-saha/homeassistant-config/saha-homeassistant-config/deps"
+grep -q 'custom-components/midea_smart_home/' "$HA_CONFIG_RECIPE" ||
+  fail "homeassistant config recipe must install the Midea Smart Home integration"
+grep -q 'file://deps/' "$HA_CONFIG_RECIPE" ||
+  fail "homeassistant config recipe must package the offline lupa dependency tree"
+grep -q 'lupa-2.8-cp314-cp314-manylinux2014_aarch64' "$HA_CONFIG_RECIPE" ||
+  fail "homeassistant config recipe must package the ARM64 lupa wheel"
+[ -f "$MIDEA_COMPONENT/manifest.json" ] ||
+  fail "Midea Smart Home integration must be vendored for offline deployment"
+grep -q '"requirements": \[\]' "$MIDEA_COMPONENT/manifest.json" ||
+  fail "Midea Smart Home must not require online pip installs"
+[ -d "$MIDEA_DEPS/lupa" ] ||
+  fail "Midea Smart Home lupa package must be seeded under Home Assistant deps"
+[ -d "$MIDEA_DEPS/lupa-2.8.dist-info" ] ||
+  fail "Midea Smart Home lupa dist-info must be seeded under Home Assistant deps"
+grep -q 'for component in saha_matter gree_cloud midea_smart_home' \
   "$ROOT_DIR/saha-layers/meta-tegra-saha/recipes-saha/docker-compose/saha-docker-compose/saha-docker-compose.sh" ||
-  fail "existing Home Assistant state must receive managed Gree component upgrades"
+  fail "existing Home Assistant state must receive managed Gree/Midea component upgrades"
+grep -q 'refreshing Home Assistant lupa dependency for Midea Smart Home' \
+  "$ROOT_DIR/saha-layers/meta-tegra-saha/recipes-saha/docker-compose/saha-docker-compose/saha-docker-compose.sh" ||
+  fail "existing Home Assistant state must receive managed lupa dependency upgrades"
 grep -q 'keep_wifi_credentials_synchronized' \
   "$ROOT_DIR/saha-layers/meta-tegra-saha/recipes-saha/homeassistant-config/saha-homeassistant-config/custom-components/saha_matter/__init__.py" ||
   fail "Matter bootstrap must restore WiFi credentials after Matter Server restarts"

@@ -104,7 +104,7 @@ install_assets() {
   cp -a "$repo_root/saha-layers/meta-tegra-saha/recipes-saha/homeassistant-config/saha-homeassistant-config/." "$release/ha-template/"
   for file in automations.yaml scenes.yaml scripts.yaml; do : >"$release/ha-template/$file"; done
   install -d "$release/ha-template/custom_components"
-  for component in saha_matter gree_cloud; do
+  for component in saha_matter gree_cloud midea_smart_home; do
     if [[ -d "$release/ha-template/custom-components/$component" ]]; then
       mv "$release/ha-template/custom-components/$component" "$release/ha-template/custom_components/"
     fi
@@ -138,7 +138,7 @@ seed_state() {
   fi
   # Managed integrations are refreshed on upgrade while user configuration and
   # config entries remain untouched in the persistent Home Assistant directory.
-  for component in saha_matter gree_cloud; do
+  for component in saha_matter gree_cloud midea_smart_home; do
     if [[ -d "$prefix/current/ha-template/custom_components/$component" ]]; then
       rm -rf "/var/lib/homeassistant/custom_components/$component"
       install -d "/var/lib/homeassistant/custom_components/$component"
@@ -146,6 +146,20 @@ seed_state() {
         "/var/lib/homeassistant/custom_components/$component/"
     fi
   done
+  if [[ -d "$prefix/current/ha-template/deps/lupa" ]]; then
+    install -d /var/lib/homeassistant/deps
+    rm -rf /var/lib/homeassistant/deps/lupa
+    rm -rf /var/lib/homeassistant/deps/lupa-*.dist-info
+    cp -a "$prefix/current/ha-template/deps/lupa" /var/lib/homeassistant/deps/
+    for distinfo in "$prefix/current/ha-template/deps"/lupa-*.dist-info; do
+      [[ -d $distinfo ]] || continue
+      cp -a "$distinfo" /var/lib/homeassistant/deps/
+    done
+  fi
+  if [[ -d "$prefix/current/ha-template/python-wheels" ]]; then
+    install -d /var/lib/homeassistant/python-wheels
+    cp -a "$prefix/current/ha-template/python-wheels/." /var/lib/homeassistant/python-wheels/
+  fi
   cp -a --update=none "$prefix/current/matter-paa/." /var/lib/matter-server/credentials/ || true
   printf 'offline\n' >/var/lib/matter-server/credentials/.version
   if [[ ! -s "$etc_dir/livekit.env" ]]; then

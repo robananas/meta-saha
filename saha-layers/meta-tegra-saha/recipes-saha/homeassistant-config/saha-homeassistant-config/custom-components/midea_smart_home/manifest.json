@@ -1,0 +1,15 @@
+{
+  "domain": "midea_smart_home",
+  "name": "Midea Smart Home",
+  "codeowners": [
+    "@Cyborg2017"
+  ],
+  "config_flow": true,
+  "dependencies": [],
+  "documentation": "https://github.com/Cyborg2017/midea_smart_home",
+  "integration_type": "device",
+  "iot_class": "local_polling",
+  "issue_tracker": "https://github.com/Cyborg2017/midea_smart_home/issues",
+  "requirements": [],
+  "version": "26.9.1-b0"
+}

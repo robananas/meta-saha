@@ -261,7 +261,7 @@ seed_homeassistant_config() {
         cp -a "${template}/." "${config_dir}/"
     fi
 
-    for component in saha_matter gree_cloud; do
+    for component in saha_matter gree_cloud midea_smart_home; do
         component_template="${template}/custom_components/${component}"
         [ -d "$component_template" ] || continue
         log "refreshing managed Home Assistant component ${component}"
@@ -269,6 +269,23 @@ seed_homeassistant_config() {
         mkdir -p "${config_dir}/custom_components/${component}"
         cp -a "${component_template}/." "${config_dir}/custom_components/${component}/"
     done
+
+    # Refresh the offline lupa dependency used by midea_smart_home.
+    if [ -d "${template}/deps/lupa" ]; then
+        log "refreshing Home Assistant lupa dependency for Midea Smart Home"
+        mkdir -p "${config_dir}/deps"
+        rm -rf "${config_dir}/deps/lupa"
+        rm -rf "${config_dir}/deps"/lupa-*.dist-info
+        cp -a "${template}/deps/lupa" "${config_dir}/deps/"
+        for distinfo in "${template}/deps"/lupa-*.dist-info; do
+            [ -d "$distinfo" ] || continue
+            cp -a "$distinfo" "${config_dir}/deps/"
+        done
+    fi
+    if [ -d "${template}/python-wheels" ]; then
+        mkdir -p "${config_dir}/python-wheels"
+        cp -a "${template}/python-wheels/." "${config_dir}/python-wheels/"
+    fi
 }
 
 start_stack() {

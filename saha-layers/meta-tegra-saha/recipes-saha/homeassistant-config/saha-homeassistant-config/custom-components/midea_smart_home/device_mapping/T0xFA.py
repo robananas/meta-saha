@@ -1,0 +1,218 @@
+from custom_components.midea_smart_home.device_mapping._common import *
+
+DEVICE_MAPPING = {
+    "default": {
+        "rationale": ["off", "on"],
+        "entities": {
+            Platform.SWITCH: {
+                "display_on_off": {
+                    "device_class": SwitchDeviceClass.SWITCH,
+                    "rationale": ["on", "off"],
+                },
+                "humidify": {
+                    "device_class": SwitchDeviceClass.SWITCH,
+                    "rationale": ["off", "1"],
+                },
+                "waterions": {
+                    "device_class": SwitchDeviceClass.SWITCH,
+                }
+            },
+            Platform.FAN: {
+                "fan": {
+                    "power": "power",
+                    "speeds": list({"gear": value + 1} for value in range(0, 12)),
+                    "oscillate": "swing",
+                    "preset_modes": {
+                        "normal": {
+                            "mode": "normal",
+                            "speeds": list({"gear": value + 1} for value in range(0, 12))
+                        },
+                        "comfort": {
+                            "mode": "comfort",
+                            "speeds": list({"gear": value + 1} for value in range(0, 3))
+                        },
+                        "sleep": {
+                            "mode": "sleep",
+                            "speeds": list({"gear": value + 1} for value in range(0, 3))
+                        },
+                        "baby": {
+                            "mode": "baby",
+                            "speeds": list({"gear": value + 1} for value in range(0, 1))
+                        },
+                        "strong": {
+                            "mode": "strong",
+                            "speeds": [{"gear": 12}]
+                        }
+                    }
+                }
+            }
+        }
+    },
+    "default_fan": {
+        "rationale": ["off", "on"],
+        "entities": {
+            Platform.SWITCH: {
+                "display_on_off": {
+                    "device_class": SwitchDeviceClass.SWITCH,
+                    "rationale": ["on", "off"],
+                },
+                "humidify": {
+                    "device_class": SwitchDeviceClass.SWITCH,
+                    "rationale": ["off", "1"],
+                },
+                "waterions": {
+                    "device_class": SwitchDeviceClass.SWITCH,
+                }
+            },
+            Platform.FAN: {
+                "fan": {
+                    "power": "power",
+                    "speeds": list({"gear": value + 1} for value in range(0, 3)),
+                    "oscillate": "swing",
+                    "preset_modes": {
+                        "normal": {
+                            "mode": "normal",
+                            "speeds": list({"gear": value + 1} for value in range(0, 3))
+                        },
+                        "sleep": {
+                            "mode": "sleep",
+                            "speeds": list({"gear": value + 1} for value in range(0, 2))
+                        },
+                        "baby": {
+                            "mode": "baby",
+                            "speeds": list({"gear": value + 1} for value in range(0, 1))
+                        }
+                    }
+                }
+            }
+        }
+    },
+    "560011AH": {
+        "rationale": ["off", "on"],
+        "entities": {
+            Platform.SWITCH: {
+                "display_on_off": {
+                    "device_class": SwitchDeviceClass.SWITCH,
+                    "rationale": ["on", "off"],
+                },
+                "humidify": {
+                    "device_class": SwitchDeviceClass.SWITCH,
+                    "rationale": ["off", "1"],
+                },
+                "anion": {
+                    "device_class": SwitchDeviceClass.SWITCH,
+                },
+                "temp_wind_switch": {
+                    "device_class": SwitchDeviceClass.SWITCH,
+                },
+                "voice": {
+                    "device_class": SwitchDeviceClass.SWITCH,
+                    "rationale": ['close_buzzer', 'open_buzzer'],
+                    "translation_key": "buzzer"
+                }
+            },
+            Platform.FAN: {
+                "fan": {
+                    "power": "power",
+                    "speeds": list({"gear": value + 1} for value in range(0, 6)),
+                    "oscillate": "swing",
+                    "preset_modes": {
+                        "normal": {
+                            "mode": "normal",
+                            "speeds": list({"gear": value + 1} for value in range(0, 6))
+                        },
+                        "sleep": {
+                            "mode": "sleep",
+                            "speeds": list({"gear": value + 1} for value in range(0, 3))
+                        },
+                        "baby": {
+                            "mode": "baby",
+                            "speeds": list({"gear": value + 1} for value in range(0, 2))
+                        }
+                    }
+                }
+            },
+            Platform.SENSOR: {
+                "temperature_feedback": {
+                    "device_class": SensorDeviceClass.TEMPERATURE,
+                    "unit_of_measurement": UnitOfTemperature.CELSIUS,
+                    "state_class": SensorStateClass.MEASUREMENT,
+                    "translation_key": "cur_temperature"
+                }
+            }
+        }
+    },
+    "BGF10000": {
+        "rationale": ["off", "on"],
+        "entities": {
+            Platform.FAN: {
+                "fan": {
+                    "power": "power",
+                    "speeds": list({"gear": value + 1} for value in range(0, 12)),
+                    "oscillate": "swing",
+                    "preset_modes": {
+                        "normal": {
+                            "mode": "normal",
+                            "speeds": list({"gear": value + 1} for value in range(0, 12))
+                        },
+                        "comfort": {
+                            "mode": "comfort",
+                            "speeds": list({"gear": value + 1} for value in range(0, 3))
+                        },
+                        "sleep": {
+                            "mode": "sleep",
+                            "speeds": list({"gear": value + 1} for value in range(0, 3))
+                        },
+                        "strong": {
+                            "mode": "strong",
+                            "speeds": [{"gear": 12}]
+                        }
+                    }
+                }
+            }
+        }
+    },
+    "56011C99": {
+        "rationale": ["off", "on"],
+        "entities": {
+            Platform.SWITCH: {
+                "display_on_off": {
+                    "device_class": SwitchDeviceClass.SWITCH,
+                    "rationale": ["on", "off"]
+                },
+                "voice": {
+                    "device_class": SwitchDeviceClass.SWITCH,
+                    "rationale": ["close_buzzer", "open_buzzer"],
+                    "translation_key": "buzzer"
+                }
+            },
+            Platform.FAN: {
+                "fan": {
+                    "power": "power",
+                    "speeds": list({"gear": value + 1} for value in range(0, 9)),
+                    "oscillate": "lr_swing",
+                    "preset_modes": {
+                        "normal": {
+                            "mode": "normal",
+                            "speeds": list({"gear": value + 1} for value in range(0, 9))
+                        },
+                        "storm": {
+                            "mode": "storm",
+                            "speeds": [{"gear": 9}]
+                        }
+                    }
+                }
+            },
+            Platform.SELECT: {
+                "ud_swing": {
+                    "options": {
+                        "off": {"ud_swing": "off"},
+                        "angle_30": {"ud_swing": "30"},
+                        "angle_60": {"ud_swing": "60"},
+                        "angle_135": {"ud_swing": "135"}
+                    }
+                }
+            }
+        }
+    }
+}
