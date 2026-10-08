@@ -2,7 +2,7 @@
 set -eu
 
 output=$1
-image=${WORKFLOW_MCP_IMAGE:-roban-workflow-mcp:arm64}
+image=${WORKFLOW_MCP_IMAGE:-roban-workflow-mcp:20260825-domain-arm64}
 image_arch=${WORKFLOW_MCP_IMAGE_ARCH:-arm64}
 archive=${WORKFLOW_MCP_LOCAL_TAR:-}
 

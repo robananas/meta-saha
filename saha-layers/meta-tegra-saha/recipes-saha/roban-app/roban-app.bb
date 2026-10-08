@@ -1,12 +1,12 @@
 SUMMARY = "Preloaded Roban workflow API container image for Jetson (arm64)"
-DESCRIPTION = "Installs the local roban-workflow-api:arm64 container image as a \
+DESCRIPTION = "Installs the local roban-workflow-api:20260902-ha-refresh-arm64 container image as a \
 docker-archive tarball for offline docker load on first boot."
 LICENSE = "MIT"
 LIC_FILES_CHKSUM = "file://${COMMON_LICENSE_DIR}/MIT;md5=0835ade698e0bcf8506ecda2f7b4f302"
 
 PV = "1.0"
 
-ROBAN_WORKFLOW_IMAGE ?= "roban-workflow-api:arm64"
+ROBAN_WORKFLOW_IMAGE ?= "roban-workflow-api:20260902-ha-refresh-arm64"
 ROBAN_WORKFLOW_IMAGE_OS ?= "linux"
 ROBAN_WORKFLOW_IMAGE_ARCH ?= "arm64"
 ROBAN_WORKFLOW_IMAGE_BASENAME ?= "roban-workflow-api"

@@ -337,7 +337,7 @@ grep -q 'saha-s2s' \
 grep -q 'packagegroup-saha-nvidia-containers' "$S2S_PACKAGEGROUP" || fail "S2S packagegroup must opt into GPU support"
 ! grep -q 'saha-s2s-container-image' "$S2S_PACKAGEGROUP" || fail "S2S preload archive must be exclusive to DATA image"
 grep -q 'saha-s2s' "$S2S_PACKAGEGROUP" || fail "S2S packagegroup must install its runtime"
-grep -q 'S2S_IMAGE ?= "roban-s2s:20260902-catalog-primary-fix-arm64"' "$S2S_IMAGE_RECIPE" || fail "S2S image tag must use the validated MCP URL fix contract"
+grep -q 'S2S_IMAGE ?= "roban-s2s:20260907-door-sensor-arm64"' "$S2S_IMAGE_RECIPE" || fail "S2S image tag must use the validated door-sensor contract"
 grep -q 'do_fetch_image\[network\] = "0"' "$S2S_IMAGE_RECIPE" || fail "S2S image recipe must remain local-only"
 grep -q 'do_fetch_image\[nostamp\] = "1"' "$S2S_IMAGE_RECIPE" || fail "S2S image recipe must revalidate its mutable archive"
 grep -q 'validate_archive' "$S2S_FETCH" || fail "S2S image archive must be validated"
@@ -464,9 +464,22 @@ spec.loader.exec_module(module)
 assert asyncio.run(module._skip_dcl_ota()) == (None, None)
 PY
   fail "Matter offline OTA lookup must return the expected two-item result"
-grep -q 'roban-workflow-api:arm64' \
+grep -q 'roban-workflow-api:20260902-ha-refresh-arm64' \
   "$ROOT_DIR/saha-layers/meta-tegra-saha/recipes-saha/docker-compose/saha-docker-compose/compose.yaml" ||
-  fail "compose stack must include roban-workflow-api"
+  fail "compose stack must include the validated roban-workflow-api image"
+grep -q 'ROBAN_WORKFLOW_IMAGE ?= "roban-workflow-api:20260902-ha-refresh-arm64"' \
+  "$ROOT_DIR/saha-layers/meta-tegra-saha/recipes-saha/roban-app/roban-app.bb" ||
+  fail "roban-app preload must require the validated workflow API tag"
+grep -q 'LIVEKIT_PUBLIC_URL' \
+  "$ROOT_DIR/saha-layers/meta-tegra-saha/recipes-saha/docker-compose/saha-docker-compose/compose.yaml" ||
+  fail "livekit-agent must expose LIVEKIT_PUBLIC_URL like Ubuntu deploy"
+grep -q 'resolve_livekit_public_url' \
+  "$ROOT_DIR/saha-layers/meta-tegra-saha/recipes-saha/docker-compose/saha-docker-compose/saha-docker-compose.sh" ||
+  fail "compose launcher must resolve LIVEKIT_PUBLIC_URL from the WiFi address"
+grep -A20 '^  homeassistant-mcp:' \
+  "$ROOT_DIR/saha-layers/meta-tegra-saha/recipes-saha/docker-compose/saha-docker-compose/compose.yaml" |
+  grep -q '/data/saha/homeassistant:/data/saha/homeassistant:ro' ||
+  fail "homeassistant-mcp must mount HA credentials read-only"
 BOARD_STATUS_RECIPE="$ROOT_DIR/saha-layers/meta-tegra-saha/recipes-saha/board-status/saha-board-status.bb"
 BOARD_STATUS_SERVICE="$ROOT_DIR/saha-layers/meta-tegra-saha/recipes-saha/board-status/saha-board-status/saha-board-status.service"
 BOARD_STATUS_IMPL="$ROOT_DIR/saha-layers/meta-tegra-saha/recipes-saha/board-status/saha-board-status/saha-board-status.py"
@@ -518,7 +531,7 @@ grep -q 'chmod 0640.*credentials_file' "$WORKFLOW_MCP_CREDENTIALS" || fail "work
 grep -q 'chown 0:999.*credentials_file' "$ROOT_DIR/saha-layers/meta-tegra-saha/recipes-saha/homeassistant-mcp/saha-homeassistant-mcp/saha-homeassistant-mcp-credentials.sh" || fail "Home Assistant MCP credentials must be readable by the S2S service group"
 grep -q 'saha-workflow-mcp-credentials.service' "$ROOT_DIR/saha-layers/meta-tegra-saha/recipes-saha/docker-compose/saha-docker-compose/saha-docker-compose.service" || fail "compose must wait for workflow MCP credentials"
 grep -q 'workflow-mcp:' "$ROOT_DIR/saha-layers/meta-tegra-saha/recipes-saha/docker-compose/saha-docker-compose/compose.yaml" || fail "compose stack must start workflow MCP"
-grep -q 'roban-workflow-mcp:arm64' "$ROOT_DIR/saha-layers/meta-tegra-saha/recipes-saha/docker-compose/saha-docker-compose/compose.yaml" || fail "workflow MCP image tag must match the backend contract"
+grep -q 'roban-workflow-mcp:20260825-domain-arm64' "$ROOT_DIR/saha-layers/meta-tegra-saha/recipes-saha/docker-compose/saha-docker-compose/compose.yaml" || fail "workflow MCP image tag must match the backend contract"
 grep -q 'condition: service_started' "$ROOT_DIR/saha-layers/meta-tegra-saha/recipes-saha/docker-compose/saha-docker-compose/compose.yaml" || fail "workflow MCP must wait for workflow API"
 grep -q 'SAHA_WORKFLOW_MCP_CREDENTIALS_FILE' "$ROOT_DIR/saha-layers/meta-tegra-saha/recipes-saha/docker-compose/saha-docker-compose/saha-docker-compose.sh" || fail "compose launcher must export workflow MCP credentials"
 grep -q 'read_only: true' "$ROOT_DIR/saha-layers/meta-tegra-saha/recipes-saha/docker-compose/saha-docker-compose/compose.yaml" || fail "MCP containers must use read-only roots"
@@ -528,7 +541,7 @@ grep -q 'saha-workflow-mcp-container-image' "$ROOT_DIR/saha-layers/meta-tegra-sa
 grep -q 'saha-workflow-mcp' "$ROOT_DIR/saha-layers/meta-tegra-saha/recipes-saha/packagegroups/packagegroup-saha-docker-images.bb" || fail "APP image must install workflow MCP runtime configuration"
 grep -q 'workflow-mcp' "$DATA_IMAGE" || fail "DATA image must promote workflow MCP preload"
 grep -q 'for name in homeassistant homeassistant-mcp workflow-api workflow-mcp' "$ROOT_DIR/saha-layers/meta-tegra-saha/recipes-saha/saha-data-layout/saha-data-layout/saha-data-layout.sh" || fail "DATA layout must persist workflow API data, workflow MCP credentials, and legacy symlinks"
-grep -q 'WORKFLOW_MCP_IMAGE ?= "roban-workflow-mcp:arm64"' "$WORKFLOW_MCP_IMAGE_RECIPE" || fail "workflow MCP preload must require the expected tag"
+grep -q 'WORKFLOW_MCP_IMAGE ?= "roban-workflow-mcp:20260825-domain-arm64"' "$WORKFLOW_MCP_IMAGE_RECIPE" || fail "workflow MCP preload must require the expected tag"
 grep -q 'WORKFLOW_MCP_LOCAL_TAR ?= "${DL_DIR}/roban-workflow-mcp.tar"' "$WORKFLOW_MCP_IMAGE_RECIPE" || fail "workflow MCP preload must consume the offline DL_DIR archive"
 grep -q 'do_fetch_image\[network\] = "0"' "$WORKFLOW_MCP_IMAGE_RECIPE" || fail "workflow MCP preload must forbid network fetches"
 grep -q 'do_fetch_image\[nostamp\] = "1"' "$WORKFLOW_MCP_IMAGE_RECIPE" || fail "workflow MCP preload must revalidate mutable local archives"
@@ -708,8 +721,13 @@ grep -q 'UMask=0077' \
 grep -q '^StateDirectory=saha$' \
   "$ROOT_DIR/saha-layers/meta-tegra-saha/recipes-saha/bt-wifi-provision/saha-bt-wifi-provision/saha-bt-wifi-provision.service" ||
   fail "WiFi provisioning state must remain on rootfs"
-! grep -q '/data/' "$ROOT_DIR/saha-layers/meta-tegra-saha/recipes-saha/bt-wifi-provision/saha-bt-wifi-provision/saha-bt-wifi-provision.service" ||
-  fail "WiFi provisioning must not depend on DATA"
+grep -Eq '^ReadWritePaths=.*/data/saha/homeassistant( |$)' \
+  "$ROOT_DIR/saha-layers/meta-tegra-saha/recipes-saha/bt-wifi-provision/saha-bt-wifi-provision/saha-bt-wifi-provision.service" ||
+  fail "WiFi provisioning must be allowed to write board-owned HA credentials on DATA"
+! grep -E '/data/' \
+  "$ROOT_DIR/saha-layers/meta-tegra-saha/recipes-saha/bt-wifi-provision/saha-bt-wifi-provision/saha-bt-wifi-provision.service" |
+  grep -vq '/data/saha/homeassistant' ||
+  fail "WiFi provisioning must not depend on DATA paths other than HA credentials"
 grep -q '^RuntimeDirectoryPreserve=yes$' \
   "$ROOT_DIR/saha-layers/meta-tegra-saha/recipes-saha/bt-wifi-provision/saha-bt-wifi-provision/saha-bt-wifi-provision.service" ||
   fail "WiFi provisioning restarts must preserve the shared /run/saha status directory"
@@ -1066,9 +1084,15 @@ grep -q 'Roban-Bluetooth' "$ROOT_DIR/saha-layers/meta-tegra-saha/recipes-connect
 grep -Eq '^ReverseServiceDiscovery[[:space:]]*=[[:space:]]*false$' \
   "$ROOT_DIR/saha-layers/meta-tegra-saha/recipes-connectivity/bluez/bluez5/main.conf" ||
   fail "BlueZ peripheral must disable reverse GATT discovery to avoid Android pairing prompts"
-grep -q 'Experimental = true' \
+grep -q 'MinAdvertisementInterval=0x00a0' \
   "$ROOT_DIR/saha-layers/meta-tegra-saha/recipes-connectivity/bluez/bluez5/main.conf" ||
-  fail "bluez5 must enable experimental GATT support"
+  fail "bluez5 must set the Ubuntu-validated LE advertisement min interval"
+grep -q 'MaxAdvertisementInterval=0x00f0' \
+  "$ROOT_DIR/saha-layers/meta-tegra-saha/recipes-connectivity/bluez/bluez5/main.conf" ||
+  fail "bluez5 must set the Ubuntu-validated LE advertisement max interval"
+! grep -Eq '^Experimental[[:space:]]*=' \
+  "$ROOT_DIR/saha-layers/meta-tegra-saha/recipes-connectivity/bluez/bluez5/main.conf" ||
+  fail "bluez5 must not require Experimental mode after the Ubuntu BLE sync"
 grep -q 'ControllerMode = le' \
   "$ROOT_DIR/saha-layers/meta-tegra-saha/recipes-connectivity/bluez/bluez5/main.conf" ||
   fail "bluez5 must run the controller in LE-only mode"
@@ -1079,6 +1103,8 @@ BLUEZ_SERVICE_DROPIN="$ROOT_DIR/saha-layers/meta-tegra-saha/recipes-connectivity
 if grep -Eq '^(Requires|After)=.*ble-identity' "$BLUEZ_SERVICE_DROPIN"; then
   fail "bluetoothd must not depend on a BLE identity service"
 fi
+! grep -q -- '--experimental' "$BLUEZ_SERVICE_DROPIN" ||
+  fail "bluetoothd must not start with --experimental after the Ubuntu BLE sync"
 grep -q 'Wants=saha-bt-wifi-provision.service' "$BLUEZ_SERVICE_DROPIN" ||
   fail "bluetoothd must pull in WiFi provisioning"
 grep -q 'Before=saha-bt-wifi-provision.service' "$BLUEZ_SERVICE_DROPIN" ||

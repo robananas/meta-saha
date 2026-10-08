@@ -1,10 +1,10 @@
 SUMMARY = "Preloaded workflow control MCP container image"
-DESCRIPTION = "Packages a validated local roban-workflow-mcp:arm64 Docker archive for offline first boot."
+DESCRIPTION = "Packages a validated local roban-workflow-mcp:20260825-domain-arm64 Docker archive for offline first boot."
 LICENSE = "MIT"
 LIC_FILES_CHKSUM = "file://${COMMON_LICENSE_DIR}/MIT;md5=0835ade698e0bcf8506ecda2f7b4f302"
 
 PV = "1.0"
-WORKFLOW_MCP_IMAGE ?= "roban-workflow-mcp:arm64"
+WORKFLOW_MCP_IMAGE ?= "roban-workflow-mcp:20260825-domain-arm64"
 WORKFLOW_MCP_IMAGE_ARCH ?= "arm64"
 WORKFLOW_MCP_LOCAL_TAR ?= "${DL_DIR}/roban-workflow-mcp.tar"
 

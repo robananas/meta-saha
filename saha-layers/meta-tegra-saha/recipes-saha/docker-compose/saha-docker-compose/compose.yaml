@@ -28,7 +28,7 @@ services:
       - /etc/default/home-assistant-mcp
       - ${SAHA_HOMEASSISTANT_MCP_CREDENTIALS_FILE:-/data/saha/homeassistant-mcp/credentials.env}
     volumes:
-      - /data/saha/homeassistant:/data/saha/homeassistant
+      - /data/saha/homeassistant:/data/saha/homeassistant:ro
     read_only: true
     tmpfs:
       - /tmp:size=16m,mode=1777
@@ -62,9 +62,9 @@ services:
         - python3
         - -c
         - "import socket; socket.create_connection(('127.0.0.1', 5580), 2).close()"
-      interval: 2s
+      interval: 3s
       timeout: 3s
-      retries: 30
+      retries: 60
       start_period: 2s
     command:
       - --storage-path
@@ -78,7 +78,7 @@ services:
 
   roban-workflow-api:
     container_name: roban-workflow-api
-    image: roban-workflow-api:arm64
+    image: ${SAHA_ROBAN_WORKFLOW_IMAGE:-roban-workflow-api:20260902-ha-refresh-arm64}
     restart: on-failure:5
     network_mode: host
     volumes:
@@ -94,7 +94,7 @@ services:
 
   workflow-mcp:
     container_name: workflow-mcp
-    image: ${SAHA_WORKFLOW_MCP_IMAGE:-roban-workflow-mcp:arm64}
+    image: ${SAHA_WORKFLOW_MCP_IMAGE:-roban-workflow-mcp:20260825-domain-arm64}
     restart: on-failure:5
     network_mode: host
     depends_on:
@@ -133,6 +133,7 @@ services:
       - ${SAHA_LIVEKIT_CREDENTIALS_FILE:-/var/lib/saha/livekit/credentials.env}
     environment:
       LIVEKIT_URL: ws://127.0.0.1:7880
+      LIVEKIT_PUBLIC_URL: ${LIVEKIT_PUBLIC_URL:-ws://127.0.0.1:7880}
       LIVEKIT_AGENT_NAME: ${SAHA_LIVEKIT_AGENT_NAME:-roban-agent}
       OPENAI_API_KEY: ${OPENAI_API_KEY:-}
       ROBAN_TOKEN_PORT: "7883"

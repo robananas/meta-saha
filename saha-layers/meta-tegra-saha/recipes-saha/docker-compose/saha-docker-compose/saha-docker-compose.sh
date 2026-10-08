@@ -22,9 +22,9 @@ SAHA_HOMEASSISTANT_MCP_IMAGE_TAR="${SAHA_HOMEASSISTANT_MCP_IMAGE_TAR:-/data/prel
 SAHA_HOMEASSISTANT_MCP_CREDENTIALS_FILE="${SAHA_HOMEASSISTANT_MCP_CREDENTIALS_FILE:-/data/saha/homeassistant-mcp/credentials.env}"
 SAHA_MATTER_SERVER_IMAGE="${SAHA_MATTER_SERVER_IMAGE:-ghcr.io/matter-js/python-matter-server:arm64}"
 SAHA_MATTER_SERVER_IMAGE_TAR="${SAHA_MATTER_SERVER_IMAGE_TAR:-/data/preload/matter-server/image.tar}"
-SAHA_ROBAN_WORKFLOW_IMAGE="${SAHA_ROBAN_WORKFLOW_IMAGE:-roban-workflow-api:arm64}"
+SAHA_ROBAN_WORKFLOW_IMAGE="${SAHA_ROBAN_WORKFLOW_IMAGE:-roban-workflow-api:20260902-ha-refresh-arm64}"
 SAHA_ROBAN_WORKFLOW_IMAGE_TAR="${SAHA_ROBAN_WORKFLOW_IMAGE_TAR:-/data/preload/roban-workflow-api/image.tar}"
-SAHA_WORKFLOW_MCP_IMAGE="${SAHA_WORKFLOW_MCP_IMAGE:-roban-workflow-mcp:arm64}"
+SAHA_WORKFLOW_MCP_IMAGE="${SAHA_WORKFLOW_MCP_IMAGE:-roban-workflow-mcp:20260825-domain-arm64}"
 SAHA_WORKFLOW_MCP_IMAGE_TAR="${SAHA_WORKFLOW_MCP_IMAGE_TAR:-/data/preload/workflow-mcp/image.tar}"
 SAHA_WORKFLOW_MCP_CREDENTIALS_FILE="${SAHA_WORKFLOW_MCP_CREDENTIALS_FILE:-/data/saha/workflow-mcp/credentials.env}"
 SAHA_LIVEKIT_SERVER_IMAGE="${SAHA_LIVEKIT_SERVER_IMAGE:-livekit/livekit-server:v1.13.4}"
@@ -34,6 +34,8 @@ SAHA_LIVEKIT_AGENT_IMAGE_TAR="${SAHA_LIVEKIT_AGENT_IMAGE_TAR:-/data/preload/live
 SAHA_LIVEKIT_API_KEY="${SAHA_LIVEKIT_API_KEY:-roban-local}"
 SAHA_LIVEKIT_API_SECRET="${SAHA_LIVEKIT_API_SECRET:-}"
 SAHA_LIVEKIT_CREDENTIALS_FILE="${SAHA_LIVEKIT_CREDENTIALS_FILE:-/var/lib/saha/livekit/credentials.env}"
+SAHA_WIFI_INTERFACE="${SAHA_WIFI_INTERFACE:-wlan0}"
+LIVEKIT_PUBLIC_URL="${LIVEKIT_PUBLIC_URL:-}"
 SAHA_DOCKER_LOAD_LOCK="${SAHA_DOCKER_LOAD_LOCK:-/run/lock/saha-docker-load.lock}"
 
 log() {
@@ -227,6 +229,21 @@ ensure_livekit_credentials() {
     } >"$SAHA_LIVEKIT_CREDENTIALS_FILE"
 }
 
+resolve_livekit_public_url() {
+    if [ -n "$LIVEKIT_PUBLIC_URL" ]; then
+        return 0
+    fi
+    wifi_ip=$(
+        ip -4 -brief address show "$SAHA_WIFI_INTERFACE" 2>/dev/null |
+            awk '{split($3,a,"/"); print a[1]}'
+    )
+    if [ -n "$wifi_ip" ]; then
+        LIVEKIT_PUBLIC_URL="ws://${wifi_ip}:7880"
+    else
+        LIVEKIT_PUBLIC_URL="ws://127.0.0.1:7880"
+    fi
+}
+
 seed_matter_certificates() {
     template="${SAHA_MATTER_PAA_TEMPLATE:-/usr/share/saha/matter-server/paa-root-certs}"
     credentials_dir="/var/lib/matter-server/credentials"
@@ -296,13 +313,16 @@ start_stack() {
     seed_matter_certificates
     seed_homeassistant_config
     ensure_livekit_credentials
+    resolve_livekit_public_url
     export TZ="$SAHA_DOCKER_COMPOSE_TZ"
     export SAHA_HOMEASSISTANT_MCP_IMAGE SAHA_HOMEASSISTANT_MCP_CREDENTIALS_FILE
+    export SAHA_ROBAN_WORKFLOW_IMAGE
     export SAHA_WORKFLOW_MCP_IMAGE SAHA_WORKFLOW_MCP_CREDENTIALS_FILE
     export SAHA_LIVEKIT_SERVER_IMAGE SAHA_LIVEKIT_AGENT_IMAGE
     export SAHA_LIVEKIT_AGENT_NAME="${SAHA_LIVEKIT_AGENT_NAME:-roban-agent}"
     export OPENAI_API_KEY="${OPENAI_API_KEY:-}"
     export SAHA_LIVEKIT_CREDENTIALS_FILE
+    export LIVEKIT_PUBLIC_URL
     cd "$SAHA_DOCKER_COMPOSE_DIR"
     docker compose -f "$SAHA_DOCKER_COMPOSE_FILE" up -d
 }
