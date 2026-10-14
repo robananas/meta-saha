@@ -11,6 +11,9 @@
 		},
 		{
 			"path": "../generate-image-tool"
+		},
+		{
+			"path": "../meta-saha-x5"
 		}
 	],
 	"settings": {

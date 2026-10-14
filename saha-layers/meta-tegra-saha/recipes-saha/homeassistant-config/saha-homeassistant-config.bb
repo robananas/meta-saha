@@ -78,9 +78,14 @@ do_install() {
     find ${config_dir}/custom_components/midea_smart_home -type d -name __pycache__ \
         -exec rm -rf {} + 2>/dev/null || true
 
-    # Seed the ARM64 lupa wheel into /config/deps for offline Midea Smart Home.
-    install -d ${config_dir}/deps ${config_dir}/python-wheels
+    # Seed lupa for offline Midea Smart Home. HA loads deps via its user site
+    # (deps/lib/python3.14/site-packages); keep a copy at deps/ for the template.
+    install -d ${config_dir}/deps \
+        ${config_dir}/deps/lib/python3.14/site-packages \
+        ${config_dir}/python-wheels
     cp -R --no-preserve=ownership ${UNPACKDIR}/deps/. ${config_dir}/deps/
+    cp -R --no-preserve=ownership ${UNPACKDIR}/deps/. \
+        ${config_dir}/deps/lib/python3.14/site-packages/
     install -m 0644 \
         ${UNPACKDIR}/python-wheels/lupa-2.8-cp314-cp314-manylinux2014_aarch64.manylinux_2_17_aarch64.manylinux_2_28_aarch64.whl \
         ${config_dir}/python-wheels/

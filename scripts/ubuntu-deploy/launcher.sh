@@ -18,7 +18,7 @@ wait_http() {
 case "${1:-}" in
   data-layout)
     install -d -m 0755 /run/saha/board-status /data/saha "$state_dir" "$state_dir/workflow" "$state_dir/models/s2s" "$state_dir/model-config/s2s" "$state_dir/model-cache/s2s" "$state_dir/voiceprints" /var/lib/homeassistant /var/lib/matter-server
-    install -d -m 0700 "$state_dir/homeassistant" "$state_dir/workflow-mcp"
+    install -d -m 0700 "$state_dir/homeassistant" "$state_dir/workflow-mcp" "$state_dir/ha-mcp-adb"
     ln -sfn "$state_dir/workflow-mcp" /data/saha/workflow-mcp
     install -d -m 0750 -o root -g 999 "$etc_dir/s2s-secrets"
     test ! -f "$etc_dir/s2s-secrets/dashscope-api-key" || { chown root:999 "$etc_dir/s2s-secrets/dashscope-api-key"; chmod 0640 "$etc_dir/s2s-secrets/dashscope-api-key"; }

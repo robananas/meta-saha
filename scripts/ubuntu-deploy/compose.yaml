@@ -112,8 +112,12 @@ services:
     env_file:
       - ${ROBAN_ETC_DIR}/home-assistant-mcp.env
       - ${ROBAN_ETC_DIR}/home-assistant-mcp-credentials.env
+    environment:
+      HOME: /tmp
+      ADB_VENDOR_KEYS: /tmp/.android/adbkey
     volumes:
       - ${ROBAN_STATE_DIR}/homeassistant:/data/saha/homeassistant:ro
+      - ${ROBAN_STATE_DIR}/ha-mcp-adb:/tmp/.android
     read_only: true
     tmpfs:
       - /tmp

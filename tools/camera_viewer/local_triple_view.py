@@ -17,7 +17,9 @@ import requests
 
 
 WINDOWS = {
-    "chest": "fisheye_chest",
+    "head": "camera_head",
+    "fisheye1": "dual_fisheye_1",
+    "fisheye2": "dual_fisheye_2",
 }
 
 

@@ -25,7 +25,7 @@ registry=${ROBAN_REGISTRY:-registry.cn-beijing.aliyuncs.com/roban}
 image_tag=${ROBAN_IMAGE_TAG:-20260819-arm64}
 workflow_image_tag=${ROBAN_WORKFLOW_IMAGE_TAG:-20260902-ha-refresh-arm64}
 workflow_mcp_image_tag=${ROBAN_WORKFLOW_MCP_IMAGE_TAG:-20260825-domain-arm64}
-ha_mcp_image_tag=${ROBAN_HA_MCP_IMAGE_TAG:-20260831-token-cache-fix-arm64}
+ha_mcp_image_tag=${ROBAN_HA_MCP_IMAGE_TAG:-20261013-lock-policy-v1-arm64}
 s2s_image_tag=${ROBAN_S2S_IMAGE_TAG:-20260907-door-sensor-arm64}
 dry_run=0
 confirm_purge=0
@@ -190,13 +190,19 @@ seed_state() {
     fi
   done
   if [[ -d $workspace/current/ha-template/deps/lupa ]]; then
-    install -d "$state/homeassistant-config/deps"
+    # HA resolves deps through its user site, not the deps root.
+    local lupa_site="$state/homeassistant-config/deps/lib/python3.14/site-packages"
+    install -d "$state/homeassistant-config/deps" "$lupa_site"
     rm -rf "$state/homeassistant-config/deps/lupa"
     rm -rf "$state/homeassistant-config/deps"/lupa-*.dist-info
+    rm -rf "$lupa_site/lupa"
+    rm -rf "$lupa_site"/lupa-*.dist-info
     cp -a "$workspace/current/ha-template/deps/lupa" "$state/homeassistant-config/deps/"
+    cp -a "$workspace/current/ha-template/deps/lupa" "$lupa_site/"
     for distinfo in "$workspace/current/ha-template/deps"/lupa-*.dist-info; do
       [[ -d $distinfo ]] || continue
       cp -a "$distinfo" "$state/homeassistant-config/deps/"
+      cp -a "$distinfo" "$lupa_site/"
     done
   fi
   if [[ -d $workspace/current/ha-template/python-wheels ]]; then
@@ -229,7 +235,14 @@ HA_URL=http://127.0.0.1:8123
 HA_TOKEN_FILE=/data/saha/homeassistant/app-credentials.json
 HA_TIMEOUT=10
 HA_READ_ONLY=false
-HA_ALLOWED_DOMAINS=binary_sensor,light,switch,climate,cover,fan,media_player,scene,button,number,select,input_boolean,humidifier,remote,vacuum
+HA_ALLOWED_DOMAINS=binary_sensor,light,switch,climate,cover,event,fan,media_player,scene,button,number,select,input_boolean,humidifier,remote,vacuum,lock,notify
+HA_ALLOW_LOCK_WRITES=false
+HA_ALLOW_FEEDER_WRITES=true
+HA_EVENT_HISTORY_ENABLED=true
+HA_EVENT_HISTORY_LIMIT=50
+HA_EVENT_HISTORY_POLL_SECONDS=1
+HA_EVENT_HISTORY_PATH=/tmp/ha-mcp-event-history.jsonl
+HA_EVENT_HISTORY_PATTERNS=*_lock_event_*,*_exception_occurred_*,*_someone_appeared_*,*_pet_appeared_*,*_detected_babycry_*,*_object_motion_*,*_louder_sound_*,*_food_out_complete_*,*_bowl_gram_changed_*,*_day_food_left_*,*_day_eaten_food_*,*_low_food_intake_remind_*
 MCP_HOST=0.0.0.0
 MCP_PORT=8888
 MCP_PATH=/mcp

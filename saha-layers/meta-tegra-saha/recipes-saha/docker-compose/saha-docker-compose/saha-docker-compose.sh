@@ -17,7 +17,7 @@ SAHA_CLOCK_MIN_YEAR="${SAHA_CLOCK_MIN_YEAR:-2024}"
 SAHA_CLOCK_BOOTSTRAP_URLS="${SAHA_CLOCK_BOOTSTRAP_URLS:-https://ha.api.io.mi.com/ https://www.cloudflare.com/ https://www.google.com/}"
 SAHA_HOMEASSISTANT_IMAGE="${SAHA_HOMEASSISTANT_IMAGE:-ghcr.io/home-assistant/home-assistant:2026.7.1}"
 SAHA_HOMEASSISTANT_IMAGE_TAR="${SAHA_HOMEASSISTANT_IMAGE_TAR:-/data/preload/homeassistant/image.tar}"
-SAHA_HOMEASSISTANT_MCP_IMAGE="${SAHA_HOMEASSISTANT_MCP_IMAGE:-roban-ha-mcp:20260831-token-cache-fix-arm64}"
+SAHA_HOMEASSISTANT_MCP_IMAGE="${SAHA_HOMEASSISTANT_MCP_IMAGE:-roban-ha-mcp:20261013-lock-policy-v1-arm64}"
 SAHA_HOMEASSISTANT_MCP_IMAGE_TAR="${SAHA_HOMEASSISTANT_MCP_IMAGE_TAR:-/data/preload/homeassistant-mcp/image.tar}"
 SAHA_HOMEASSISTANT_MCP_CREDENTIALS_FILE="${SAHA_HOMEASSISTANT_MCP_CREDENTIALS_FILE:-/data/saha/homeassistant-mcp/credentials.env}"
 SAHA_MATTER_SERVER_IMAGE="${SAHA_MATTER_SERVER_IMAGE:-ghcr.io/matter-js/python-matter-server:arm64}"
@@ -288,15 +288,22 @@ seed_homeassistant_config() {
     done
 
     # Refresh the offline lupa dependency used by midea_smart_home.
+    # Home Assistant loads /config/deps via its user site
+    # (deps/lib/pythonX.Y/site-packages), not the deps root.
     if [ -d "${template}/deps/lupa" ]; then
         log "refreshing Home Assistant lupa dependency for Midea Smart Home"
-        mkdir -p "${config_dir}/deps"
+        local lupa_site="${config_dir}/deps/lib/python3.14/site-packages"
+        mkdir -p "${config_dir}/deps" "$lupa_site"
         rm -rf "${config_dir}/deps/lupa"
         rm -rf "${config_dir}/deps"/lupa-*.dist-info
+        rm -rf "${lupa_site}/lupa"
+        rm -rf "${lupa_site}"/lupa-*.dist-info
         cp -a "${template}/deps/lupa" "${config_dir}/deps/"
+        cp -a "${template}/deps/lupa" "${lupa_site}/"
         for distinfo in "${template}/deps"/lupa-*.dist-info; do
             [ -d "$distinfo" ] || continue
             cp -a "$distinfo" "${config_dir}/deps/"
+            cp -a "$distinfo" "${lupa_site}/"
         done
     fi
     if [ -d "${template}/python-wheels" ]; then
@@ -307,7 +314,8 @@ seed_homeassistant_config() {
 
 start_stack() {
     mountpoint -q /data
-    mkdir -p /var/lib/homeassistant /var/lib/matter-server /data/saha/homeassistant-mcp /data/saha/workflow-mcp
+    mkdir -p /var/lib/homeassistant /var/lib/matter-server /data/saha/homeassistant-mcp /data/saha/workflow-mcp /data/saha/ha-mcp-adb
+    chmod 700 /data/saha/ha-mcp-adb
     test -s "$SAHA_HOMEASSISTANT_MCP_CREDENTIALS_FILE"
     test -s "$SAHA_WORKFLOW_MCP_CREDENTIALS_FILE"
     seed_matter_certificates

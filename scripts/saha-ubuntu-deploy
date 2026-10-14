@@ -32,7 +32,7 @@ workflow_mcp_port="${ROBAN_WORKFLOW_MCP_PORT:-8889}"
 image_tag="${ROBAN_IMAGE_TAG:-20260819-arm64}"
 workflow_image_tag="${ROBAN_WORKFLOW_IMAGE_TAG:-20260902-ha-refresh-arm64}"
 workflow_mcp_image_tag="${ROBAN_WORKFLOW_MCP_IMAGE_TAG:-20260825-domain-arm64}"
-ha_mcp_image_tag="${ROBAN_HA_MCP_IMAGE_TAG:-20260831-token-cache-fix-arm64}"
+ha_mcp_image_tag="${ROBAN_HA_MCP_IMAGE_TAG:-20261013-lock-policy-v1-arm64}"
 s2s_image_tag="${ROBAN_S2S_IMAGE_TAG:-20260907-door-sensor-arm64}"
 registry="${ROBAN_REGISTRY:-registry.cn-beijing.aliyuncs.com/roban}"
 
@@ -147,20 +147,29 @@ seed_state() {
     fi
   done
   if [[ -d "$prefix/current/ha-template/deps/lupa" ]]; then
-    install -d /var/lib/homeassistant/deps
+    # HA resolves deps through its user site, not the deps root.
+    local lupa_site=/var/lib/homeassistant/deps/lib/python3.14/site-packages
+    install -d /var/lib/homeassistant/deps "$lupa_site"
     rm -rf /var/lib/homeassistant/deps/lupa
     rm -rf /var/lib/homeassistant/deps/lupa-*.dist-info
+    rm -rf "$lupa_site/lupa"
+    rm -rf "$lupa_site"/lupa-*.dist-info
     cp -a "$prefix/current/ha-template/deps/lupa" /var/lib/homeassistant/deps/
+    cp -a "$prefix/current/ha-template/deps/lupa" "$lupa_site/"
     for distinfo in "$prefix/current/ha-template/deps"/lupa-*.dist-info; do
       [[ -d $distinfo ]] || continue
       cp -a "$distinfo" /var/lib/homeassistant/deps/
+      cp -a "$distinfo" "$lupa_site/"
     done
   fi
   if [[ -d "$prefix/current/ha-template/python-wheels" ]]; then
     install -d /var/lib/homeassistant/python-wheels
     cp -a "$prefix/current/ha-template/python-wheels/." /var/lib/homeassistant/python-wheels/
   fi
-  cp -a --update=none "$prefix/current/matter-paa/." /var/lib/matter-server/credentials/ || true
+  # Jammy coreutils lacks --update=none; -n is the portable no-clobber form.
+  cp -an "$prefix/current/matter-paa/." /var/lib/matter-server/credentials/ 2>/dev/null \
+    || cp -a "$prefix/current/matter-paa/." /var/lib/matter-server/credentials/ \
+    || true
   printf 'offline\n' >/var/lib/matter-server/credentials/.version
   if [[ ! -s "$etc_dir/livekit.env" ]]; then
     local secret; secret=$(python3 -c 'import secrets; print(secrets.token_urlsafe(48))')
@@ -188,7 +197,14 @@ HA_URL=http://127.0.0.1:8123
 HA_TOKEN_FILE=/data/saha/homeassistant/app-credentials.json
 HA_TIMEOUT=10
 HA_READ_ONLY=false
-HA_ALLOWED_DOMAINS=binary_sensor,light,switch,climate,cover,fan,media_player,scene,button,number,select,input_boolean,humidifier,remote,vacuum
+HA_ALLOWED_DOMAINS=binary_sensor,light,switch,climate,cover,event,fan,media_player,scene,button,number,select,input_boolean,humidifier,remote,vacuum,lock,notify
+HA_ALLOW_LOCK_WRITES=false
+HA_ALLOW_FEEDER_WRITES=true
+HA_EVENT_HISTORY_ENABLED=true
+HA_EVENT_HISTORY_LIMIT=50
+HA_EVENT_HISTORY_POLL_SECONDS=1
+HA_EVENT_HISTORY_PATH=/tmp/ha-mcp-event-history.jsonl
+HA_EVENT_HISTORY_PATTERNS=*_lock_event_*,*_exception_occurred_*,*_someone_appeared_*,*_pet_appeared_*,*_detected_babycry_*,*_object_motion_*,*_louder_sound_*,*_food_out_complete_*,*_bowl_gram_changed_*,*_day_food_left_*,*_day_eaten_food_*,*_low_food_intake_remind_*
 MCP_HOST=0.0.0.0
 MCP_PORT=$ha_mcp_port
 MCP_PATH=/mcp
@@ -236,9 +252,22 @@ EOF
 }
 
 install_units() {
+  local bluetoothd=
+  if [[ -x /usr/libexec/bluetooth/bluetoothd ]]; then
+    bluetoothd=/usr/libexec/bluetooth/bluetoothd
+  elif [[ -x /usr/lib/bluetooth/bluetoothd ]]; then
+    bluetoothd=/usr/lib/bluetooth/bluetoothd
+  else
+    bluetoothd=$(command -v bluetoothd || true)
+  fi
+  [[ -n $bluetoothd && -x $bluetoothd ]] || { echo "bluetoothd not found" >&2; return 1; }
   install -d -m 0755 "$(dirname "$libexec")" "$unit_dir" "$unit_dir/bluetooth.service.d"
   install -m 0644 "$source_dir/roban-bluetooth.conf" "$etc_dir/bluetooth.conf"
-  install -m 0644 "$source_dir/roban-bluetooth-config.conf" "$unit_dir/bluetooth.service.d/roban-config.conf"
+  # Template targets Noble paths; rewrite for the active etc_dir and host bluetoothd.
+  sed -e "s|/usr/libexec/bluetooth/bluetoothd|$bluetoothd|g" \
+      -e "s|/etc/roban-ubuntu/bluetooth.conf|$etc_dir/bluetooth.conf|g" \
+      "$source_dir/roban-bluetooth-config.conf" >"$unit_dir/bluetooth.service.d/roban-config.conf"
+  chmod 0644 "$unit_dir/bluetooth.service.d/roban-config.conf"
   rm -f "$unit_dir/bluetooth.service.d/roban-experimental.conf"
   sed -e "s|^prefix=.*|prefix=$prefix|" -e "s|^etc_dir=.*|etc_dir=$etc_dir|" -e "s|^state_dir=.*|state_dir=$state_dir|" -e "s|^compose_project=.*|compose_project=$compose_project|" -e "s|^service_prefix=.*|service_prefix=$service_prefix|" "$source_dir/launcher.sh" >"$libexec"
   chmod 0755 "$libexec"
@@ -251,6 +280,7 @@ install_units() {
   install_unit roban-realtime-manager.service "$unit_manager"
   install_unit roban-bt-wifi-provision.service "$unit_ble"
   systemctl daemon-reload
+  systemctl reset-failed bluetooth.service 2>/dev/null || true
   systemctl try-restart bluetooth.service
   systemctl enable "$unit_data" "$unit_board" "$unit_core" "$unit_bootstrap" "$unit_edge" "$unit_manager" "$unit_ble" >/dev/null
 }

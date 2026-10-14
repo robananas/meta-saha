@@ -2,7 +2,7 @@
 set -eu
 
 output=$1
-image=${MCP_IMAGE:-roban-ha-mcp:20260831-token-cache-fix-arm64}
+image=${MCP_IMAGE:-roban-ha-mcp:20261013-lock-policy-v1-arm64}
 image_arch=${MCP_IMAGE_ARCH:-arm64}
 archive=${MCP_LOCAL_TAR:-}
 

@@ -512,6 +512,12 @@ grep -q '/run/saha/board-status:/run/saha/board-status:ro' \
 grep -q 'roban-workflow-api.tar' \
   "$ROOT_DIR/saha-layers/meta-tegra-saha/recipes-saha/roban-app/roban-app/fetch-image.sh" ||
   fail "roban-app fetch script must support local tarball cache"
+HOMEASSISTANT_MCP_ENV="$ROOT_DIR/saha-layers/meta-tegra-saha/recipes-saha/homeassistant-mcp/saha-homeassistant-mcp/home-assistant-mcp.env"
+[ -f "$HOMEASSISTANT_MCP_ENV" ] || fail "Home Assistant MCP environment file missing"
+grep -q '^HA_ALLOWED_DOMAINS=.*event.*lock.*notify$' "$HOMEASSISTANT_MCP_ENV" ||
+  fail "Home Assistant MCP must expose event, lock, and notify domains"
+grep -q '^HA_ALLOW_LOCK_WRITES=false$' "$HOMEASSISTANT_MCP_ENV" ||
+  fail "Home Assistant MCP lock writes must default to disabled"
 WORKFLOW_MCP_RECIPE="$ROOT_DIR/saha-layers/meta-tegra-saha/recipes-saha/workflow-mcp/saha-workflow-mcp.bb"
 WORKFLOW_MCP_ENV="$ROOT_DIR/saha-layers/meta-tegra-saha/recipes-saha/workflow-mcp/saha-workflow-mcp/workflow-mcp.env"
 WORKFLOW_MCP_CREDENTIALS="$ROOT_DIR/saha-layers/meta-tegra-saha/recipes-saha/workflow-mcp/saha-workflow-mcp/saha-workflow-mcp-credentials.sh"
@@ -647,12 +653,22 @@ grep -q '"requirements": \[\]' "$MIDEA_COMPONENT/manifest.json" ||
   fail "Midea Smart Home lupa package must be seeded under Home Assistant deps"
 [ -d "$MIDEA_DEPS/lupa-2.8.dist-info" ] ||
   fail "Midea Smart Home lupa dist-info must be seeded under Home Assistant deps"
+[ -f "$MIDEA_DEPS/lupa/lua51.cpython-314-aarch64-linux-musl.so" ] ||
+  fail "Midea Smart Home lupa must ship Alpine/musl extension tags for HA containers"
+grep -q 'deps/lib/python3.14/site-packages' "$HA_CONFIG_RECIPE" ||
+  fail "homeassistant config recipe must seed lupa into the HA user site path"
 grep -q 'for component in saha_matter gree_cloud midea_smart_home' \
   "$ROOT_DIR/saha-layers/meta-tegra-saha/recipes-saha/docker-compose/saha-docker-compose/saha-docker-compose.sh" ||
   fail "existing Home Assistant state must receive managed Gree/Midea component upgrades"
 grep -q 'refreshing Home Assistant lupa dependency for Midea Smart Home' \
   "$ROOT_DIR/saha-layers/meta-tegra-saha/recipes-saha/docker-compose/saha-docker-compose/saha-docker-compose.sh" ||
   fail "existing Home Assistant state must receive managed lupa dependency upgrades"
+grep -q 'deps/lib/python3.14/site-packages' \
+  "$ROOT_DIR/saha-layers/meta-tegra-saha/recipes-saha/docker-compose/saha-docker-compose/saha-docker-compose.sh" ||
+  fail "docker compose lupa refresh must install into the HA user site path"
+grep -q 'deps/lib/python3.14/site-packages' \
+  "$ROOT_DIR/scripts/saha-jammy-app-temp-deploy" ||
+  fail "jammy temp deploy must install lupa into the HA user site path"
 grep -q 'keep_wifi_credentials_synchronized' \
   "$ROOT_DIR/saha-layers/meta-tegra-saha/recipes-saha/homeassistant-config/saha-homeassistant-config/custom-components/saha_matter/__init__.py" ||
   fail "Matter bootstrap must restore WiFi credentials after Matter Server restarts"

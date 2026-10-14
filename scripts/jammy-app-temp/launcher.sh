@@ -31,7 +31,7 @@ wait_http() {
 case "${1:-}" in
   data-layout)
     install -d -m 0755 "$root" "$state" "$state/homeassistant-config" "$state/matter-server/credentials" "$state/workflow" "$state/models/s2s" "$state/model-config/s2s" "$state/model-cache/s2s" "$state/voiceprints" "$runtime" "$runtime/board-status" "$root/config"
-    install -d -m 0700 "$state/homeassistant-credentials" "$state/workflow-mcp" "$secrets"
+    install -d -m 0700 "$state/homeassistant-credentials" "$state/workflow-mcp" "$state/ha-mcp-adb" "$secrets"
     ;;
   core-start)
     "${compose[@]}" up -d --pull never matter-server homeassistant workflow-api

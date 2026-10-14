@@ -18,7 +18,7 @@ services:
 
   homeassistant-mcp:
     container_name: homeassistant-mcp
-    image: ${SAHA_HOMEASSISTANT_MCP_IMAGE:-roban-ha-mcp:20260831-token-cache-fix-arm64}
+    image: ${SAHA_HOMEASSISTANT_MCP_IMAGE:-roban-ha-mcp:20261013-lock-policy-v1-arm64}
     restart: on-failure:5
     network_mode: host
     depends_on:
@@ -27,8 +27,12 @@ services:
     env_file:
       - /etc/default/home-assistant-mcp
       - ${SAHA_HOMEASSISTANT_MCP_CREDENTIALS_FILE:-/data/saha/homeassistant-mcp/credentials.env}
+    environment:
+      HOME: /tmp
+      ADB_VENDOR_KEYS: /tmp/.android/adbkey
     volumes:
       - /data/saha/homeassistant:/data/saha/homeassistant:ro
+      - /data/saha/ha-mcp-adb:/tmp/.android
     read_only: true
     tmpfs:
       - /tmp:size=16m,mode=1777

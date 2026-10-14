@@ -92,8 +92,12 @@ services:
     env_file:
       - ${TEMP_SECRETS_DIR}/home-assistant-mcp.env
       - ${TEMP_SECRETS_DIR}/home-assistant-mcp-credentials.env
+    environment:
+      HOME: /tmp
+      ADB_VENDOR_KEYS: /tmp/.android/adbkey
     volumes:
       - ${TEMP_STATE_DIR}/homeassistant-credentials:/data/saha/homeassistant:ro
+      - ${TEMP_STATE_DIR}/ha-mcp-adb:/tmp/.android
     read_only: true
     tmpfs:
       - /tmp
