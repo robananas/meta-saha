@@ -18,7 +18,7 @@ services:
 
   homeassistant-mcp:
     container_name: homeassistant-mcp
-    image: ${SAHA_HOMEASSISTANT_MCP_IMAGE:-roban-ha-mcp:20261014-camera-fav-v1-arm64}
+    image: ${SAHA_HOMEASSISTANT_MCP_IMAGE:-roban-ha-mcp:20261016-tv-adb-harden-v1-arm64}
     restart: on-failure:5
     network_mode: host
     depends_on:
